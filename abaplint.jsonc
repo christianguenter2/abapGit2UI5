@@ -1,0 +1,178 @@
+{
+  "global": {
+    "files": "/src/**/*.*"
+  },
+  "dependencies": [
+    {
+      // the abap2UI5 framework this app runs on - cloned by abaplint for
+      // dependency resolution (z2ui5_if_app, z2ui5_if_client, z2ui5_cl_ui5_view_builder)
+      "url": "https://github.com/abap2UI5/abap2UI5",
+      // Pinned to a release tag, so this lint decides the same thing today and
+      // in six months. Unpinned it resolved the framework's default branch,
+      // and a branch moves: a rename over there turned into a red build here
+      // on a repository nobody had touched, and the reverse - a starter class
+      // that stopped compiling against what people actually install - would
+      // have passed just as quietly.
+      //
+      // It was unpinned because it had to be, not by choice: 1.142.0
+      // (2026-07-21) carries neither z2ui5_cl_ui5_view_builder nor
+      // client->get_event( ), and the starter class in src/ uses both. They
+      // reached the framework's main on 2026-08-12 and shipped in 1.143.0,
+      // which is the first release this template can compile against at all.
+      //
+      // The key is "branch", and it is not a typo. abaplint hands the value to
+      // `git clone --branch`, which takes a tag as happily as a branch name.
+      // There is no "tag" key: abaplint ignores unknown keys in silence, so a
+      // "tag" here would look exactly like a pin that works while the clone
+      // quietly kept following main.
+      //
+      // Moving it: bump to the new tag, run `npm run check`. If the starter
+      // class needs an API a release does not have yet, the pin is what tells
+      // you - which is the whole point of having one.
+      "branch": "1.146.0",
+      "files": "/src/**/*.*"
+    },
+    {
+      // the abapGit developer version this app calls (ZCL_ABAPGIT_*, ZIF_ABAPGIT_*)
+      "url": "https://github.com/abapGit/abapGit",
+      "branch": "main",
+      // deps/ holds abapGit's own stubs of SAP objects it needs to resolve
+      "files": "/{src,deps}/**/*.*"
+    },
+    {
+      // SAP standard stubs (CX_STATIC_CHECK, IF_T100_MESSAGE ...) that
+      // abapGit's classes build on
+      "url": "https://github.com/abaplint/deps",
+      "files": "/src/**/*.*"
+    }
+  ],
+  "syntax": {
+    "version": "v750",
+    // own namespace fully checked; unknown SAP-standard objects are void so
+    // the lint does not depend on a full standard-API mirror
+    "errorNamespace": "^(Z|Y)"
+  },
+  "rules": {
+    "begin_end_names": true,
+    "check_ddic": true,
+    "check_include": true,
+    "check_syntax": true,
+    "global_class": true,
+    "implement_methods": true,
+    "method_implemented_twice": true,
+    "parser_error": true,
+    "superclass_final": true,
+    "unknown_types": true,
+    "allowed_object_types": {
+      "allowed": ["CLAS", "DEVC", "INTF"]
+    },
+    "obsolete_statement": true,
+
+    // ---- The curated core -------------------------------------------------
+    //
+    // abap2UI5 itself runs 152 abaplint rules. This template ran 17, so the
+    // framework held itself to a standard it did not hand to the people
+    // starting from here. The 136-rule difference was read one by one and put
+    // in three buckets; what follows is the one that belongs in an app:
+    //
+    //   56  here - correctness, portability, SQL, dead weight, round trip
+    //   42  cannot fire in an abap2UI5 app at all (CDS, dynpro, FORM, macros,
+    //       message classes, IDoc, SICF/SMIM/NROB consistency) - left out as
+    //       noise rather than switched off one by one
+    //   38  taste (short_case, if_in_if, yoda conditions, method_length,
+    //       prefer_xsdbool, omit_parameter_name ...). Legitimate opinions, and
+    //       a template must not impose them on somebody else's codebase
+    //
+    // Measured before adopting, not after: with these 56 on, abap2UI5/samples
+    // (317 files, 152 real apps) reports 127 findings and every one is a
+    // genuine defect class - 35 unchecked sy-subrc, 28 unused variables, 16
+    // SELECT without ORDER BY, 14 empty structures. No category of noise. On
+    // this template: zero.
+
+    // Correctness - a defect, not a preference
+    "ambiguous_statement": true,
+    "catch_and_raise": true,
+    "check_abstract": true,
+    "check_subrc": true,
+    "classic_exceptions_overlap": true,
+    "cyclic_oo": true,
+    "dangerous_statement": true,
+    "empty_statement": true,
+    "identical_conditions": true,
+    "identical_contents": true,
+    "identical_descriptions": true,
+    "identical_move": true,
+    "index_completely_contained": true,
+    "invalid_table_index": true,
+    "method_overwrites_builtin": true,
+    "no_chained_assignment": true,
+    "parser_bad_exceptions": true,
+    "parser_missing_space": true,
+    "sy_modification": true,
+    "try_without_catch": true,
+    "uncaught_exception": true,
+    "unnecessary_return": true,
+    "unreachable_code": true,
+    "use_class_based_exceptions": true,
+    "when_others_last": true,
+
+    // Portability - the app has to survive 7.02, the cloud, and the transpiler
+    "cloud_types": true,
+    "downport": true,
+    "forbidden_void_type": true,
+    "fully_type_constants": true,
+    "fully_type_itabs": true,
+    "inline_data_old_versions": true,
+    "parser_702_chaining": true,
+
+    // SQL - correctness and performance of what reaches the database
+    "db_operation_in_loop": true,
+    "modify_only_own_db_tables": true,
+    "select_add_order_by": true,
+    "select_performance": true,
+    "select_single_full_key": true,
+    "sql_escape_host_variables": true,
+    "sql_value_conversion": true,
+    "strict_sql": true,
+    "unsecure_fae": true,
+
+    // Dead weight - shipped, serialized, read by nobody
+    "empty_event": true,
+    "empty_structure": true,
+    "superfluous_value": true,
+    "unnecessary_chaining": true,
+    "unnecessary_pragma": true,
+    "unused_ddic": true,
+    "unused_methods": true,
+    "unused_types": true,
+    "unused_variables": true,
+
+    // The abapGit round trip - the file has to come back byte-identical
+    "colon_missing_space": true,
+    "contains_tab": true,
+    "description_empty": true,
+    "line_break_style": true,
+    "local_testclass_consistency": true,
+    "main_file_contents": true,
+    // the CLSNAME in the .clas.xml against the file name - the mistake that
+    // happens when you copy the starter class and rename half of it
+    "xml_consistency": true,
+    // abapGit writes every .xml sidecar UTF-8 WITH a BOM and reads it back the
+    // same way; a sidecar saved without one comes back changed on the next
+    // pull, for everyone. AGENTS.md states the convention - this enforces it
+    "xml_bom": true,
+    // the ABAP editor strips a trailing blank when it saves, so a line that
+    // ends in one comes back changed on the next pull - for everyone
+    "whitespace_end": true,
+    "definitions_top": false,
+    "7bit_ascii": true,
+    "line_length": {
+      "length": 255
+    },
+    "object_naming": {
+      "patternKind": "required",
+      "clas": "^ZCL_|^ZCX_",
+      "intf": "^ZIF_"
+    }
+  }
+}
