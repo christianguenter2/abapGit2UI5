@@ -130,4 +130,19 @@ deletion by the dialog:
 A clean repeat showed the class under "Delete", and it was deleted only when it
 was ticked.
 
-Still not supported: packages that need a transport request.
+## Slice 3: transport request picker (2026-09-30)
+
+The fixture is a transportable package, `ZAG2UI5_TR_TEST` (software component
+HOME, change recording on). It holds abapGit repository `000000000026`
+(`abapGit-tests/DTEL`) and uses request `A4HK900148`.
+
+| Step | Result |
+|---|---|
+| Preview | Outcome `ready` with request type `K`; DEVC and DTEL under "Import" |
+| List of requests | The user's two modifiable workbench requests |
+| Pull with a request that is not the user's (`A4HK999999`) | Refused: "not one of your modifiable requests" |
+| Pull with `A4HK900148` | Pulled; `ZAGT_TEST_DTEL` is recorded on the request; the preview afterwards is `nothing` |
+| Browser, on `ZABAP_PROCESSING_CENTER` (dialog only, no pull) | A "Transport request" select with both requests, the newest preselected; Cancel closes it |
+| Short dumps | None |
+
+Creating a request from the dialog is still not supported.

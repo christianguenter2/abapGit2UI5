@@ -57,8 +57,12 @@ appears once, in its most dangerous group:
 
 "Pull selected" checks again before it imports. If the remote changed in
 between, it imports nothing and asks you to review again. If requirements or
-APACK dependencies are not met, you have to confirm "Pull anyway". Packages
-that need a transport request are not supported yet.
+APACK dependencies are not met, you have to confirm "Pull anyway".
+
+For transportable packages, the dialog asks for a transport request. It offers
+your own modifiable requests of the required type (workbench or customizing),
+and the server checks the choice again. Create the request in SE09 first;
+creating one from the dialog is not supported yet.
 
 Pulling a repository whose package contains abapGit, abap2UI5 or this
 frontend is refused. It would replace code that is running in the same
