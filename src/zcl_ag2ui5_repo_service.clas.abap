@@ -32,9 +32,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
-    CONSTANTS c_own_package TYPE devclass VALUE '$ABAPGIT2UI5'.
-
     METHODS silence_progress.
+
+    "! abapGit's own startup authorization (its user exit can restrict it)
+    METHODS assert_authorized
+      RAISING
+        zcx_abapgit_exception.
 
     METHODS get_online_repo
       IMPORTING
@@ -187,6 +190,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~list_repos.
 
+    assert_authorized( ).
     DATA li_online TYPE REF TO zif_abapgit_repo_online.
 
     silence_progress( ).
@@ -215,6 +219,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~get_status.
 
+    assert_authorized( ).
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
@@ -232,6 +237,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~pull.
 
+    assert_authorized( ).
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
@@ -249,14 +255,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     " deletions always block, so unlike abapGit's own pull there is nothing to
     " delete before deserializing
-    DATA(li_log) = li_repo->zif_abapgit_repo~create_new_log( `Pull Log` ).
-    li_repo->zif_abapgit_repo~deserialize( is_checks = ls_classification-checks
-                                           ii_log    = li_log ).
-
-    rs_result-messages = map_messages( li_log ).
-    rs_result-outcome  = COND #( WHEN li_log->get_status( ) = zif_abapgit_log=>c_status-error
-                                 THEN zif_ag2ui5_repo_service=>c_outcome-failed
-                                 ELSE zif_ag2ui5_repo_service=>c_outcome-pulled ).
+    DATA(ls_imported) = deserialize_logged( ii_repo   = li_repo
+                                            is_checks = ls_classification-checks ).
+    rs_result-outcome  = ls_imported-outcome.
+    rs_result-messages = ls_imported-messages.
 
   ENDMETHOD.
 
@@ -275,6 +277,36 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD deserialize_logged.
+
+    DATA(li_log) = ii_repo->create_new_log( `Pull Log` ).
+    IF li_log IS NOT BOUND.
+      li_log = NEW zcl_abapgit_log( `Pull Log` ).
+    ENDIF.
+
+    TRY.
+        ii_repo->deserialize( is_checks = is_checks
+                              ii_log    = li_log ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        " objects may already be imported - the log says which
+        li_log->add_exception( lx_error ).
+        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-failed.
+    ENDTRY.
+
+    rs_result-messages = map_messages( li_log ).
+    IF rs_result-outcome IS INITIAL.
+      rs_result-outcome = COND #( WHEN li_log->get_status( ) = zif_abapgit_log=>c_status-error
+                                  THEN zif_ag2ui5_repo_service=>c_outcome-failed
+                                  ELSE zif_ag2ui5_repo_service=>c_outcome-pulled ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD assert_authorized.
+
+    IF zcl_abapgit_auth=>is_allowed( zif_abapgit_auth=>c_authorization-startup ) = abap_false.
+      zcx_abapgit_exception=>raise( `You are not authorized to use abapGit` ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD silence_progress.
@@ -294,6 +326,31 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD assert_pull_allowed.
+
+    " Decided by where the code serving this request lives, not by the URL: a
+    " pull into any of these packages replaces classes this very request is
+    " still executing (abapGit's check_self_update only covers ZABAPGIT)
+    SELECT obj_name, devclass FROM tadir
+      WHERE pgmid = 'R3TR'
+        AND ( ( object = 'CLAS' AND obj_name = 'ZCL_ABAPGIT_REPO' )
+           OR ( object = 'INTF' AND obj_name = 'Z2UI5_IF_APP' )
+           OR ( object = 'CLAS' AND obj_name = 'ZCL_AG2UI5_REPO_SERVICE' ) )
+      ORDER BY obj_name
+      INTO TABLE @DATA(lt_running).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    DATA(lt_tree) = zcl_abapgit_factory=>get_sap_package( iv_package )->list_subpackages( ).
+    INSERT iv_package INTO TABLE lt_tree.
+
+    LOOP AT lt_running INTO DATA(ls_running) WHERE devclass IS NOT INITIAL.
+      IF line_exists( lt_tree[ table_line = ls_running-devclass ] ).
+        zcx_abapgit_exception=>raise( |Pulling package { iv_package } would replace { ls_running-obj_name }, | &&
+                                      |which is running in this session. Pull it with abapGit in SAP GUI.| ).
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD map_messages.
