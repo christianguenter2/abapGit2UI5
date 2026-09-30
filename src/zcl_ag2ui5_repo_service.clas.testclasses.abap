@@ -43,6 +43,8 @@ CLASS ltcl_classify DEFINITION FINAL FOR TESTING
     METHODS dependencies_block FOR TESTING.
     METHODS transport_blocks FOR TESTING.
     METHODS customizing_blocks FOR TESTING.
+    METHODS data_loss_keeps_text FOR TESTING.
+    METHODS object_blocks_once FOR TESTING.
 
     "! Checks with one changed object
     METHODS one_change
@@ -238,6 +240,28 @@ CLASS ltcl_classify IMPLEMENTATION.
     assert_blocked( zcl_ag2ui5_repo_service=>classify( ls_checks ) ).
   ENDMETHOD.
 
+  METHOD data_loss_keeps_text.
+    DATA(ls_checks) = one_change( zif_abapgit_objects=>c_deserialize_action-update ).
+    INSERT overwrite_line( iv_action = zif_abapgit_objects=>c_deserialize_action-data_loss
+                           iv_text   = `Field LENGTH shortened` ) INTO TABLE ls_checks-data_loss.
+
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>classify( ls_checks ).
+
+    assert_blocked( ls_result ).
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_result-blocking[ 1 ]-reason
+      exp = `Field LENGTH shortened` ).
+  ENDMETHOD.
+
+  METHOD object_blocks_once.
+    " a table that is deleted AND holds data comes in overwrite and in delete_tabl_with_data
+    DATA(ls_checks) = one_change( iv_action = zif_abapgit_objects=>c_deserialize_action-delete
+                                  iv_text   = `Delete local object` ).
+    INSERT overwrite_line( zif_abapgit_objects=>c_deserialize_action-delete ) INTO TABLE ls_checks-delete_tabl_with_data.
+
+    assert_blocked( zcl_ag2ui5_repo_service=>classify( ls_checks ) ).
+  ENDMETHOD.
+
 ENDCLASS.
 
 
@@ -329,6 +353,7 @@ CLASS ltcl_pull_internals DEFINITION FINAL FOR TESTING
     METHODS guard_refuses_abap2ui5 FOR TESTING RAISING cx_static_check.
     METHODS guard_refuses_super_package FOR TESTING RAISING cx_static_check.
     METHODS guard_allows_other_package FOR TESTING RAISING cx_static_check.
+    METHODS empty_key_raises FOR TESTING RAISING cx_static_check.
 
     METHODS package_of_z2ui5
       RETURNING
@@ -386,6 +411,15 @@ CLASS ltcl_pull_internals IMPLEMENTATION.
     TRY.
         NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( lv_parent ).
         cl_abap_unit_assert=>fail( `The guard let the abap2UI5 root package through` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD empty_key_raises.
+    " the status app started without choosing a repository
+    TRY.
+        NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~get_status( `` ).
+        cl_abap_unit_assert=>fail( `No exception for an empty key` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
   ENDMETHOD.
