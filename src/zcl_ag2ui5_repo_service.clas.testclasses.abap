@@ -43,6 +43,8 @@ CLASS ltcl_preview DEFINITION FINAL FOR TESTING
     METHODS transport_blocks FOR TESTING.
     METHODS customizing_blocks FOR TESTING.
     METHODS package_note_kept FOR TESTING.
+    METHODS transport_preset_passed FOR TESTING.
+    METHODS transport_without_type_blocks FOR TESTING.
 
     METHODS overwrite_line
       IMPORTING
@@ -293,6 +295,26 @@ CLASS ltcl_preview IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( ls_preview-transport_type ).
   ENDMETHOD.
 
+  METHOD transport_preset_passed.
+    " abapGit fills the request from the repository setting or the user exit
+    DATA(ls_checks) = one_change( zif_abapgit_objects=>c_deserialize_action-update ).
+    ls_checks-transport-required     = abap_true.
+    ls_checks-transport-type-request = 'K'.
+    ls_checks-transport-transport    = 'A4HK900001'.
+
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>preview( ls_checks )-transport_preset
+                                        exp = `A4HK900001` ).
+  ENDMETHOD.
+
+  METHOD transport_without_type_blocks.
+    " without a type there is nothing to offer, and deserialize would fail late
+    DATA(ls_checks) = one_change( zif_abapgit_objects=>c_deserialize_action-update ).
+    ls_checks-transport-required = abap_true.
+
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>preview( ls_checks )-outcome
+                                        exp = zif_ag2ui5_repo_service=>c_outcome-blocked ).
+  ENDMETHOD.
+
   METHOD package_note_kept.
     " overwriting an object that lives in another package: both facts matter
     DATA(ls_checks) = one_change( iv_action = zif_abapgit_objects=>c_deserialize_action-overwrite
@@ -424,6 +446,8 @@ CLASS ltcl_transport DEFINITION FINAL FOR TESTING
     METHODS own_request_accepted FOR TESTING RAISING cx_static_check.
     METHODS other_request_refused FOR TESTING.
     METHODS missing_request_refused FOR TESTING.
+    METHODS preset_wins FOR TESTING RAISING cx_static_check.
+    METHODS chosen_used_without_preset FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -447,6 +471,24 @@ CLASS ltcl_transport IMPLEMENTATION.
         cl_abap_unit_assert=>fail( `A request outside the list was accepted` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
+  ENDMETHOD.
+
+  METHOD preset_wins.
+    " a request abapGit determined comes from system configuration, not from
+    " the client, and need not be one of the user's own
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>effective_transport( iv_preset     = `A4HK900001`
+                                                          iv_chosen     = `A4HK900148`
+                                                          it_transports = mt_transports )
+      exp = `A4HK900001` ).
+  ENDMETHOD.
+
+  METHOD chosen_used_without_preset.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>effective_transport( iv_preset     = ``
+                                                          iv_chosen     = `A4HK900148`
+                                                          it_transports = mt_transports )
+      exp = `A4HK900148` ).
   ENDMETHOD.
 
   METHOD missing_request_refused.

@@ -104,6 +104,10 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       transport_type   TYPE string,
       "! The same for customizing (table contents)
       customizing_type TYPE string,
+      "! A request abapGit already determined (repository setting or user
+      "! exit) - used as is, the dialog then offers no choice
+      transport_preset   TYPE string,
+      customizing_preset TYPE string,
     END OF ty_preview.
 
   TYPES:

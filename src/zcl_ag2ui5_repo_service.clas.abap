@@ -35,6 +35,18 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! The request to record on: abapGit's own if it determined one, otherwise
+    "! the user's choice, which must be one of their modifiable requests
+    CLASS-METHODS effective_transport
+      IMPORTING
+        iv_preset        TYPE string
+        iv_chosen        TYPE string
+        it_transports    TYPE zif_ag2ui5_repo_service=>ty_transports
+      RETURNING
+        VALUE(rv_trkorr) TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
     "! Writes the decisions into every check table an object is in. Raises
     "! when an object has no item (the remote changed since the preview) or
     "! when unmet requirements are not acknowledged
@@ -275,6 +287,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                         WHEN zif_ag2ui5_repo_service=>c_group-import    THEN 5
                         ELSE 6 ).
 
+  ENDMETHOD.
+
+  METHOD effective_transport.
   ENDMETHOD.
 
   METHOD assert_transport.
