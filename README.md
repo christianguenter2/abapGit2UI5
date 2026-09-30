@@ -10,14 +10,14 @@ This is a proof of concept. It supports three things:
 - **Repository list:** all abapGit repositories of the system, with a search.
 - **Status:** the files that differ between the system and the remote, or that
   are inactive.
-- **Pull in abort mode:** only imports when no local change would be lost. If
-  anything would be lost, it lists what blocks the pull and imports nothing.
+- **Pull with decisions:** a dialog lists every change, grouped by risk, with
+  abapGit's defaults preselected. Only what you tick is changed.
 
 Stage, commit, push and the diff view are not part of it yet.
 
-| Repositories | Status | Pull blocked |
-|---|---|---|
-| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Blocked pull](docs/screenshots/pull-blocked.png) |
+| Repositories | Status |
+|---|---|
+| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) |
 
 The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
 a real system.
@@ -43,19 +43,22 @@ https://<host>:<port>/sap/bc/z2ui5?sap-client=<client>&app_start=zcl_ag2ui5_app_
 
 ## How a pull decides
 
-abapGit's SAP GUI pull asks for a decision on every changed object. This
-frontend makes that decision itself:
+Pull opens one dialog instead of abapGit's sequence of popups. Every object
+appears once, in its most dangerous group:
 
-| Change | Treatment |
-|---|---|
-| Added or changed only remotely | Imported |
-| Deleted locally (not pushed) | Recreated from the remote, the same default as abapGit's own popup |
-| Object type not supported | Skipped and reported |
-| Changed or added locally, or would be deleted | Blocks |
-| Package move, data loss, a table with data would be deleted | Blocks |
-| Package outside the repository | Blocks |
-| Requirements or APACK dependencies not met | Blocks |
-| A transport request is needed | Blocks (only local packages are supported) |
+| Group | Changes | Preselected |
+|---|---|---|
+| Data loss | Data would be lost, or a table with data would be deleted | no |
+| Delete local objects | Objects that are not in the remote | no |
+| Overwrite local changes | Objects changed in the system | no |
+| Package change | Package moves, and objects in another package | no |
+| Import | Added or changed only remotely, or deleted locally | yes (with a new namespace, only the namespace, as in abapGit) |
+| Skipped | Object types abapGit does not support | cannot be selected |
+
+"Pull selected" checks again before it imports. If the remote changed in
+between, it imports nothing and asks you to review again. If requirements or
+APACK dependencies are not met, you have to confirm "Pull anyway". Packages
+that need a transport request are not supported yet.
 
 Pulling a repository whose package contains abapGit, abap2UI5 or this
 frontend is refused. It would replace code that is running in the same

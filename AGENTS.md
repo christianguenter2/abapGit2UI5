@@ -16,7 +16,13 @@ is in `AGENTS-LOCAL.md` if that file is present. It is Git-ignored.
   package tree that contains abapGit, abap2UI5 or this repository, because that
   code is running in the session. On A4H25, local packages without a super
   package sit below `$TMP`, so `$TMP` is refused too.
-- The abort-mode rule lives in `classify( )` and is covered by unit tests. The
-  table in `README.md` must match it.
+- The pull decisions live in `preview( )` (groups and defaults) and
+  `apply_decisions( )` (which writes a decision into every check table), both
+  without side effects and covered by unit tests. The table in `README.md`
+  must match them. Every row of the four check tables needs a decision, or
+  abapGit's `checks_adjust` raises an exception.
+- The headless screenshot (`abap2ui5lint --screenshot`) cannot follow values
+  passed into `group_display( )`, so it renders the decision dialog empty. Test
+  the dialog on a system.
 - Checks: `npm run check` runs abaplint and the abap2UI5 linter, including the
   render gate. ABAP Unit only runs on a system.

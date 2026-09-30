@@ -79,3 +79,28 @@ has no auth exit that would deny it; the allowed path was retested.
   happy-path fixture for future end-to-end runs, and can be removed with
   abapGit (Remove / Uninstall).
 - Repository `$ABAPGIT2UI5` is on branch `poc/first-slice`.
+
+## Slice 2: pull with decisions (2026-09-30)
+
+Abort mode is replaced by a decision dialog. See
+`docs/superpowers/specs/2026-09-30-pull-decisions-design.md`.
+
+End-to-end on the `$AG2UI5_TEST` fixture, after a local change to
+`ZIF_ABAPGIT_UNIT_TEST` and a new local-only class `ZCL_AG2UI5_E2E_LOCAL`:
+
+| Step | Result |
+|---|---|
+| Preview | The class is under "Delete" and the interface under "Overwrite", both unselected |
+| Pull with an item missing from the list | Outcome `changed`, nothing imported |
+| Pull with nothing selected | No change; the class and the local edit stay |
+| Pull with everything selected | The class is deleted and the interface restored; the preview afterwards is `nothing` |
+| Browser: dialog, "Nothing selected", tick a box, "Pull selected" | The dialog closes, "Pulled" is shown and the status reads "Local and remote match" |
+| Browser: Pull again, then Back | "Already up to date", and "Last pull" in the list is updated |
+| Short dumps | None |
+
+The browser steps ran while the screen was locked. Chrome could still run
+JavaScript but did not draw the page or process clicks, so the controls' events
+were fired through UI5 (`firePress`, `fireSelect`). That covers the round trips
+and bindings, but not the physical click.
+
+Still not supported: packages that need a transport request.
