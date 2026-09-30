@@ -15,9 +15,9 @@ This is a proof of concept. It supports three things:
 
 Stage, commit, push and the diff view are not part of it yet.
 
-| Repositories | Status |
-|---|---|
-| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) |
+| Repositories | Status | Pull |
+|---|---|---|
+| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Decision dialog](docs/screenshots/pull-dialog.png) |
 
 The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
 a real system.
