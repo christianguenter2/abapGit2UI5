@@ -22,6 +22,14 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_status_rows.
 
+    "! Date and time to the minute in the user's time zone, empty if initial
+    CLASS-METHODS format_timestamp
+      IMPORTING
+        iv_timestamp   TYPE timestampl
+        iv_timezone    TYPE tznzone DEFAULT sy-zonlo
+      RETURNING
+        VALUE(rv_text) TYPE string.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     CONSTANTS c_own_package TYPE devclass VALUE '$ABAPGIT2UI5'.
@@ -243,6 +251,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                  THEN zif_ag2ui5_repo_service=>c_outcome-failed
                                  ELSE zif_ag2ui5_repo_service=>c_outcome-pulled ).
 
+  ENDMETHOD.
+
+  METHOD format_timestamp.
   ENDMETHOD.
 
   METHOD silence_progress.

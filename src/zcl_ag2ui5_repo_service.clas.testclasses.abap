@@ -264,3 +264,34 @@ CLASS ltcl_filter_status IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_format_timestamp DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS minutes_in_given_zone FOR TESTING.
+    METHODS initial_is_empty FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS ltcl_format_timestamp IMPLEMENTATION.
+
+  METHOD minutes_in_given_zone.
+    DATA lv_timestamp TYPE timestampl VALUE '20260916063133.1049280'.
+
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>format_timestamp( iv_timestamp = lv_timestamp
+                                                       iv_timezone  = 'UTC' )
+      exp = `2026-09-16 06:31` ).
+  ENDMETHOD.
+
+  METHOD initial_is_empty.
+    DATA lv_timestamp TYPE timestampl.
+
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>format_timestamp( lv_timestamp ) ).
+  ENDMETHOD.
+
+ENDCLASS.
