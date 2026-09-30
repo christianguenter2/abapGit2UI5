@@ -42,6 +42,7 @@ CLASS ltcl_preview DEFINITION FINAL FOR TESTING
     METHODS dependencies_need_ack FOR TESTING.
     METHODS transport_blocks FOR TESTING.
     METHODS customizing_blocks FOR TESTING.
+    METHODS package_note_kept FOR TESTING.
 
     METHODS overwrite_line
       IMPORTING
@@ -279,6 +280,123 @@ CLASS ltcl_preview IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>preview( ls_checks )-outcome
                                         exp = zif_ag2ui5_repo_service=>c_outcome-blocked ).
+  ENDMETHOD.
+
+  METHOD package_note_kept.
+    " overwriting an object that lives in another package: both facts matter
+    DATA(ls_checks) = one_change( iv_action = zif_abapgit_objects=>c_deserialize_action-overwrite
+                                  iv_text   = `Overwrite local object` ).
+    DATA(ls_line) = overwrite_line( zif_abapgit_objects=>c_deserialize_action-overwrite ).
+    ls_line-devclass = '$OTHER'.
+    INSERT ls_line INTO TABLE ls_checks-warning_package.
+
+    DATA(ls_item) = single_item( zcl_ag2ui5_repo_service=>preview( ls_checks ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = ls_item-group
+                                        exp = zif_ag2ui5_repo_service=>c_group-overwrite ).
+    cl_abap_unit_assert=>assert_char_cp( act = ls_item-reason
+                                         exp = `Overwrite local object*$OTHER*` ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_merge DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS selection_carried_over FOR TESTING RAISING cx_static_check.
+    METHODS import_turned_delete FOR TESTING.
+    METHODS new_object FOR TESTING.
+    METHODS selected_object_gone FOR TESTING.
+    METHODS unselected_object_gone FOR TESTING RAISING cx_static_check.
+    METHODS skipped_stays_unselected FOR TESTING RAISING cx_static_check.
+
+    METHODS item
+      IMPORTING
+        iv_obj_name    TYPE string
+        iv_group       TYPE zif_ag2ui5_repo_service=>ty_group
+        iv_selected    TYPE abap_bool
+        iv_selectable  TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(rs_item) TYPE zif_ag2ui5_repo_service=>ty_decision_item.
+
+    METHODS assert_changed
+      IMPORTING
+        it_fresh  TYPE zif_ag2ui5_repo_service=>ty_decision_items
+        it_posted TYPE zif_ag2ui5_repo_service=>ty_decision_items.
+
+ENDCLASS.
+
+
+CLASS ltcl_merge IMPLEMENTATION.
+
+  METHOD item.
+    rs_item = VALUE #( obj_type   = `CLAS`
+                       obj_name   = iv_obj_name
+                       group      = iv_group
+                       selected   = iv_selected
+                       selectable = iv_selectable ).
+  ENDMETHOD.
+
+  METHOD assert_changed.
+    TRY.
+        zcl_ag2ui5_repo_service=>merge_decisions( it_fresh = it_fresh it_posted = it_posted ).
+        cl_abap_unit_assert=>fail( `A change since the preview was not detected` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD selection_carried_over.
+    DATA(lt_items) = zcl_ag2ui5_repo_service=>merge_decisions(
+      it_fresh  = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT`    iv_selected = abap_true ) )
+                           ( item( iv_obj_name = `ZCL_B` iv_group = `OVERWRITE` iv_selected = abap_false ) ) )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT`    iv_selected = abap_false ) )
+                           ( item( iv_obj_name = `ZCL_B` iv_group = `OVERWRITE` iv_selected = abap_true ) ) ) ).
+
+    cl_abap_unit_assert=>assert_false( lt_items[ obj_name = `ZCL_A` ]-selected ).
+    cl_abap_unit_assert=>assert_true( lt_items[ obj_name = `ZCL_B` ]-selected ).
+  ENDMETHOD.
+
+  METHOD import_turned_delete.
+    " the user ticked an import; meanwhile the remote dropped the object
+    assert_changed(
+      it_fresh  = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `DELETE` iv_selected = abap_false ) ) )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT` iv_selected = abap_true ) ) ) ).
+  ENDMETHOD.
+
+  METHOD new_object.
+    assert_changed(
+      it_fresh  = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT` iv_selected = abap_true ) )
+                           ( item( iv_obj_name = `ZCL_B` iv_group = `IMPORT` iv_selected = abap_true ) ) )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT` iv_selected = abap_true ) ) ) ).
+  ENDMETHOD.
+
+  METHOD selected_object_gone.
+    assert_changed(
+      it_fresh  = VALUE #( )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT` iv_selected = abap_true ) ) ) ).
+  ENDMETHOD.
+
+  METHOD unselected_object_gone.
+    " nothing was going to happen to it, so its disappearance changes nothing
+    DATA(lt_items) = zcl_ag2ui5_repo_service=>merge_decisions(
+      it_fresh  = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT` iv_selected = abap_true ) ) )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `IMPORT`    iv_selected = abap_true ) )
+                           ( item( iv_obj_name = `ZCL_B` iv_group = `OVERWRITE` iv_selected = abap_false ) ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_items )
+                                        exp = 1 ).
+  ENDMETHOD.
+
+  METHOD skipped_stays_unselected.
+    " the client cannot tick what the server made unselectable
+    DATA(lt_items) = zcl_ag2ui5_repo_service=>merge_decisions(
+      it_fresh  = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `SKIPPED` iv_selected = abap_false iv_selectable = abap_false ) ) )
+      it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `SKIPPED` iv_selected = abap_true ) ) ) ).
+
+    cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
   ENDMETHOD.
 
 ENDCLASS.

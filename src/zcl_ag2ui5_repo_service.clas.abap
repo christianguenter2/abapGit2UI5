@@ -15,6 +15,18 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rs_preview) TYPE zif_ag2ui5_repo_service=>ty_preview.
 
+    "! The fresh preview's items with the user's ticks. Raises when anything
+    "! differs from what the user saw: a new object, an object in another
+    "! group now, or a ticked object that is gone
+    CLASS-METHODS merge_decisions
+      IMPORTING
+        it_fresh        TYPE zif_ag2ui5_repo_service=>ty_decision_items
+        it_posted       TYPE zif_ag2ui5_repo_service=>ty_decision_items
+      RETURNING
+        VALUE(rt_items) TYPE zif_ag2ui5_repo_service=>ty_decision_items
+      RAISING
+        zcx_abapgit_exception.
+
     "! Writes the decisions into every check table an object is in. Raises
     "! when an object has no item (the remote changed since the preview) or
     "! when unmet requirements are not acknowledged
@@ -246,6 +258,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                         WHEN zif_ag2ui5_repo_service=>c_group-import    THEN 5
                         ELSE 6 ).
 
+  ENDMETHOD.
+
+  METHOD merge_decisions.
   ENDMETHOD.
 
   METHOD apply_decisions.
