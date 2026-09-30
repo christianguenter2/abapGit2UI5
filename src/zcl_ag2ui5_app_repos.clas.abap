@@ -46,10 +46,9 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
-    IF client->check_on_init( ).
+    IF client->check_on_navigated( ).
+      " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
-      view_display( ).
-    ELSEIF client->check_on_navigated( ).
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).

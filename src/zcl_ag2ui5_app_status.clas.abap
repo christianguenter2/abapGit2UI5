@@ -31,6 +31,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mt_rows     TYPE ty_rows.
     DATA mt_blocking TYPE zif_ag2ui5_repo_service=>ty_items.
     DATA mt_info     TYPE zif_ag2ui5_repo_service=>ty_items.
+    "! What the empty table says - "match" only once a status was loaded
+    DATA mv_no_data  TYPE string.
 
     CLASS-METHODS create
       IMPORTING
@@ -135,7 +137,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(table) = content->ele( `Table`
         )->a( n = `items`      v = client->_bind( mt_rows )
-        )->a( n = `noDataText` v = `Local and remote match` ).
+        )->a( n = `noDataText` v = client->_bind( mv_no_data ) ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -244,10 +246,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(ls_status) = service( )->get_status( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        CLEAR mt_rows.
+        mv_no_data = `Status could not be loaded`.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
     ENDTRY.
 
+    mv_no_data = `Local and remote match`.
     ms_head = CORRESPONDING #( ls_status ).
     ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
                                     THEN substring( val = ls_status-remote_commit len = 7 )
@@ -268,6 +273,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD pull.
 
+    " the lists of an earlier blocked pull would otherwise travel on every round trip
+    CLEAR: mt_blocking, mt_info.
+
     TRY.
         DATA(ls_result) = service( )->pull( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
@@ -280,7 +288,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->message_toast_display( `Already up to date` ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-pulled.
         load_status( ).
-        client->message_toast_display( `Pulled` ).
+        DATA(lv_warnings) = messages_text( ls_result-messages ).
+        IF lv_warnings IS INITIAL.
+          client->message_toast_display( `Pulled` ).
+        ELSE.
+          client->message_box_display( text    = `Pulled, with warnings`
+                                       type    = `warning`
+                                       details = lv_warnings ).
+        ENDIF.
       WHEN zif_ag2ui5_repo_service=>c_outcome-blocked.
         mt_blocking = ls_result-blocking.
         mt_info     = ls_result-info.

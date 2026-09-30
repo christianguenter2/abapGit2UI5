@@ -159,9 +159,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD block_objects.
 
     LOOP AT it_objects INTO DATA(ls_object).
+      " one reason per object is enough to explain why the pull stops
+      IF line_exists( ct_items[ obj_type = ls_object-obj_type obj_name = ls_object-obj_name ] ).
+        CONTINUE.
+      ENDIF.
       INSERT VALUE #( obj_type = ls_object-obj_type
                       obj_name = ls_object-obj_name
-                      reason   = iv_reason ) INTO TABLE ct_items.
+                      reason   = COND #( WHEN ls_object-text IS NOT INITIAL THEN ls_object-text ELSE iv_reason ) )
+        INTO TABLE ct_items.
     ENDLOOP.
 
   ENDMETHOD.
@@ -311,6 +316,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD get_online_repo.
+
+    IF iv_key IS INITIAL.
+      zcx_abapgit_exception=>raise( `No repository selected - start with zcl_ag2ui5_app_repos` ).
+    ENDIF.
 
     DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->get( CONV #( iv_key ) ).
 
