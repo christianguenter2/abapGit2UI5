@@ -1,3 +1,21 @@
+CLASS ltcl_pull_internals DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_pull_internals.
+
+"! A repository whose import fails half-way, the way an activation error does
+CLASS ltd_failing_repo DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_abapgit_repo PARTIALLY IMPLEMENTED.
+ENDCLASS.
+
+
+CLASS ltd_failing_repo IMPLEMENTATION.
+  METHOD zif_abapgit_repo~deserialize.
+    ii_log->add_info( `Object ZCL_TEST imported` ).
+    zcx_abapgit_exception=>raise( `Activation cancelled. Check the log and inactive objects.` ).
+  ENDMETHOD.
+ENDCLASS.
+
+
 CLASS ltcl_classify DEFINITION FINAL FOR TESTING
   RISK LEVEL HARMLESS
   DURATION SHORT.
@@ -292,6 +310,84 @@ CLASS ltcl_format_timestamp IMPLEMENTATION.
     DATA lv_timestamp TYPE timestampl.
 
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>format_timestamp( lv_timestamp ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+
+CLASS ltcl_pull_internals DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS deserialize_error_keeps_log FOR TESTING RAISING cx_static_check.
+    METHODS guard_refuses_abap2ui5 FOR TESTING RAISING cx_static_check.
+    METHODS guard_refuses_super_package FOR TESTING RAISING cx_static_check.
+    METHODS guard_allows_other_package FOR TESTING RAISING cx_static_check.
+
+    METHODS package_of_z2ui5
+      RETURNING
+        VALUE(rv_package) TYPE devclass.
+
+ENDCLASS.
+
+
+CLASS ltcl_pull_internals IMPLEMENTATION.
+
+  METHOD deserialize_error_keeps_log.
+    DATA ls_checks TYPE zif_abapgit_definitions=>ty_deserialize_checks.
+
+    DATA(ls_result) = NEW zcl_ag2ui5_repo_service( )->deserialize_logged( ii_repo   = NEW ltd_failing_repo( )
+                                                                          is_checks = ls_checks ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = ls_result-outcome
+      exp = zif_ag2ui5_repo_service=>c_outcome-failed ).
+    " the messages written before the error survive, and the error is one of them
+    cl_abap_unit_assert=>assert_equals(
+      act = lines( ls_result-messages )
+      exp = 2 ).
+    cl_abap_unit_assert=>assert_char_cp(
+      act = ls_result-messages[ 2 ]-text
+      exp = `Activation cancelled*` ).
+  ENDMETHOD.
+
+  METHOD package_of_z2ui5.
+    SELECT SINGLE devclass FROM tadir
+      WHERE pgmid = 'R3TR' AND object = 'INTF' AND obj_name = 'Z2UI5_IF_APP'
+      INTO @rv_package.
+    IF sy-subrc <> 0.
+      cl_abap_unit_assert=>skip( `abap2UI5 is not installed` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD guard_refuses_abap2ui5.
+    TRY.
+        NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( package_of_z2ui5( ) ).
+        cl_abap_unit_assert=>fail( `The guard let abap2UI5 through` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD guard_refuses_super_package.
+    DATA lv_parent TYPE devclass.
+
+    DATA(lv_package) = package_of_z2ui5( ).
+    SELECT SINGLE parentcl FROM tdevc WHERE devclass = @lv_package INTO @lv_parent.
+    IF sy-subrc <> 0 OR lv_parent IS INITIAL.
+      cl_abap_unit_assert=>skip( `abap2UI5 has no super package here` ).
+    ENDIF.
+
+    TRY.
+        NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( lv_parent ).
+        cl_abap_unit_assert=>fail( `The guard let the abap2UI5 root package through` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD guard_allows_other_package.
+    NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( '$TMP' ).
   ENDMETHOD.
 
 ENDCLASS.

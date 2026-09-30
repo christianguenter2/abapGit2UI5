@@ -47,9 +47,18 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
     "! Refuses to replace code that runs in this very session
     METHODS assert_pull_allowed
       IMPORTING
-        ii_repo TYPE REF TO zif_abapgit_repo_online
+        iv_package TYPE devclass
       RAISING
         zcx_abapgit_exception.
+
+    "! Imports and turns the log into the result - also when the import
+    "! raises half-way, which is when the log matters most
+    METHODS deserialize_logged
+      IMPORTING
+        ii_repo          TYPE REF TO zif_abapgit_repo
+        is_checks        TYPE zif_abapgit_definitions=>ty_deserialize_checks
+      RETURNING
+        VALUE(rs_result) TYPE zif_ag2ui5_repo_service=>ty_pull_result.
 
     METHODS map_messages
       IMPORTING
@@ -226,7 +235,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
-    assert_pull_allowed( li_repo ).
+    assert_pull_allowed( li_repo->zif_abapgit_repo~get_package( ) ).
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
 
     DATA(ls_classification) = classify( li_repo->zif_abapgit_repo~deserialize_checks( ) ).
@@ -265,6 +274,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD deserialize_logged.
+  ENDMETHOD.
+
   METHOD silence_progress.
     zcl_abapgit_progress=>set_instance( NEW zcl_ag2ui5_progress_silent( ) ).
   ENDMETHOD.
@@ -282,15 +294,6 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD assert_pull_allowed.
-
-    " abapGit's own guard (check_self_update in zcl_abapgit_services_repo) only
-    " fires when the running program is ZABAPGIT, which this one is not
-    IF zcl_abapgit_url=>is_abapgit_repo( ii_repo->get_url( ) ) = abap_true
-        OR ii_repo->zif_abapgit_repo~get_package( ) = c_own_package.
-      zcx_abapgit_exception=>raise( |Pulling { ii_repo->zif_abapgit_repo~get_name( ) } would replace code | &&
-                                    |that is running in this session. Pull it with abapGit in SAP GUI.| ).
-    ENDIF.
-
   ENDMETHOD.
 
   METHOD map_messages.
