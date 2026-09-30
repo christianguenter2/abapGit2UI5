@@ -189,9 +189,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         package = li_repo->get_package( )
         offline = li_repo->is_offline( ) ).
 
-      IF li_repo->ms_data-deserialized_at IS NOT INITIAL.
-        ls_repo-deserialized_at = |{ li_repo->ms_data-deserialized_at TIMESTAMP = ISO }|.
-      ENDIF.
+      ls_repo-deserialized_at = format_timestamp( li_repo->ms_data-deserialized_at ).
 
       IF ls_repo-offline = abap_false.
         li_online ?= li_repo.
@@ -254,6 +252,17 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD format_timestamp.
+
+    DATA lv_date TYPE d.
+    DATA lv_time TYPE t.
+
+    IF iv_timestamp IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    CONVERT TIME STAMP iv_timestamp TIME ZONE iv_timezone INTO DATE lv_date TIME lv_time.
+    rv_text = |{ lv_date DATE = ISO } { lv_time(2) }:{ lv_time+2(2) }|.
+
   ENDMETHOD.
 
   METHOD silence_progress.
