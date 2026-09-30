@@ -51,6 +51,17 @@ dialog already lists exactly the objects that would need a decision.
 `classify( )` returns the checks with decisions already filled in, so a
 decision dialog only has to flip them.
 
+## Code review fixes
+
+After a whole-branch review, three issues were fixed, each with a test that
+failed first:
+
+- **An exception during import no longer loses the log.** The outcome becomes
+  `failed`, the log messages are shown, and the status is reloaded.
+- **The guard now decides by the packages of the code that is running**
+  (abapGit, abap2UI5 and this repository), instead of by URL.
+- **abapGit's startup authorization is checked** before every service call.
+
 ## Not tested
 
 - The `failed` outcome (a pull whose log contains errors). It is hard to

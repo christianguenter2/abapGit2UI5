@@ -42,6 +42,7 @@ frontend makes that decision itself:
 | Change | Treatment |
 |---|---|
 | Added or changed only remotely | Imported |
+| Deleted locally (not pushed) | Recreated from the remote, the same default as abapGit's own popup |
 | Object type not supported | Skipped and reported |
 | Changed or added locally, or would be deleted | Blocks |
 | Package move, data loss, a table with data would be deleted | Blocks |
@@ -49,8 +50,13 @@ frontend makes that decision itself:
 | Requirements or APACK dependencies not met | Blocks |
 | A transport request is needed | Blocks (only local packages are supported) |
 
-Pulling abapGit itself, or this repository, is refused. It would replace code
-that is running in the same session. Use abapGit in SAP GUI for those.
+Pulling a repository whose package contains abapGit, abap2UI5 or this
+frontend is refused. It would replace code that is running in the same
+session. Use abapGit in SAP GUI for those.
+
+Using the frontend requires abapGit's startup authorization (see
+`ZCL_ABAPGIT_AUTH_EXIT`). Private repositories are not supported, because there
+is no way to enter credentials.
 
 ## Development
 
