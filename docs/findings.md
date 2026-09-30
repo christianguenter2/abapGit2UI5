@@ -53,8 +53,9 @@ decision dialog only has to flip them.
 
 ## Code review fixes
 
-After a whole-branch review, three issues were fixed, each with a test that
-failed first:
+After a whole-branch review, three issues were fixed. The first two have tests
+that failed before the fix. The authorization check has none, because A4H25
+has no auth exit that would deny it; the allowed path was retested.
 
 - **An exception during import no longer loses the log.** The outcome becomes
   `failed`, the log messages are shown, and the status is reloaded.
