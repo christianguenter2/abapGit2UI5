@@ -45,6 +45,11 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA ms_decisions    TYPE ty_decisions.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
+    "! Filled when the package needs a request: the user's modifiable ones
+    DATA mt_transports   TYPE zif_ag2ui5_repo_service=>ty_transports.
+    DATA mv_transport    TYPE string.
+    DATA mt_customizing  TYPE zif_ag2ui5_repo_service=>ty_transports.
+    DATA mv_customizing  TYPE string.
 
     CLASS-METHODS create
       IMPORTING
@@ -55,6 +60,12 @@ CLASS zcl_ag2ui5_app_status DEFINITION
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
+    "! Which requests the open dialog asks for (request types, not bound)
+    DATA:
+      BEGIN OF ms_transport_types,
+        transport   TYPE string,
+        customizing TYPE string,
+      END OF ms_transport_types.
 
     METHODS view_display.
     METHODS popup_decisions_display.
@@ -68,6 +79,16 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         iv_title      TYPE string
         iv_warning    TYPE string OPTIONAL
         iv_type       TYPE string DEFAULT `Warning`.
+
+    "! A request Select, and a hint when the user has no request of that type
+    METHODS transport_display
+      IMPORTING
+        io_content         TYPE REF TO z2ui5_cl_ui5_view_builder
+        it_transports      TYPE zif_ag2ui5_repo_service=>ty_transports
+        iv_transports_bind TYPE string
+        iv_selected_bind   TYPE string
+        iv_label           TYPE string
+        iv_type            TYPE string.
 
     METHODS on_event.
     METHODS load_status.
@@ -220,6 +241,23 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(content) = dialog->ele( `content` ).
 
+    IF ms_transport_types-transport IS NOT INITIAL.
+      transport_display( io_content         = content
+                         it_transports      = mt_transports
+                         iv_transports_bind = client->_bind( mt_transports )
+                         iv_selected_bind   = client->_bind( mv_transport )
+                         iv_label           = `Transport request`
+                         iv_type            = ms_transport_types-transport ).
+    ENDIF.
+    IF ms_transport_types-customizing IS NOT INITIAL.
+      transport_display( io_content         = content
+                         it_transports      = mt_customizing
+                         iv_transports_bind = client->_bind( mt_customizing )
+                         iv_selected_bind   = client->_bind( mv_customizing )
+                         iv_label           = `Customizing request`
+                         iv_type            = ms_transport_types-customizing ).
+    ENDIF.
+
     group_display( io_content    = content
                    it_items      = ms_decisions-data_loss
                    iv_items_bind = client->_bind( ms_decisions-data_loss )
@@ -273,6 +311,33 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
 
     client->popup_display( popup->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD transport_display.
+
+    IF it_transports IS INITIAL.
+      io_content->tag( `MessageStrip`
+          )->a( n = `text`     t = |{ iv_label }: you have no modifiable request of type { iv_type }. Create one in SE09, then pull again.|
+          )->a( n = `type`     v = `Error`
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMargin` ).
+      RETURN.
+    ENDIF.
+
+    DATA(box) = io_content->ele( `VBox`
+        )->a( n = `class` v = `sapUiSmallMargin` ).
+    box->tag( `Label`
+        )->a( n = `text`     v = iv_label
+        )->a( n = `required` v = `true` ).
+    box->ele( `Select`
+        )->a( n = `selectedKey` v = iv_selected_bind
+        )->a( n = `width`       v = `100%`
+        )->a( n = `items`       v = iv_transports_bind
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `{TRKORR}`
+                )->a( n = `text` v = `{TRKORR} {TEXT}` ).
 
   ENDMETHOD.
 
@@ -377,7 +442,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD preview_pull.
 
-    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged.
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+           mt_transports, mv_transport, mt_customizing, mv_customizing.
 
     TRY.
         DATA(ls_preview) = service( )->preview_pull( mv_key ).
@@ -413,6 +479,22 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDLOOP.
     mv_ack_text = ls_preview-ack_text.
 
+    TRY.
+        IF ls_preview-transport_type IS NOT INITIAL.
+          ms_transport_types-transport = ls_preview-transport_type.
+          mt_transports = service( )->list_transports( ls_preview-transport_type ).
+          mv_transport  = VALUE #( mt_transports[ 1 ]-trkorr OPTIONAL ).
+        ENDIF.
+        IF ls_preview-customizing_type IS NOT INITIAL.
+          ms_transport_types-customizing = ls_preview-customizing_type.
+          mt_customizing = service( )->list_transports( ls_preview-customizing_type ).
+          mv_customizing = VALUE #( mt_customizing[ 1 ]-trkorr OPTIONAL ).
+        ENDIF.
+      CATCH zcx_abapgit_exception INTO lx_error.
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
     popup_decisions_display( ).
 
   ENDMETHOD.
@@ -437,20 +519,28 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       client->message_toast_display( `Confirm "Pull anyway" first` ).
       RETURN.
     ENDIF.
+    IF ( ms_transport_types-transport IS NOT INITIAL AND mv_transport IS INITIAL )
+        OR ( ms_transport_types-customizing IS NOT INITIAL AND mv_customizing IS INITIAL ).
+      client->message_toast_display( `Choose a transport request first` ).
+      RETURN.
+    ENDIF.
 
     client->popup_destroy( ).
 
     TRY.
         DATA(ls_result) = service( )->pull( iv_key          = mv_key
                                             it_items        = lt_items
-                                            iv_acknowledged = mv_acknowledged ).
+                                            iv_acknowledged = mv_acknowledged
+                                            iv_transport    = mv_transport
+                                            iv_customizing  = mv_customizing ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
     ENDTRY.
 
     " the dialog's lists would otherwise travel on every round trip
-    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged.
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+           mt_transports, mv_transport, mt_customizing, mv_customizing.
 
     CASE ls_result-outcome.
       WHEN zif_ag2ui5_repo_service=>c_outcome-nothing.

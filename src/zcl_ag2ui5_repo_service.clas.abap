@@ -152,10 +152,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF is_checks-transport-required = abap_true OR is_checks-customizing-required = abap_true.
-      rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-blocked.
-      rs_preview-blocked = `A transport request is required - only local packages are supported so far`.
-      RETURN.
+    " the dialog asks for a request of these types
+    IF is_checks-transport-required = abap_true.
+      rs_preview-transport_type = is_checks-transport-type-request.
+    ENDIF.
+    IF is_checks-customizing-required = abap_true.
+      rs_preview-customizing_type = is_checks-customizing-type-request.
     ENDIF.
 
     " as in abapGit's popup_decisions: a new namespace has to arrive before
@@ -276,9 +278,39 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD assert_transport.
+
+    IF iv_transport IS INITIAL.
+      zcx_abapgit_exception=>raise( `This package needs a transport request - choose one` ).
+    ENDIF.
+    IF NOT line_exists( it_transports[ trkorr = iv_transport ] ).
+      zcx_abapgit_exception=>raise( |{ iv_transport } is not one of your modifiable requests of the required type| ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_transports.
+
+    DATA lv_type TYPE e070-trfunction.
+
+    assert_authorized( ).
+    lv_type = iv_type.
+
+    " D = modifiable, L = modifiable and protected - both still take objects
+    SELECT e070~trkorr, e07t~as4text FROM e070
+      LEFT OUTER JOIN e07t ON e07t~trkorr = e070~trkorr AND e07t~langu = @sy-langu
+      WHERE e070~as4user    = @sy-uname
+        AND e070~trfunction = @lv_type
+        AND e070~trstatus   IN ('D', 'L')
+        AND e070~strkorr    = @space
+      ORDER BY e070~trkorr DESCENDING
+      INTO TABLE @DATA(lt_requests).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    rt_transports = VALUE #( FOR ls_request IN lt_requests
+                             ( trkorr = ls_request-trkorr text = ls_request-as4text ) ).
+
   ENDMETHOD.
 
   METHOD merge_decisions.
@@ -450,6 +482,17 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         zcx_abapgit_exception=>raise( ls_preview-blocked ).
     ENDCASE.
 
+    " the request comes from the client, so it is checked against the
+    " user's own modifiable requests before anything is written to it
+    IF ls_preview-transport_type IS NOT INITIAL.
+      assert_transport( iv_transport  = iv_transport
+                        it_transports = zif_ag2ui5_repo_service~list_transports( ls_preview-transport_type ) ).
+    ENDIF.
+    IF ls_preview-customizing_type IS NOT INITIAL.
+      assert_transport( iv_transport  = iv_customizing
+                        it_transports = zif_ag2ui5_repo_service~list_transports( ls_preview-customizing_type ) ).
+    ENDIF.
+
     IF ls_preview-ack_text IS NOT INITIAL AND iv_acknowledged = abap_false.
       zcx_abapgit_exception=>raise( |{ ls_preview-ack_text } - confirm "Pull anyway" to continue| ).
     ENDIF.
@@ -472,6 +515,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(ls_decided) = apply_decisions( is_checks       = ls_checks
                                         it_items        = lt_items
                                         iv_acknowledged = iv_acknowledged ).
+    " deletion and deserialize both record their objects on these requests
+    IF ls_preview-transport_type IS NOT INITIAL.
+      ls_decided-transport-transport = iv_transport.
+    ENDIF.
+    IF ls_preview-customizing_type IS NOT INITIAL.
+      ls_decided-customizing-transport = iv_customizing.
+    ENDIF.
 
     rs_result = deserialize_logged( ii_repo   = li_repo
                                     is_checks = ls_decided ).
