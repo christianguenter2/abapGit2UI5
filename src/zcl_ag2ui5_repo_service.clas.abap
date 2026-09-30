@@ -24,6 +24,31 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
+    CONSTANTS c_own_package TYPE devclass VALUE '$ABAPGIT2UI5'.
+
+    METHODS silence_progress.
+
+    METHODS get_online_repo
+      IMPORTING
+        iv_key         TYPE string
+      RETURNING
+        VALUE(ri_repo) TYPE REF TO zif_abapgit_repo_online
+      RAISING
+        zcx_abapgit_exception.
+
+    "! Refuses to replace code that runs in this very session
+    METHODS assert_pull_allowed
+      IMPORTING
+        ii_repo TYPE REF TO zif_abapgit_repo_online
+      RAISING
+        zcx_abapgit_exception.
+
+    METHODS map_messages
+      IMPORTING
+        ii_log             TYPE REF TO zif_abapgit_log
+      RETURNING
+        VALUE(rt_messages) TYPE zif_ag2ui5_repo_service=>ty_messages.
+
     CLASS-METHODS block_objects
       IMPORTING
         it_objects TYPE zif_abapgit_definitions=>ty_overwrite_tt
@@ -144,12 +169,119 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_repos.
+
+    DATA li_online TYPE REF TO zif_abapgit_repo_online.
+
+    silence_progress( ).
+
+    LOOP AT zcl_abapgit_repo_srv=>get_instance( )->list( ) INTO DATA(li_repo).
+      DATA(ls_repo) = VALUE zif_ag2ui5_repo_service=>ty_repo(
+        key     = li_repo->get_key( )
+        name    = li_repo->get_name( )
+        package = li_repo->get_package( )
+        offline = li_repo->is_offline( ) ).
+
+      IF li_repo->ms_data-deserialized_at IS NOT INITIAL.
+        ls_repo-deserialized_at = |{ li_repo->ms_data-deserialized_at TIMESTAMP = ISO }|.
+      ENDIF.
+
+      IF ls_repo-offline = abap_false.
+        li_online ?= li_repo.
+        ls_repo-url    = li_online->get_url( ).
+        ls_repo-branch = li_online->get_selected_branch( ).
+      ENDIF.
+
+      INSERT ls_repo INTO TABLE rt_repos.
+    ENDLOOP.
+
+    SORT rt_repos BY package.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~get_status.
+
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+
+    rs_status-key           = iv_key.
+    rs_status-name          = li_repo->zif_abapgit_repo~get_name( ).
+    rs_status-package       = li_repo->zif_abapgit_repo~get_package( ).
+    rs_status-url           = li_repo->get_url( ).
+    rs_status-branch        = li_repo->get_selected_branch( ).
+    rs_status-remote_commit = li_repo->get_current_remote( ).
+    rs_status-rows          = filter_status( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~pull.
+
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    assert_pull_allowed( li_repo ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+
+    DATA(ls_classification) = classify( li_repo->zif_abapgit_repo~deserialize_checks( ) ).
+    rs_result-outcome  = ls_classification-outcome.
+    rs_result-blocking = ls_classification-blocking.
+    rs_result-info     = ls_classification-info.
+
+    IF ls_classification-outcome <> zif_ag2ui5_repo_service=>c_outcome-ready.
+      RETURN.
+    ENDIF.
+
+    " deletions always block, so unlike abapGit's own pull there is nothing to
+    " delete before deserializing
+    DATA(li_log) = li_repo->zif_abapgit_repo~create_new_log( `Pull Log` ).
+    li_repo->zif_abapgit_repo~deserialize( is_checks = ls_classification-checks
+                                           ii_log    = li_log ).
+
+    rs_result-messages = map_messages( li_log ).
+    rs_result-outcome  = COND #( WHEN li_log->get_status( ) = zif_abapgit_log=>c_status-error
+                                 THEN zif_ag2ui5_repo_service=>c_outcome-failed
+                                 ELSE zif_ag2ui5_repo_service=>c_outcome-pulled ).
+
+  ENDMETHOD.
+
+  METHOD silence_progress.
+    zcl_abapgit_progress=>set_instance( NEW zcl_ag2ui5_progress_silent( ) ).
+  ENDMETHOD.
+
+  METHOD get_online_repo.
+
+    DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->get( CONV #( iv_key ) ).
+
+    IF li_repo->is_offline( ) = abap_true.
+      zcx_abapgit_exception=>raise( |Repository { li_repo->get_name( ) } is offline - only online repositories are supported| ).
+    ENDIF.
+
+    ri_repo ?= li_repo.
+
+  ENDMETHOD.
+
+  METHOD assert_pull_allowed.
+
+    " abapGit's own guard (check_self_update in zcl_abapgit_services_repo) only
+    " fires when the running program is ZABAPGIT, which this one is not
+    IF zcl_abapgit_url=>is_abapgit_repo( ii_repo->get_url( ) ) = abap_true
+        OR ii_repo->zif_abapgit_repo~get_package( ) = c_own_package.
+      zcx_abapgit_exception=>raise( |Pulling { ii_repo->zif_abapgit_repo~get_name( ) } would replace code | &&
+                                    |that is running in this session. Pull it with abapGit in SAP GUI.| ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD map_messages.
+
+    LOOP AT ii_log->get_messages( ) INTO DATA(ls_message).
+      INSERT VALUE #( type     = ls_message-type
+                      text     = ls_message-text
+                      obj_type = ls_message-obj_type
+                      obj_name = ls_message-obj_name ) INTO TABLE rt_messages.
+    ENDLOOP.
+
   ENDMETHOD.
 
 ENDCLASS.
