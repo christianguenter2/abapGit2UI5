@@ -145,4 +145,17 @@ HOME, change recording on). It holds abapGit repository `000000000026`
 | Browser, on `ZABAP_PROCESSING_CENTER` (dialog only, no pull) | A "Transport request" select with both requests, the newest preselected; Cancel closes it |
 | Short dumps | None |
 
+A review led to four fixes, each with a test where one is possible:
+
+- **Requests where the user only has a task are offered**, as in abapGit's
+  `TRINT_ORDER_CHOICE`. That is the usual team setup.
+- **Only requests of the current client are offered** (E070C).
+- **A request abapGit already determined is used as is**, with no choice
+  offered. It comes from the repository setting or the user exit.
+- **"Request required, but no type" blocks** with a clear message.
+
+ABAP Unit is 44/44. The end-to-end test was repeated after the fixes. A local
+change to `ZAGT_TEST_DTEL` appears under "Overwrite", and pulling it on
+`A4HK900148` restores the remote text.
+
 Creating a request from the dialog is still not supported.
