@@ -126,18 +126,174 @@ ENDCLASS.
 CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD preview.
-  ENDMETHOD.
 
-  METHOD apply_decisions.
+    IF is_checks-overwrite IS INITIAL AND is_checks-overwrite_files IS INITIAL.
+      rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-nothing.
+      RETURN.
+    ENDIF.
+
+    IF is_checks-transport-required = abap_true OR is_checks-customizing-required = abap_true.
+      rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-blocked.
+      rs_preview-blocked = `A transport request is required - only local packages are supported so far`.
+      RETURN.
+    ENDIF.
+
+    " as in abapGit's popup_decisions: a new namespace has to arrive before
+    " the objects in it, so only the namespace is preselected then
+    DATA(lv_new_namespace) = xsdbool( line_exists( is_checks-overwrite[
+      obj_type = 'NSPC'
+      action   = zif_abapgit_objects=>c_deserialize_action-add ] ) ).
+
+    LOOP AT is_checks-overwrite INTO DATA(ls_change).
+      DATA(lv_reason) = COND string( WHEN ls_change-text IS NOT INITIAL
+                                     THEN ls_change-text
+                                     ELSE |Action { ls_change-action }| ).
+      CASE ls_change-action.
+        WHEN zif_abapgit_objects=>c_deserialize_action-add
+          OR zif_abapgit_objects=>c_deserialize_action-update.
+          add_item( EXPORTING is_object   = ls_change
+                              iv_group    = zif_ag2ui5_repo_service=>c_group-import
+                              iv_reason   = lv_reason
+                              iv_selected = xsdbool( lv_new_namespace = abap_false OR ls_change-obj_type = 'NSPC' )
+                    CHANGING  ct_items    = rs_preview-items ).
+        WHEN zif_abapgit_objects=>c_deserialize_action-delete
+          OR zif_abapgit_objects=>c_deserialize_action-delete_add.
+          add_item( EXPORTING is_object = ls_change
+                              iv_group  = zif_ag2ui5_repo_service=>c_group-delete
+                              iv_reason = lv_reason
+                    CHANGING  ct_items  = rs_preview-items ).
+        WHEN zif_abapgit_objects=>c_deserialize_action-packmove.
+          add_item( EXPORTING is_object = ls_change
+                              iv_group  = zif_ag2ui5_repo_service=>c_group-package
+                              iv_reason = lv_reason
+                    CHANGING  ct_items  = rs_preview-items ).
+        WHEN zif_abapgit_objects=>c_deserialize_action-no_support.
+          add_item( EXPORTING is_object     = ls_change
+                              iv_group      = zif_ag2ui5_repo_service=>c_group-skipped
+                              iv_reason     = `Object type not supported`
+                              iv_selectable = abap_false
+                    CHANGING  ct_items      = rs_preview-items ).
+        WHEN OTHERS.
+          " overwrite, and anything abapGit adds later: a local change is at stake
+          add_item( EXPORTING is_object = ls_change
+                              iv_group  = zif_ag2ui5_repo_service=>c_group-overwrite
+                              iv_reason = lv_reason
+                    CHANGING  ct_items  = rs_preview-items ).
+      ENDCASE.
+    ENDLOOP.
+
+    LOOP AT is_checks-warning_package INTO ls_change.
+      add_item( EXPORTING is_object = ls_change
+                          iv_group  = zif_ag2ui5_repo_service=>c_group-package
+                          iv_reason = |Object is in package { ls_change-devclass }, outside this repository|
+                CHANGING  ct_items  = rs_preview-items ).
+    ENDLOOP.
+    LOOP AT is_checks-data_loss INTO ls_change.
+      add_item( EXPORTING is_object = ls_change
+                          iv_group  = zif_ag2ui5_repo_service=>c_group-data_loss
+                          iv_reason = COND #( WHEN ls_change-text IS NOT INITIAL
+                                              THEN ls_change-text
+                                              ELSE `Data would be lost` )
+                CHANGING  ct_items  = rs_preview-items ).
+    ENDLOOP.
+    LOOP AT is_checks-delete_tabl_with_data INTO ls_change.
+      add_item( EXPORTING is_object = ls_change
+                          iv_group  = zif_ag2ui5_repo_service=>c_group-data_loss
+                          iv_reason = `Table with data would be deleted`
+                CHANGING  ct_items  = rs_preview-items ).
+    ENDLOOP.
+
+    IF is_checks-requirements-met = zif_abapgit_definitions=>c_no.
+      rs_preview-ack_text = `The system does not meet the requirements in .abapgit.xml.`.
+    ENDIF.
+    IF is_checks-dependencies-met = zif_abapgit_definitions=>c_no.
+      rs_preview-ack_text = condense( |{ rs_preview-ack_text } APACK dependencies are not installed.| ).
+    ENDIF.
+
+    rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-ready.
+
   ENDMETHOD.
 
   METHOD add_item.
+
+    READ TABLE ct_items ASSIGNING FIELD-SYMBOL(<ls_item>)
+      WITH KEY obj_type = CONV string( is_object-obj_type )
+               obj_name = CONV string( is_object-obj_name ).
+    IF sy-subrc <> 0.
+      INSERT VALUE #( obj_type   = is_object-obj_type
+                      obj_name   = is_object-obj_name
+                      group      = iv_group
+                      reason     = iv_reason
+                      selected   = iv_selected
+                      selectable = iv_selectable ) INTO TABLE ct_items.
+    ELSEIF group_rank( iv_group ) < group_rank( <ls_item>-group ).
+      " a more dangerous group also takes the default of that group
+      <ls_item>-group      = iv_group.
+      <ls_item>-reason     = iv_reason.
+      <ls_item>-selected   = iv_selected.
+      <ls_item>-selectable = iv_selectable.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD group_rank.
+
+    rv_rank = SWITCH #( iv_group
+                        WHEN zif_ag2ui5_repo_service=>c_group-data_loss THEN 1
+                        WHEN zif_ag2ui5_repo_service=>c_group-delete    THEN 2
+                        WHEN zif_ag2ui5_repo_service=>c_group-overwrite THEN 3
+                        WHEN zif_ag2ui5_repo_service=>c_group-package   THEN 4
+                        WHEN zif_ag2ui5_repo_service=>c_group-import    THEN 5
+                        ELSE 6 ).
+
+  ENDMETHOD.
+
+  METHOD apply_decisions.
+
+    FIELD-SYMBOLS <ls_row> TYPE zif_abapgit_definitions=>ty_overwrite.
+
+    rs_checks = is_checks.
+
+    " every row of every table gets a decision, so abapGit's checks_adjust
+    " never finds one without
+    LOOP AT rs_checks-overwrite ASSIGNING <ls_row>.
+      <ls_row>-decision = decide( it_items = it_items is_object = <ls_row> ).
+    ENDLOOP.
+    LOOP AT rs_checks-warning_package ASSIGNING <ls_row>.
+      <ls_row>-decision = decide( it_items = it_items is_object = <ls_row> ).
+    ENDLOOP.
+    LOOP AT rs_checks-data_loss ASSIGNING <ls_row>.
+      <ls_row>-decision = decide( it_items = it_items is_object = <ls_row> ).
+    ENDLOOP.
+    LOOP AT rs_checks-delete_tabl_with_data ASSIGNING <ls_row>.
+      <ls_row>-decision = decide( it_items = it_items is_object = <ls_row> ).
+    ENDLOOP.
+
+    IF rs_checks-requirements-met = zif_abapgit_definitions=>c_no
+        OR rs_checks-dependencies-met = zif_abapgit_definitions=>c_no.
+      IF iv_acknowledged = abap_false.
+        zcx_abapgit_exception=>raise( `Requirements or dependencies are not met and were not acknowledged` ).
+      ENDIF.
+      rs_checks-requirements-decision = zif_abapgit_definitions=>c_yes.
+      rs_checks-dependencies-decision = zif_abapgit_definitions=>c_yes.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD decide.
+
+    READ TABLE it_items INTO DATA(ls_item)
+      WITH KEY obj_type = CONV string( is_object-obj_type )
+               obj_name = CONV string( is_object-obj_name ).
+    IF sy-subrc <> 0.
+      zcx_abapgit_exception=>raise( |{ is_object-obj_type } { is_object-obj_name } was not in the preview| ).
+    ENDIF.
+
+    " skipped items cannot be ticked in the dialog, so selected alone decides
+    rv_decision = COND #( WHEN ls_item-selected = abap_true
+                          THEN zif_abapgit_definitions=>c_yes
+                          ELSE zif_abapgit_definitions=>c_no ).
+
   ENDMETHOD.
 
   METHOD filter_status.
