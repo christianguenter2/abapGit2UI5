@@ -279,9 +279,6 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD deserialize_logged.
 
     DATA(li_log) = ii_repo->create_new_log( `Pull Log` ).
-    IF li_log IS NOT BOUND.
-      li_log = NEW zcl_abapgit_log( `Pull Log` ).
-    ENDIF.
 
     TRY.
         ii_repo->deserialize( is_checks = is_checks

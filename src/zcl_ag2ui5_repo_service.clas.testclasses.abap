@@ -9,6 +9,10 @@ ENDCLASS.
 
 
 CLASS ltd_failing_repo IMPLEMENTATION.
+  METHOD zif_abapgit_repo~create_new_log.
+    ri_log = NEW zcl_abapgit_log( iv_title ).
+  ENDMETHOD.
+
   METHOD zif_abapgit_repo~deserialize.
     ii_log->add_info( `Object ZCL_TEST imported` ).
     zcx_abapgit_exception=>raise( `Activation cancelled. Check the log and inactive objects.` ).
@@ -387,7 +391,9 @@ CLASS ltcl_pull_internals IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD guard_allows_other_package.
-    NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( '$TMP' ).
+    " not $TMP: local packages without a super package hang below it, so a
+    " repository on $TMP would contain abap2UI5 as well
+    NEW zcl_ag2ui5_repo_service( )->assert_pull_allowed( '$AG2UI5_NO_SUCH' ).
   ENDMETHOD.
 
 ENDCLASS.
