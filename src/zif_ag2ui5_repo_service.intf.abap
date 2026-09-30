@@ -17,7 +17,22 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       pulled  TYPE ty_outcome VALUE `PULLED`,
       "! Imported, the log has errors
       failed  TYPE ty_outcome VALUE `FAILED`,
+      "! The remote changed between preview and pull - nothing was imported
+      changed TYPE ty_outcome VALUE `CHANGED`,
     END OF c_outcome.
+
+  TYPES ty_group TYPE string.
+
+  "! The groups of the decision dialog, most dangerous first
+  CONSTANTS:
+    BEGIN OF c_group,
+      data_loss TYPE ty_group VALUE `DATA_LOSS`,
+      delete    TYPE ty_group VALUE `DELETE`,
+      overwrite TYPE ty_group VALUE `OVERWRITE`,
+      package   TYPE ty_group VALUE `PACKAGE`,
+      import    TYPE ty_group VALUE `IMPORT`,
+      skipped   TYPE ty_group VALUE `SKIPPED`,
+    END OF c_group.
 
   TYPES:
     BEGIN OF ty_repo,
@@ -55,16 +70,6 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     END OF ty_status.
 
   TYPES:
-    "! One object (or one repository-wide condition, then without object)
-    "! that blocks the pull or is only reported
-    BEGIN OF ty_item,
-      obj_type TYPE string,
-      obj_name TYPE string,
-      reason   TYPE string,
-    END OF ty_item,
-    ty_items TYPE STANDARD TABLE OF ty_item WITH EMPTY KEY.
-
-  TYPES:
     BEGIN OF ty_message,
       type     TYPE string,
       text     TYPE string,
@@ -74,19 +79,31 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     ty_messages TYPE STANDARD TABLE OF ty_message WITH EMPTY KEY.
 
   TYPES:
-    BEGIN OF ty_classification,
+    "! One object in the decision dialog
+    BEGIN OF ty_decision_item,
+      obj_type   TYPE string,
+      obj_name   TYPE string,
+      group      TYPE ty_group,
+      reason     TYPE string,
+      selected   TYPE abap_bool,
+      selectable TYPE abap_bool,
+    END OF ty_decision_item,
+    ty_decision_items TYPE STANDARD TABLE OF ty_decision_item WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_preview,
       outcome  TYPE ty_outcome,
-      "! The checks with every decision filled in, ready for deserialize( )
-      checks   TYPE zif_abapgit_definitions=>ty_deserialize_checks,
-      blocking TYPE ty_items,
-      info     TYPE ty_items,
-    END OF ty_classification.
+      items    TYPE ty_decision_items,
+      "! Set when requirements or APACK dependencies are not met - the pull
+      "! then needs an explicit acknowledgement
+      ack_text TYPE string,
+      "! Why the pull is blocked, when it is
+      blocked  TYPE string,
+    END OF ty_preview.
 
   TYPES:
     BEGIN OF ty_pull_result,
       outcome  TYPE ty_outcome,
-      blocking TYPE ty_items,
-      info     TYPE ty_items,
       messages TYPE ty_messages,
     END OF ty_pull_result.
 
@@ -105,10 +122,22 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
-  "! Pulls in abort mode: imports only when no local change would be lost
+  "! What a pull would do, with abapGit's defaults preselected - imports nothing
+  METHODS preview_pull
+    IMPORTING
+      iv_key            TYPE string
+    RETURNING
+      VALUE(rs_preview) TYPE ty_preview
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Pulls with the decisions of a preview. Checks again first: an object the
+  "! preview did not show ends in outcome changed, and nothing is imported
   METHODS pull
     IMPORTING
       iv_key           TYPE string
+      it_items         TYPE ty_decision_items
+      iv_acknowledged  TYPE abap_bool DEFAULT abap_false
     RETURNING
       VALUE(rs_result) TYPE ty_pull_result
     RAISING

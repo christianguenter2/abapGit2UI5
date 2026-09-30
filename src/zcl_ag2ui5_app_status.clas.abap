@@ -1,4 +1,4 @@
-"! Status of one repository, and pulling it in abort mode
+"! Status of one repository, and pulling it with a decision per object
 CLASS zcl_ag2ui5_app_status DEFINITION
   PUBLIC
   FINAL
@@ -27,12 +27,24 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
-    DATA ms_head     TYPE ty_head.
-    DATA mt_rows     TYPE ty_rows.
-    DATA mt_blocking TYPE zif_ag2ui5_repo_service=>ty_items.
-    DATA mt_info     TYPE zif_ag2ui5_repo_service=>ty_items.
+    "! The decision dialog: one table per group, each bound on its own
+    TYPES:
+      BEGIN OF ty_decisions,
+        data_loss TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+        delete    TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+        overwrite TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+        package   TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+        import    TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+        skipped   TYPE zif_ag2ui5_repo_service=>ty_decision_items,
+      END OF ty_decisions.
+
+    DATA ms_head         TYPE ty_head.
+    DATA mt_rows         TYPE ty_rows.
     "! What the empty table says - "match" only once a status was loaded
-    DATA mv_no_data  TYPE string.
+    DATA mv_no_data      TYPE string.
+    DATA ms_decisions    TYPE ty_decisions.
+    DATA mv_ack_text     TYPE string.
+    DATA mv_acknowledged TYPE abap_bool.
 
     CLASS-METHODS create
       IMPORTING
@@ -45,10 +57,22 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_key TYPE string.
 
     METHODS view_display.
-    METHODS popup_blocked_display.
+    METHODS popup_decisions_display.
+
+    "! One group of the decision dialog; nothing when the group is empty
+    METHODS group_display
+      IMPORTING
+        io_content    TYPE REF TO z2ui5_cl_ui5_view_builder
+        it_items      TYPE zif_ag2ui5_repo_service=>ty_decision_items
+        iv_items_bind TYPE string
+        iv_title      TYPE string
+        iv_warning    TYPE string OPTIONAL
+        iv_type       TYPE string DEFAULT `Warning`.
+
     METHODS on_event.
     METHODS load_status.
-    METHODS pull.
+    METHODS preview_pull.
+    METHODS pull_selected.
 
     METHODS service
       RETURNING
@@ -183,7 +207,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD popup_blocked_display.
+  METHOD popup_decisions_display.
 
     DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
 
@@ -191,40 +215,118 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `xmlns`      v = `sap.m`
         )->a( n = `xmlns:core` v = `sap.ui.core`
         )->ele( `Dialog`
-            )->a( n = `title`        v = `Pull blocked - nothing was imported`
-            )->a( n = `contentWidth` v = `40rem` ).
+            )->a( n = `title`        v = `Pull - choose what to change`
+            )->a( n = `contentWidth` v = `48rem` ).
 
     DATA(content) = dialog->ele( `content` ).
-    content->tag( `MessageStrip`
-        )->a( n = `text`     v = `Pulling would lose local work. Resolve these in abapGit in SAP GUI, or push the local changes first.`
-        )->a( n = `type`     v = `Warning`
-        )->a( n = `showIcon` v = `true`
-        )->a( n = `class`    v = `sapUiSmallMargin` ).
 
-    content->ele( `List`
-        )->a( n = `headerText` v = `Blocking`
-        )->a( n = `items`      v = client->_bind( mt_blocking )
-        )->ele( `items`
-            )->tag( `StandardListItem`
-                )->a( n = `title`       v = `{REASON}`
-                )->a( n = `description` v = `{OBJ_TYPE} {OBJ_NAME}` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-data_loss
+                   iv_items_bind = client->_bind( ms_decisions-data_loss )
+                   iv_title      = `Data loss`
+                   iv_warning    = `Changing these objects loses data. Select only what really has to change.`
+                   iv_type       = `Error` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-delete
+                   iv_items_bind = client->_bind( ms_decisions-delete )
+                   iv_title      = `Delete local objects`
+                   iv_warning    = `These objects are not in the remote. Selected ones are deleted from the system.` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-overwrite
+                   iv_items_bind = client->_bind( ms_decisions-overwrite )
+                   iv_title      = `Overwrite local changes`
+                   iv_warning    = `Selected objects get the remote version - their local changes are lost.` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-package
+                   iv_items_bind = client->_bind( ms_decisions-package )
+                   iv_title      = `Package change`
+                   iv_warning    = `Selected objects are moved to the package the remote expects.` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-import
+                   iv_items_bind = client->_bind( ms_decisions-import )
+                   iv_title      = `Import` ).
+    group_display( io_content    = content
+                   it_items      = ms_decisions-skipped
+                   iv_items_bind = client->_bind( ms_decisions-skipped )
+                   iv_title      = `Skipped - object type not supported` ).
 
-    IF mt_info IS NOT INITIAL.
-      content->ele( `List`
-          )->a( n = `headerText` v = `Skipped`
-          )->a( n = `items`      v = client->_bind( mt_info )
-          )->ele( `items`
-              )->tag( `StandardListItem`
-                  )->a( n = `title`       v = `{REASON}`
-                  )->a( n = `description` v = `{OBJ_TYPE} {OBJ_NAME}` ).
+    IF mv_ack_text IS NOT INITIAL.
+      content->tag( `MessageStrip`
+          )->a( n = `text`     v = client->_bind( mv_ack_text )
+          )->a( n = `type`     v = `Warning`
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMargin` ).
+      content->tag( `CheckBox`
+          )->a( n = `text`     v = `Pull anyway`
+          )->a( n = `selected` v = client->_bind( mv_acknowledged )
+          )->a( n = `class`    v = `sapUiSmallMarginBegin` ).
     ENDIF.
 
+    dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`  v = `Pull selected`
+            )->a( n = `type`  v = `Emphasized`
+            )->a( n = `press` v = client->_event( `PULL_SELECTED` ) ).
     dialog->ele( `endButton`
         )->tag( `Button`
-            )->a( n = `text`  v = `Close`
+            )->a( n = `text`  v = `Cancel`
             )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
 
     client->popup_display( popup->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD group_display.
+
+    IF it_items IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    io_content->tag( `Title`
+        )->a( n = `text`  v = iv_title
+        )->a( n = `class` v = `sapUiSmallMarginBegin sapUiSmallMarginTop` ).
+
+    IF iv_warning IS NOT INITIAL.
+      io_content->tag( `MessageStrip`
+          )->a( n = `text`     v = iv_warning
+          )->a( n = `type`     v = iv_type
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMarginBeginEnd sapUiTinyMarginTop` ).
+    ENDIF.
+
+    DATA(table) = io_content->ele( `Table`
+        )->a( n = `items` v = iv_items_bind ).
+
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `4rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Change` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `5rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Type` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Object` ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Reason` ).
+
+    DATA(cells) = table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells` ).
+    cells->tag( `CheckBox`
+        )->a( n = `selected` v = `{SELECTED}`
+        )->a( n = `enabled`  v = `{SELECTABLE}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{OBJ_TYPE}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{OBJ_NAME}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{REASON}` ).
 
   ENDMETHOD.
 
@@ -236,7 +338,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `REFRESH`.
         load_status( ).
       WHEN `PULL`.
-        pull( ).
+        preview_pull( ).
+      WHEN `PULL_SELECTED`.
+        pull_selected( ).
     ENDCASE.
 
   ENDMETHOD.
@@ -271,21 +375,90 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD pull.
+  METHOD preview_pull.
 
-    " the lists of an earlier blocked pull would otherwise travel on every round trip
-    CLEAR: mt_blocking, mt_info.
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged.
 
     TRY.
-        DATA(ls_result) = service( )->pull( mv_key ).
+        DATA(ls_preview) = service( )->preview_pull( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
     ENDTRY.
 
+    CASE ls_preview-outcome.
+      WHEN zif_ag2ui5_repo_service=>c_outcome-nothing.
+        client->message_toast_display( `Already up to date` ).
+        RETURN.
+      WHEN zif_ag2ui5_repo_service=>c_outcome-blocked.
+        client->message_box_display( text = ls_preview-blocked type = `error` ).
+        RETURN.
+    ENDCASE.
+
+    LOOP AT ls_preview-items INTO DATA(ls_item).
+      CASE ls_item-group.
+        WHEN zif_ag2ui5_repo_service=>c_group-data_loss.
+          INSERT ls_item INTO TABLE ms_decisions-data_loss.
+        WHEN zif_ag2ui5_repo_service=>c_group-delete.
+          INSERT ls_item INTO TABLE ms_decisions-delete.
+        WHEN zif_ag2ui5_repo_service=>c_group-overwrite.
+          INSERT ls_item INTO TABLE ms_decisions-overwrite.
+        WHEN zif_ag2ui5_repo_service=>c_group-package.
+          INSERT ls_item INTO TABLE ms_decisions-package.
+        WHEN zif_ag2ui5_repo_service=>c_group-import.
+          INSERT ls_item INTO TABLE ms_decisions-import.
+        WHEN OTHERS.
+          INSERT ls_item INTO TABLE ms_decisions-skipped.
+      ENDCASE.
+    ENDLOOP.
+    mv_ack_text = ls_preview-ack_text.
+
+    popup_decisions_display( ).
+
+  ENDMETHOD.
+
+  METHOD pull_selected.
+
+    DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_decision_items.
+
+    INSERT LINES OF: ms_decisions-data_loss INTO TABLE lt_items,
+                     ms_decisions-delete    INTO TABLE lt_items,
+                     ms_decisions-overwrite INTO TABLE lt_items,
+                     ms_decisions-package   INTO TABLE lt_items,
+                     ms_decisions-import    INTO TABLE lt_items,
+                     ms_decisions-skipped   INTO TABLE lt_items.
+
+    " an empty list is a pull of files only; a list with nothing ticked is a no-op
+    IF lt_items IS NOT INITIAL AND NOT line_exists( lt_items[ selected = abap_true ] ).
+      client->message_toast_display( `Nothing selected` ).
+      RETURN.
+    ENDIF.
+    IF mv_ack_text IS NOT INITIAL AND mv_acknowledged = abap_false.
+      client->message_toast_display( `Confirm "Pull anyway" first` ).
+      RETURN.
+    ENDIF.
+
+    client->popup_destroy( ).
+
+    TRY.
+        DATA(ls_result) = service( )->pull( iv_key          = mv_key
+                                            it_items        = lt_items
+                                            iv_acknowledged = mv_acknowledged ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    " the dialog's lists would otherwise travel on every round trip
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged.
+
     CASE ls_result-outcome.
       WHEN zif_ag2ui5_repo_service=>c_outcome-nothing.
         client->message_toast_display( `Already up to date` ).
+      WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
+        load_status( ).
+        client->message_box_display( text = `The remote changed since the preview - nothing was imported. Pull again to review.`
+                                     type = `error` ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-pulled.
         load_status( ).
         DATA(lv_warnings) = messages_text( ls_result-messages ).
@@ -296,10 +469,6 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                        type    = `warning`
                                        details = lv_warnings ).
         ENDIF.
-      WHEN zif_ag2ui5_repo_service=>c_outcome-blocked.
-        mt_blocking = ls_result-blocking.
-        mt_info     = ls_result-info.
-        popup_blocked_display( ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-failed.
         load_status( ).
         client->message_box_display( text    = `The pull finished with errors`
