@@ -15,6 +15,13 @@ This is a proof of concept. It supports three things:
 
 Stage, commit, push and the diff view are not part of it yet.
 
+| Repositories | Status | Pull blocked |
+|---|---|---|
+| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Blocked pull](docs/screenshots/pull-blocked.png) |
+
+The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
+a real system.
+
 ## Prerequisites
 
 - The abapGit **developer version**, meaning the `ZCL_ABAPGIT_*` classes. The
