@@ -195,10 +195,17 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDLOOP.
 
     LOOP AT is_checks-warning_package INTO ls_change.
+      DATA(lv_package_note) = |Object is in package { ls_change-devclass }, outside this repository|.
       add_item( EXPORTING is_object = ls_change
                           iv_group  = zif_ag2ui5_repo_service=>c_group-package
-                          iv_reason = |Object is in package { ls_change-devclass }, outside this repository|
+                          iv_reason = lv_package_note
                 CHANGING  ct_items  = rs_preview-items ).
+      " when a more dangerous group wins, the foreign package must still show
+      READ TABLE rs_preview-items ASSIGNING FIELD-SYMBOL(<ls_item>)
+        WITH KEY obj_type = CONV string( ls_change-obj_type ) obj_name = CONV string( ls_change-obj_name ).
+      IF sy-subrc = 0 AND <ls_item>-reason NS lv_package_note.
+        <ls_item>-reason = |{ <ls_item>-reason } - { lv_package_note }|.
+      ENDIF.
     ENDLOOP.
     LOOP AT is_checks-data_loss INTO ls_change.
       add_item( EXPORTING is_object = ls_change
@@ -261,6 +268,29 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD merge_decisions.
+
+    LOOP AT it_fresh INTO DATA(ls_fresh).
+      READ TABLE it_posted INTO DATA(ls_posted)
+        WITH KEY obj_type = ls_fresh-obj_type obj_name = ls_fresh-obj_name.
+      IF sy-subrc <> 0.
+        zcx_abapgit_exception=>raise( |{ ls_fresh-obj_type } { ls_fresh-obj_name } is new since the preview| ).
+      ENDIF.
+      " a tick given to an import must not turn into a delete or an overwrite
+      IF ls_posted-group <> ls_fresh-group.
+        zcx_abapgit_exception=>raise( |{ ls_fresh-obj_type } { ls_fresh-obj_name } is { ls_fresh-group } now, | &&
+                                      |not { ls_posted-group }| ).
+      ENDIF.
+      " the server decides what can be ticked, not the client
+      ls_fresh-selected = xsdbool( ls_posted-selected = abap_true AND ls_fresh-selectable = abap_true ).
+      INSERT ls_fresh INTO TABLE rt_items.
+    ENDLOOP.
+
+    LOOP AT it_posted INTO ls_posted WHERE selected = abap_true.
+      IF NOT line_exists( it_fresh[ obj_type = ls_posted-obj_type obj_name = ls_posted-obj_name ] ).
+        zcx_abapgit_exception=>raise( |{ ls_posted-obj_type } { ls_posted-obj_name } is no longer part of the pull| ).
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD apply_decisions.
@@ -411,14 +441,23 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDIF.
 
     TRY.
-        DATA(ls_decided) = apply_decisions( is_checks       = ls_checks
-                                            it_items        = it_items
-                                            iv_acknowledged = iv_acknowledged ).
+        DATA(lt_items) = merge_decisions( it_fresh  = ls_preview-items
+                                          it_posted = it_items ).
       CATCH zcx_abapgit_exception.
-        " the acknowledgement is checked above, so only an unknown object ends here
         rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
         RETURN.
     ENDTRY.
+
+    " abapGit refuses a pull with nothing selected; deserialize( ) would still
+    " move the last-pull timestamp
+    IF ls_checks-overwrite IS NOT INITIAL AND NOT line_exists( lt_items[ selected = abap_true ] ).
+      rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-nothing.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_decided) = apply_decisions( is_checks       = ls_checks
+                                        it_items        = lt_items
+                                        iv_acknowledged = iv_acknowledged ).
 
     rs_result = deserialize_logged( ii_repo   = li_repo
                                     is_checks = ls_decided ).

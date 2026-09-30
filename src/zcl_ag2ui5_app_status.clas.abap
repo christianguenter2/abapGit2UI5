@@ -240,7 +240,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                    it_items      = ms_decisions-package
                    iv_items_bind = client->_bind( ms_decisions-package )
                    iv_title      = `Package change`
-                   iv_warning    = `Selected objects are moved to the package the remote expects.` ).
+                   iv_warning    = `Selected objects change their package, or overwrite an object that belongs to a package outside this repository.` ).
     group_display( io_content    = content
                    it_items      = ms_decisions-import
                    iv_items_bind = client->_bind( ms_decisions-import )

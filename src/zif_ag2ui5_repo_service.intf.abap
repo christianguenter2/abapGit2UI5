@@ -122,7 +122,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
-  "! What a pull would do, with abapGit's defaults preselected - imports nothing
+  "! What a pull would do - imports nothing. Preselected are the changes that
+  "! lose nothing local (abapGit itself preselects only additions)
   METHODS preview_pull
     IMPORTING
       iv_key            TYPE string
@@ -131,8 +132,9 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
-  "! Pulls with the decisions of a preview. Checks again first: an object the
-  "! preview did not show ends in outcome changed, and nothing is imported
+  "! Pulls with the decisions of a preview. Checks again first: when anything
+  "! differs from the preview (a new object, an object in another group, a
+  "! ticked object that is gone) the outcome is changed and nothing happens
   METHODS pull
     IMPORTING
       iv_key           TYPE string
