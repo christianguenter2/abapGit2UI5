@@ -99,7 +99,19 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       ack_text TYPE string,
       "! Why the pull is blocked, when it is
       blocked  TYPE string,
+      "! Request type (trfunction) of the transport the pull needs - empty
+      "! for local packages
+      transport_type   TYPE string,
+      "! The same for customizing (table contents)
+      customizing_type TYPE string,
     END OF ty_preview.
+
+  TYPES:
+    BEGIN OF ty_transport,
+      trkorr TYPE string,
+      text   TYPE string,
+    END OF ty_transport,
+    ty_transports TYPE STANDARD TABLE OF ty_transport WITH EMPTY KEY.
 
   TYPES:
     BEGIN OF ty_pull_result,
@@ -140,8 +152,21 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_key           TYPE string
       it_items         TYPE ty_decision_items
       iv_acknowledged  TYPE abap_bool DEFAULT abap_false
+      "! Required when the preview names a transport_type
+      iv_transport     TYPE string OPTIONAL
+      "! Required when the preview names a customizing_type
+      iv_customizing   TYPE string OPTIONAL
     RETURNING
       VALUE(rs_result) TYPE ty_pull_result
+    RAISING
+      zcx_abapgit_exception.
+
+  "! The current user's modifiable requests of that type (trfunction)
+  METHODS list_transports
+    IMPORTING
+      iv_type              TYPE string
+    RETURNING
+      VALUE(rt_transports) TYPE ty_transports
     RAISING
       zcx_abapgit_exception.
 

@@ -264,22 +264,33 @@ CLASS ltcl_preview IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD transport_blocks.
+    " no longer a block: the dialog asks for a request of that type
     DATA(ls_checks) = one_change( zif_abapgit_objects=>c_deserialize_action-update ).
-    ls_checks-transport-required = abap_true.
+    ls_checks-transport-required     = abap_true.
+    ls_checks-transport-type-request = 'K'.
 
     DATA(ls_preview) = zcl_ag2ui5_repo_service=>preview( ls_checks ).
 
     cl_abap_unit_assert=>assert_equals( act = ls_preview-outcome
-                                        exp = zif_ag2ui5_repo_service=>c_outcome-blocked ).
-    cl_abap_unit_assert=>assert_not_initial( ls_preview-blocked ).
+                                        exp = zif_ag2ui5_repo_service=>c_outcome-ready ).
+    cl_abap_unit_assert=>assert_equals( act = ls_preview-transport_type
+                                        exp = `K` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_preview-items )
+                                        exp = 1 ).
   ENDMETHOD.
 
   METHOD customizing_blocks.
     DATA(ls_checks) = one_change( zif_abapgit_objects=>c_deserialize_action-update ).
-    ls_checks-customizing-required = abap_true.
+    ls_checks-customizing-required     = abap_true.
+    ls_checks-customizing-type-request = 'W'.
 
-    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>preview( ls_checks )-outcome
-                                        exp = zif_ag2ui5_repo_service=>c_outcome-blocked ).
+    DATA(ls_preview) = zcl_ag2ui5_repo_service=>preview( ls_checks ).
+
+    cl_abap_unit_assert=>assert_equals( act = ls_preview-outcome
+                                        exp = zif_ag2ui5_repo_service=>c_outcome-ready ).
+    cl_abap_unit_assert=>assert_equals( act = ls_preview-customizing_type
+                                        exp = `W` ).
+    cl_abap_unit_assert=>assert_initial( ls_preview-transport_type ).
   ENDMETHOD.
 
   METHOD package_note_kept.
@@ -397,6 +408,54 @@ CLASS ltcl_merge IMPLEMENTATION.
       it_posted = VALUE #( ( item( iv_obj_name = `ZCL_A` iv_group = `SKIPPED` iv_selected = abap_true ) ) ) ).
 
     cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_transport DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA mt_transports TYPE zif_ag2ui5_repo_service=>ty_transports.
+
+    METHODS setup.
+    METHODS own_request_accepted FOR TESTING RAISING cx_static_check.
+    METHODS other_request_refused FOR TESTING.
+    METHODS missing_request_refused FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS ltcl_transport IMPLEMENTATION.
+
+  METHOD setup.
+    mt_transports = VALUE #( ( trkorr = `A4HK900148` text = `Test` ) ).
+  ENDMETHOD.
+
+  METHOD own_request_accepted.
+    zcl_ag2ui5_repo_service=>assert_transport( iv_transport  = `A4HK900148`
+                                               it_transports = mt_transports ).
+  ENDMETHOD.
+
+  METHOD other_request_refused.
+    " the client may send any number - only the user's modifiable ones count
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_transport( iv_transport  = `A4HK999999`
+                                                   it_transports = mt_transports ).
+        cl_abap_unit_assert=>fail( `A request outside the list was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD missing_request_refused.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_transport( iv_transport  = ``
+                                                   it_transports = mt_transports ).
+        cl_abap_unit_assert=>fail( `A missing request was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
   ENDMETHOD.
 
 ENDCLASS.

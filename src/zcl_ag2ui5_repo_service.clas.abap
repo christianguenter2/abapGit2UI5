@@ -27,6 +27,14 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Raises unless the request is one of the user's modifiable requests
+    CLASS-METHODS assert_transport
+      IMPORTING
+        iv_transport  TYPE string
+        it_transports TYPE zif_ag2ui5_repo_service=>ty_transports
+      RAISING
+        zcx_abapgit_exception.
+
     "! Writes the decisions into every check table an object is in. Raises
     "! when an object has no item (the remote changed since the preview) or
     "! when unmet requirements are not acknowledged
@@ -265,6 +273,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                         WHEN zif_ag2ui5_repo_service=>c_group-import    THEN 5
                         ELSE 6 ).
 
+  ENDMETHOD.
+
+  METHOD assert_transport.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~list_transports.
   ENDMETHOD.
 
   METHOD merge_decisions.
