@@ -164,12 +164,25 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " the dialog asks for a request of these types
+    " the dialog asks for a request of these types - unless abapGit already
+    " determined one (repository setting, user exit), which is then used
     IF is_checks-transport-required = abap_true.
-      rs_preview-transport_type = is_checks-transport-type-request.
+      IF is_checks-transport-type-request IS INITIAL AND is_checks-transport-transport IS INITIAL.
+        rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-blocked.
+        rs_preview-blocked = `A transport request is required, but abapGit reports no request type`.
+        RETURN.
+      ENDIF.
+      rs_preview-transport_type   = is_checks-transport-type-request.
+      rs_preview-transport_preset = is_checks-transport-transport.
     ENDIF.
     IF is_checks-customizing-required = abap_true.
-      rs_preview-customizing_type = is_checks-customizing-type-request.
+      IF is_checks-customizing-type-request IS INITIAL AND is_checks-customizing-transport IS INITIAL.
+        rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-blocked.
+        rs_preview-blocked = `A customizing request is required, but abapGit reports no request type`.
+        RETURN.
+      ENDIF.
+      rs_preview-customizing_type   = is_checks-customizing-type-request.
+      rs_preview-customizing_preset = is_checks-customizing-transport.
     ENDIF.
 
     " as in abapGit's popup_decisions: a new namespace has to arrive before
@@ -290,6 +303,16 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD effective_transport.
+
+    IF iv_preset IS NOT INITIAL.
+      rv_trkorr = iv_preset.
+      RETURN.
+    ENDIF.
+
+    assert_transport( iv_transport  = iv_chosen
+                      it_transports = it_transports ).
+    rv_trkorr = iv_chosen.
+
   ENDMETHOD.
 
   METHOD assert_transport.
@@ -310,21 +333,46 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     lv_type = iv_type.
 
-    " D = modifiable, L = modifiable and protected - both still take objects
+    " The choice TRINT_ORDER_CHOICE offers in abapGit: requests of this client
+    " the user owns (modifiable), and requests of others in which the user
+    " has a task - also protected ones (L), since the task already exists
     SELECT e070~trkorr, e07t~as4text FROM e070
+      INNER JOIN e070c ON e070c~trkorr = e070~trkorr
       LEFT OUTER JOIN e07t ON e07t~trkorr = e070~trkorr AND e07t~langu = @sy-langu
       WHERE e070~as4user    = @sy-uname
         AND e070~trfunction = @lv_type
-        AND e070~trstatus   IN ('D', 'L')
-        AND e070~strkorr    = @space
+        AND e070~trstatus   = 'D'
+        AND e070c~client    = @sy-mandt
       ORDER BY e070~trkorr DESCENDING
-      INTO TABLE @DATA(lt_requests).
+      INTO TABLE @DATA(lt_own).
     IF sy-subrc <> 0.
-      RETURN.
+      CLEAR lt_own.
     ENDIF.
 
-    rt_transports = VALUE #( FOR ls_request IN lt_requests
-                             ( trkorr = ls_request-trkorr text = ls_request-as4text ) ).
+    SELECT request~trkorr, e07t~as4text FROM e070 AS request
+      INNER JOIN e070 AS task ON task~strkorr = request~trkorr
+      INNER JOIN e070c ON e070c~trkorr = request~trkorr
+      LEFT OUTER JOIN e07t ON e07t~trkorr = request~trkorr AND e07t~langu = @sy-langu
+      WHERE task~as4user       = @sy-uname
+        AND task~trstatus      = 'D'
+        AND request~trfunction = @lv_type
+        AND request~trstatus   IN ('D', 'L')
+        AND e070c~client       = @sy-mandt
+      ORDER BY request~trkorr DESCENDING
+      INTO TABLE @DATA(lt_member).
+    IF sy-subrc <> 0.
+      CLEAR lt_member.
+    ENDIF.
+
+    LOOP AT lt_own INTO DATA(ls_request).
+      INSERT VALUE #( trkorr = ls_request-trkorr text = ls_request-as4text ) INTO TABLE rt_transports.
+    ENDLOOP.
+    LOOP AT lt_member INTO ls_request.
+      IF NOT line_exists( rt_transports[ trkorr = ls_request-trkorr ] ).
+        INSERT VALUE #( trkorr = ls_request-trkorr text = ls_request-as4text ) INTO TABLE rt_transports.
+      ENDIF.
+    ENDLOOP.
+    SORT rt_transports BY trkorr DESCENDING.
 
   ENDMETHOD.
 
@@ -497,15 +545,23 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         zcx_abapgit_exception=>raise( ls_preview-blocked ).
     ENDCASE.
 
-    " the request comes from the client, so it is checked against the
+    " a chosen request comes from the client, so it is checked against the
     " user's own modifiable requests before anything is written to it
-    IF ls_preview-transport_type IS NOT INITIAL.
-      assert_transport( iv_transport  = iv_transport
-                        it_transports = zif_ag2ui5_repo_service~list_transports( ls_preview-transport_type ) ).
+    DATA lv_transport TYPE string.
+    DATA lv_customizing TYPE string.
+    IF ls_checks-transport-required = abap_true.
+      lv_transport = effective_transport(
+        iv_preset     = ls_preview-transport_preset
+        iv_chosen     = iv_transport
+        it_transports = COND #( WHEN ls_preview-transport_preset IS INITIAL
+                                THEN zif_ag2ui5_repo_service~list_transports( ls_preview-transport_type ) ) ).
     ENDIF.
-    IF ls_preview-customizing_type IS NOT INITIAL.
-      assert_transport( iv_transport  = iv_customizing
-                        it_transports = zif_ag2ui5_repo_service~list_transports( ls_preview-customizing_type ) ).
+    IF ls_checks-customizing-required = abap_true.
+      lv_customizing = effective_transport(
+        iv_preset     = ls_preview-customizing_preset
+        iv_chosen     = iv_customizing
+        it_transports = COND #( WHEN ls_preview-customizing_preset IS INITIAL
+                                THEN zif_ag2ui5_repo_service~list_transports( ls_preview-customizing_type ) ) ).
     ENDIF.
 
     IF ls_preview-ack_text IS NOT INITIAL AND iv_acknowledged = abap_false.
@@ -531,11 +587,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                         it_items        = lt_items
                                         iv_acknowledged = iv_acknowledged ).
     " deletion and deserialize both record their objects on these requests
-    IF ls_preview-transport_type IS NOT INITIAL.
-      ls_decided-transport-transport = iv_transport.
+    IF lv_transport IS NOT INITIAL.
+      ls_decided-transport-transport = lv_transport.
     ENDIF.
-    IF ls_preview-customizing_type IS NOT INITIAL.
-      ls_decided-customizing-transport = iv_customizing.
+    IF lv_customizing IS NOT INITIAL.
+      ls_decided-customizing-transport = lv_customizing.
     ENDIF.
 
     rs_result = deserialize_logged( ii_repo   = li_repo

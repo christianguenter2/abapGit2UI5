@@ -478,14 +478,17 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       ENDCASE.
     ENDLOOP.
     mv_ack_text = ls_preview-ack_text.
+    " a request abapGit determined itself is used without asking
+    mv_transport   = ls_preview-transport_preset.
+    mv_customizing = ls_preview-customizing_preset.
 
     TRY.
-        IF ls_preview-transport_type IS NOT INITIAL.
+        IF ls_preview-transport_type IS NOT INITIAL AND ls_preview-transport_preset IS INITIAL.
           ms_transport_types-transport = ls_preview-transport_type.
           mt_transports = service( )->list_transports( ls_preview-transport_type ).
           mv_transport  = VALUE #( mt_transports[ 1 ]-trkorr OPTIONAL ).
         ENDIF.
-        IF ls_preview-customizing_type IS NOT INITIAL.
+        IF ls_preview-customizing_type IS NOT INITIAL AND ls_preview-customizing_preset IS INITIAL.
           ms_transport_types-customizing = ls_preview-customizing_type.
           mt_customizing = service( )->list_transports( ls_preview-customizing_type ).
           mv_customizing = VALUE #( mt_customizing[ 1 ]-trkorr OPTIONAL ).
