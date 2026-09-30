@@ -92,7 +92,8 @@ End-to-end on the `$AG2UI5_TEST` fixture, after a local change to
 |---|---|
 | Preview | The class is under "Delete" and the interface under "Overwrite", both unselected |
 | Pull with an item missing from the list | Outcome `changed`, nothing imported |
-| Pull with nothing selected | No change; the class and the local edit stay |
+| Pull with a stale group (the interface was ticked as "Import" but is now "Overwrite") | Outcome `changed`, nothing imported |
+| Pull with nothing selected | Outcome `nothing`; the class and the local edit stay, and "Last pull" does not move |
 | Pull with everything selected | The class is deleted and the interface restored; the preview afterwards is `nothing` |
 | Browser: dialog, "Nothing selected", tick a box, "Pull selected" | The dialog closes, "Pulled" is shown and the status reads "Local and remote match" |
 | Browser: Pull again, then Back | "Already up to date", and "Last pull" in the list is updated |
@@ -102,5 +103,31 @@ The browser steps ran while the screen was locked. Chrome could still run
 JavaScript but did not draw the page or process clicks, so the controls' events
 were fired through UI5 (`firePress`, `fireSelect`). That covers the round trips
 and bindings, but not the physical click.
+
+A whole-branch review found one critical issue. Only *new* objects were
+detected between preview and pull. A tick given to an "Import" could therefore
+turn into a delete or an overwrite if the remote or the system changed in
+between. `pull` now compares the fresh preview with the submitted one by
+object **and group** (`merge_decisions`), and the server decides what can be
+ticked. The review also led to two further changes:
+
+- An object in a foreign package keeps that note even when it lands in a more
+  dangerous group.
+- The service refuses a pull with nothing selected, as abapGit does.
+
+All three have tests that failed first. ABAP Unit is now 37/37.
+
+**Observation from the end-to-end runs.** In one run, a class that was
+re-created through ADT right after being deleted did not appear in the preview.
+It was gone after the pull anyway. This is abapGit's own behavior, not a
+deletion by the dialog:
+
+- abapGit hides TADIR entries whose object does not "exist" yet
+  (`zcl_abapgit_tadir->check_exists`).
+- When it deserializes a local package, it removes such orphaned TADIR rows
+  (`remove_obsolete_tadir` in `zcl_abapgit_object_devc`).
+
+A clean repeat showed the class under "Delete", and it was deleted only when it
+was ticked.
 
 Still not supported: packages that need a transport request.
