@@ -112,6 +112,29 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_text)   TYPE string.
 
+    "! The files changed locally, and what a commit does with each
+    CLASS-METHODS stage_candidates
+      IMPORTING
+        it_results      TYPE zif_abapgit_definitions=>ty_results_tt
+      RETURNING
+        VALUE(rt_items) TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+
+    "! Raises when a selected file is no longer changed locally as it was
+    CLASS-METHODS check_selection
+      IMPORTING
+        it_fresh    TYPE zif_ag2ui5_repo_service=>ty_stage_items
+        it_selected TYPE zif_ag2ui5_repo_service=>ty_stage_items
+      RAISING
+        zcx_abapgit_exception.
+
+    "! The title, and after an empty line the body, if there is one
+    CLASS-METHODS commit_message
+      IMPORTING
+        iv_title       TYPE string
+        iv_body        TYPE string
+      RETURNING
+        VALUE(rv_text) TYPE string.
+
     "! Keeps the files that differ or are inactive
     CLASS-METHODS filter_status
       IMPORTING
@@ -789,6 +812,21 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       THEN |+{ iv_remote } in Git, -{ iv_local } in this system|
                       ELSE |+{ iv_local } in this system, -{ iv_remote } in Git| ).
 
+  ENDMETHOD.
+
+  METHOD stage_candidates.
+  ENDMETHOD.
+
+  METHOD check_selection.
+  ENDMETHOD.
+
+  METHOD commit_message.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~get_stage.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~commit_push.
   ENDMETHOD.
 
   METHOD filter_status.

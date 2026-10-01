@@ -19,6 +19,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       failed  TYPE ty_outcome VALUE `FAILED`,
       "! The remote changed between preview and pull - nothing was imported
       changed TYPE ty_outcome VALUE `CHANGED`,
+      "! The commit is in the remote
+      pushed  TYPE ty_outcome VALUE `PUSHED`,
     END OF c_outcome.
 
   TYPES ty_group TYPE string.
@@ -170,6 +172,50 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       binary       TYPE abap_bool,
     END OF ty_diff.
 
+  TYPES ty_stage_action TYPE string.
+
+  CONSTANTS:
+    BEGIN OF c_stage_action,
+      add TYPE ty_stage_action VALUE `ADD`,
+      "! The file was deleted locally - it goes from the remote too
+      rm  TYPE ty_stage_action VALUE `RM`,
+    END OF c_stage_action.
+
+  TYPES:
+    BEGIN OF ty_stage_item,
+      path     TYPE string,
+      filename TYPE string,
+      obj_type TYPE string,
+      obj_name TYPE string,
+      lstate   TYPE string,
+      action   TYPE ty_stage_action,
+      selected TYPE abap_bool,
+    END OF ty_stage_item,
+    ty_stage_items TYPE STANDARD TABLE OF ty_stage_item WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_stage,
+      items TYPE ty_stage_items,
+      "! The committer abapGit remembers for this repository
+      name  TYPE string,
+      email TYPE string,
+    END OF ty_stage.
+
+  TYPES:
+    BEGIN OF ty_commit,
+      title TYPE string,
+      body  TYPE string,
+      name  TYPE string,
+      email TYPE string,
+    END OF ty_commit.
+
+  TYPES:
+    BEGIN OF ty_push_result,
+      outcome TYPE ty_outcome,
+      "! The remote head after the push, 7 characters
+      commit  TYPE string,
+    END OF ty_push_result.
+
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos
@@ -230,6 +276,30 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_remote_is_new TYPE abap_bool DEFAULT abap_false
     RETURNING
       VALUE(rs_diff) TYPE ty_diff
+    RAISING
+      zcx_abapgit_exception.
+
+  "! The locally changed files that can be committed
+  METHODS get_stage
+    IMPORTING
+      iv_key          TYPE string
+    RETURNING
+      VALUE(rs_stage) TYPE ty_stage
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Commits the selected files and pushes them. The credentials are used for
+  "! this call only and never stored. Outcome changed, and nothing is pushed,
+  "! when a selected file is no longer changed locally as it was
+  METHODS commit_push
+    IMPORTING
+      iv_key           TYPE string
+      it_items         TYPE ty_stage_items
+      is_commit        TYPE ty_commit
+      iv_user          TYPE string OPTIONAL
+      iv_token         TYPE string OPTIONAL
+    RETURNING
+      VALUE(rs_result) TYPE ty_push_result
     RAISING
       zcx_abapgit_exception.
 

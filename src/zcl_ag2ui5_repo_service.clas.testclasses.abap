@@ -1114,3 +1114,96 @@ CLASS ltcl_side_by_side IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_stage DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS candidates_local_changes_only FOR TESTING.
+    METHODS selection_still_valid FOR TESTING RAISING cx_static_check.
+    METHODS selection_file_gone FOR TESTING.
+    METHODS selection_action_changed FOR TESTING.
+    METHODS message_title_only FOR TESTING.
+    METHODS message_with_body FOR TESTING.
+
+    METHODS item
+      IMPORTING
+        iv_filename    TYPE string
+        iv_action      TYPE zif_ag2ui5_repo_service=>ty_stage_action DEFAULT `ADD`
+      RETURNING
+        VALUE(rs_item) TYPE zif_ag2ui5_repo_service=>ty_stage_item.
+
+ENDCLASS.
+
+
+CLASS ltcl_stage IMPLEMENTATION.
+
+  METHOD item.
+    rs_item = VALUE #( path = `/src/` filename = iv_filename action = iv_action selected = abap_true ).
+  ENDMETHOD.
+
+  METHOD candidates_local_changes_only.
+    DATA lt_results TYPE zif_abapgit_definitions=>ty_results_tt.
+
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_A' path = '/src/' filename = 'zcl_a.clas.abap' lstate = 'M' ) INTO TABLE lt_results.
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_B' path = '/src/' filename = 'zcl_b.clas.abap' lstate = 'D' ) INTO TABLE lt_results.
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_C' path = '/src/' filename = 'zcl_c.clas.abap' lstate = 'A' ) INTO TABLE lt_results.
+    " changed only remotely, or not at all: nothing to commit
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_D' path = '/src/' filename = 'zcl_d.clas.abap' rstate = 'M' ) INTO TABLE lt_results.
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_E' path = '/src/' filename = 'zcl_e.clas.abap' match = abap_true ) INTO TABLE lt_results.
+
+    DATA(lt_items) = zcl_ag2ui5_repo_service=>stage_candidates( lt_results ).
+
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_items )
+                                        exp = 3 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_b.clas.abap` ]-action
+                                        exp = zif_ag2ui5_repo_service=>c_stage_action-rm ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_a.clas.abap` ]-action
+                                        exp = zif_ag2ui5_repo_service=>c_stage_action-add ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_c.clas.abap` ]-obj_name
+                                        exp = `ZCL_C` ).
+    cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
+  ENDMETHOD.
+
+  METHOD selection_still_valid.
+    " a new local change that was not selected does not matter
+    zcl_ag2ui5_repo_service=>check_selection(
+      it_fresh    = VALUE #( ( item( `zcl_a.clas.abap` ) ) ( item( `zcl_new.clas.abap` ) ) )
+      it_selected = VALUE #( ( item( `zcl_a.clas.abap` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD selection_file_gone.
+    TRY.
+        zcl_ag2ui5_repo_service=>check_selection(
+          it_fresh    = VALUE #( )
+          it_selected = VALUE #( ( item( `zcl_a.clas.abap` ) ) ) ).
+        cl_abap_unit_assert=>fail( `A file that is no longer changed was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD selection_action_changed.
+    " modified when the page loaded, deleted by now
+    TRY.
+        zcl_ag2ui5_repo_service=>check_selection(
+          it_fresh    = VALUE #( ( item( iv_filename = `zcl_a.clas.abap` iv_action = `RM` ) ) )
+          it_selected = VALUE #( ( item( `zcl_a.clas.abap` ) ) ) ).
+        cl_abap_unit_assert=>fail( `A changed action was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD message_title_only.
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>commit_message( iv_title = `Fix it` iv_body = `` )
+                                        exp = `Fix it` ).
+  ENDMETHOD.
+
+  METHOD message_with_body.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>commit_message( iv_title = `Fix it` iv_body = `Because.` )
+      exp = |Fix it{ cl_abap_char_utilities=>newline }{ cl_abap_char_utilities=>newline }Because.| ).
+  ENDMETHOD.
+
+ENDCLASS.
