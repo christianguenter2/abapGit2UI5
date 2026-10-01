@@ -13,6 +13,9 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         file      TYPE string,
         counts    TYPE string,
         direction TYPE string,
+        "! Side-by-side column titles: which side is old and which new
+        old_label TYPE string,
+        new_label TYPE string,
       END OF ty_head.
 
     TYPES:
@@ -97,6 +100,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->ms_head-title = |{ iv_obj_type } { iv_obj_name }|.
     ro_app->ms_head-file  = |{ iv_path }{ iv_filename }|.
     ro_app->mv_remote_is_new = iv_remote_is_new.
+    ro_app->ms_head-old_label = COND #( WHEN iv_remote_is_new = abap_true THEN `System (old)` ELSE `Git (old)` ).
+    ro_app->ms_head-new_label = COND #( WHEN iv_remote_is_new = abap_true THEN `Git (new)` ELSE `System (new)` ).
     ro_app->ms_head-direction = COND #( WHEN iv_remote_is_new = abap_true
                                         THEN `Changes in Git, compared with this system`
                                         ELSE `Changes in this system, compared with Git` ).
@@ -238,7 +243,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     columns->ele( `Column`
         )->a( n = `width` v = `4rem`
         )->tag( `Text`
-            )->a( n = `text` v = `Old` ).
+            )->a( n = `text` v = client->_bind( ms_head-old_label ) ).
     columns->ele( `Column`
         )->a( n = `width` v = `2rem` ).
     columns->ele( `Column`
@@ -249,7 +254,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
-            )->a( n = `text` v = `New` ).
+            )->a( n = `text` v = client->_bind( ms_head-new_label ) ).
     columns->ele( `Column`
         )->a( n = `width`          v = `2rem`
         )->a( n = `minScreenWidth` v = `Tablet`
@@ -311,7 +316,9 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     mt_all    = ls_diff-lines.
     mv_binary = ls_diff-binary.
-    ms_head-counts = |+{ ls_diff-local_count } local, -{ ls_diff-remote_count } remote|.
+    ms_head-counts = zcl_ag2ui5_repo_service=>counts_text( iv_local         = ls_diff-local_count
+                                                          iv_remote        = ls_diff-remote_count
+                                                          iv_remote_is_new = mv_remote_is_new ).
     rows_build( ).
 
   ENDMETHOD.

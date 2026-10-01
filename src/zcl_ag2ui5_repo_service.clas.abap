@@ -766,14 +766,29 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD code_html.
 
-    " leading blanks would collapse in HTML; they carry the indentation
-    DATA(lv_rest) = shift_left( iv_text ).
-    DATA(lv_indent) = strlen( iv_text ) - strlen( lv_rest ).
-    rv_html = |<code>{ repeat( val = `&nbsp;` occ = lv_indent ) }{ escape( val = lv_rest format = cl_abap_format=>e_xml_text ) }</code>|.
+    " tabs as four blanks, then blanks that HTML would collapse as &nbsp;:
+    " all leading ones (indentation), and inside the line every second one of
+    " a run, so aligned columns survive and long lines can still wrap
+    DATA(lv_text) = replace( val  = iv_text
+                             sub  = cl_abap_char_utilities=>horizontal_tab
+                             with = `    `
+                             occ  = 0 ).
+    DATA(lv_rest) = shift_left( lv_text ).
+    DATA(lv_indent) = strlen( lv_text ) - strlen( lv_rest ).
+    lv_rest = escape( val = lv_rest format = cl_abap_format=>e_xml_text ).
+    WHILE lv_rest CS `  `.
+      lv_rest = replace( val = lv_rest sub = `  ` with = `&nbsp; ` occ = 0 ).
+    ENDWHILE.
+    rv_html = |<code>{ repeat( val = `&nbsp;` occ = lv_indent ) }{ lv_rest }</code>|.
 
   ENDMETHOD.
 
   METHOD counts_text.
+
+    rv_text = COND #( WHEN iv_remote_is_new = abap_true
+                      THEN |+{ iv_remote } in Git, -{ iv_local } in this system|
+                      ELSE |+{ iv_local } in this system, -{ iv_remote } in Git| ).
+
   ENDMETHOD.
 
   METHOD filter_status.
