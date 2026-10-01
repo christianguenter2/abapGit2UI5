@@ -406,6 +406,20 @@ block `<span>` with that style.
 - Only the code cell is coloured; the row keeps its highlight bar. The colours
   are fixed and suit light themes.
 
+## Status sorting (2026-10-01)
+
+A small change, approved in chat: "Sort by" Object (type, name, file; the
+default), File (path, file) or Type (type, name), case ignored, and a
+"Changes on top" toggle (on by default). It sorts on the server
+(`sort_status_rows`), so the growing table loads its rows in order.
+
+- ABAP Unit: service 99/99, diff app 9/9, stage app 12/12.
+- The render gate caught a missing `xmlns:core` for the Select's items
+  before deployment.
+- Browser on `$ABAPGIT2UI5` (21 files): the 4 changed files first, then
+  the rest by object; with the toggle off they are mixed in; by file,
+  `.abapgit.xml` and `package.devc.xml` come first.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
