@@ -314,6 +314,8 @@ See `docs/superpowers/specs/2026-10-01-patch-design.md`.
   checkbox passes `${$parameters>/selected}`, the event's own value.
 - **Draft table:** 124 drafts, 19 with the staging app, none with a token
   pattern.
+- **Real partial push (Chris, 2026-10-01):** `$UMLAUT`, one of the two
+  picked comments in `ZCL_TEST_UMLAUT`. It works.
 - Not run: the stale-fingerprint path of `commit_push` end to end. With a
   dummy token the first fetch is refused (nothing pushed, head unchanged).
   Without a token, abapGit's exit supplies real credentials. A bug in copying
@@ -364,6 +366,7 @@ slice: existing branches only, no new branch.
   `main (default)` first and the current one preselected. Switching to
   `patch` showed its head `f8c649d` and the 5 files that differ; switching
   back gave `aa49879` and only `.abapgit.xml`, as before.
+- Chris tested switching branches himself (2026-10-01): it works.
 - The first switch in the browser ended with abap2UI5's "Network error:
   Failed to fetch". Nothing was switched, and there was no dump; the repeat
   went through. Not reproduced.
