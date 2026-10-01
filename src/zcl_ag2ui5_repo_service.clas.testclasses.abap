@@ -618,19 +618,20 @@ ENDCLASS.
 
 
 
-CLASS ltcl_filter_status DEFINITION FINAL FOR TESTING
+CLASS ltcl_status_rows DEFINITION FINAL FOR TESTING
   RISK LEVEL HARMLESS
   DURATION SHORT.
 
   PRIVATE SECTION.
-    METHODS keeps_differences_and_inactive FOR TESTING.
+    METHODS every_file_kept FOR TESTING.
+    METHODS highlight_per_side FOR TESTING.
 
 ENDCLASS.
 
 
-CLASS ltcl_filter_status IMPLEMENTATION.
+CLASS ltcl_status_rows IMPLEMENTATION.
 
-  METHOD keeps_differences_and_inactive.
+  METHOD every_file_kept.
     DATA lt_results TYPE zif_abapgit_definitions=>ty_results_tt.
     DATA ls_result LIKE LINE OF lt_results.
 
@@ -639,6 +640,7 @@ CLASS ltcl_filter_status IMPLEMENTATION.
     ls_result-match    = abap_true.
     INSERT ls_result INTO TABLE lt_results.
 
+    " no file difference, but inactive in the system
     ls_result-obj_name = 'ZCL_INACTIVE'.
     ls_result-inactive = abap_true.
     INSERT ls_result INTO TABLE lt_results.
@@ -649,17 +651,39 @@ CLASS ltcl_filter_status IMPLEMENTATION.
     ls_result-lstate   = 'M'.
     INSERT ls_result INTO TABLE lt_results.
 
-    DATA(lt_rows) = zcl_ag2ui5_repo_service=>filter_status( lt_results ).
+    " only in Git
+    CLEAR ls_result.
+    ls_result-obj_type = 'CLAS'.
+    ls_result-obj_name = 'ZCL_NEW_IN_GIT'.
+    ls_result-rstate   = 'A'.
+    INSERT ls_result INTO TABLE lt_results.
+
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>status_rows( lt_results ).
 
     cl_abap_unit_assert=>assert_equals(
-      act = lines( lt_rows )
-      exp = 2 ).
-    cl_abap_unit_assert=>assert_table_contains(
-      line  = VALUE zif_ag2ui5_repo_service=>ty_status_row( obj_type = `CLAS` obj_name = `ZCL_INACTIVE` inactive = abap_true )
-      table = lt_rows ).
-    cl_abap_unit_assert=>assert_table_contains(
-      line  = VALUE zif_ag2ui5_repo_service=>ty_status_row( obj_type = `CLAS` obj_name = `ZCL_CHANGED` lstate = `M` )
-      table = lt_rows ).
+      act = concat_lines_of( table = VALUE string_table( FOR r IN lt_rows ( |{ r-obj_name }:{ r-changed }| ) ) sep = `,` )
+      exp = `ZCL_SAME:,ZCL_INACTIVE:X,ZCL_CHANGED:X,ZCL_NEW_IN_GIT:X` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_rows[ 3 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_status_row( obj_type = `CLAS` obj_name = `ZCL_CHANGED` lstate = `M` changed = abap_true ) ).
+  ENDMETHOD.
+
+  METHOD highlight_per_side.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `` iv_inactive = abap_false )
+      exp = `None` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `M` iv_rstate = `` iv_inactive = abap_false )
+      exp = `Warning` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `` iv_inactive = abap_true )
+      exp = `Warning` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `D` iv_inactive = abap_false )
+      exp = `Information` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `M` iv_rstate = `M` iv_inactive = abap_false )
+      exp = `Error` ).
   ENDMETHOD.
 
 ENDCLASS.

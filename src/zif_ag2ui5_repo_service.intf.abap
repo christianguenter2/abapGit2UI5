@@ -57,6 +57,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       lstate   TYPE string,
       rstate   TYPE string,
       inactive TYPE abap_bool,
+      "! Differs between system and Git, or is inactive
+      changed  TYPE abap_bool,
     END OF ty_status_row,
     ty_status_rows TYPE STANDARD TABLE OF ty_status_row WITH EMPTY KEY.
 

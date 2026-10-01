@@ -193,12 +193,22 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_text) TYPE string.
 
-    "! Keeps the files that differ or are inactive
-    CLASS-METHODS filter_status
+    "! Every file, those that differ or are inactive marked as changed
+    CLASS-METHODS status_rows
       IMPORTING
         it_results     TYPE zif_abapgit_definitions=>ty_results_tt
       RETURNING
         VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+
+    "! The row highlight of a status row: Warning for a local change,
+    "! Information for a change in Git only, Error for both, None otherwise
+    CLASS-METHODS change_highlight
+      IMPORTING
+        iv_lstate           TYPE string
+        iv_rstate           TYPE string
+        iv_inactive         TYPE abap_bool
+      RETURNING
+        VALUE(rv_highlight) TYPE string.
 
     "! Date and time to the minute in the user's time zone, empty if initial
     CLASS-METHODS format_timestamp
@@ -1232,18 +1242,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD filter_status.
+  METHOD status_rows.
+  ENDMETHOD.
 
-    LOOP AT it_results INTO DATA(ls_result) WHERE match = abap_false OR inactive = abap_true.
-      INSERT VALUE #( obj_type = ls_result-obj_type
-                      obj_name = ls_result-obj_name
-                      path     = ls_result-path
-                      filename = ls_result-filename
-                      lstate   = ls_result-lstate
-                      rstate   = ls_result-rstate
-                      inactive = ls_result-inactive ) INTO TABLE rt_rows.
-    ENDLOOP.
-
+  METHOD change_highlight.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_repos.
@@ -1289,7 +1291,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_status-url           = li_repo->get_url( ).
     rs_status-branch        = li_repo->get_selected_branch( ).
     rs_status-remote_commit = li_repo->get_current_remote( ).
-    rs_status-rows          = filter_status( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+    rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
 
   ENDMETHOD.
 
