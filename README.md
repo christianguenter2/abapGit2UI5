@@ -5,7 +5,8 @@ A browser frontend for [abapGit](https://github.com/abapGit/abapGit), built with
 it avoids the quirks of the SAP GUI HTML control (IE and Edge controls, SAP GUI
 for Java, WebGUI).
 
-This is a proof of concept. It supports three things:
+This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
+(A4H). It supports:
 
 - **Repository list:** all abapGit repositories of the system, with a search.
 - **Status:** the files that differ between the system and the remote, or that
@@ -17,13 +18,20 @@ This is a proof of concept. It supports three things:
   message, then push with a Git user and token. The credentials are used for
   that one push only and never stored.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
-  abapGit's defaults preselected. Only what you tick is changed.
+  abapGit's defaults preselected. Only what you tick is changed. For
+  transportable packages it asks for one of your modifiable transport
+  requests.
 
-Not part of it yet: patch (single lines), ignore, pushing to another branch.
+Not part of it yet: patch (staging single lines), ignore and `.gitignore`,
+pushing to another branch, and creating a transport request from the dialog.
 
-| Repositories | Status | Diff | Pull |
-|---|---|---|---|
-| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Diff of one file](docs/screenshots/diff.png) | ![Decision dialog](docs/screenshots/pull-dialog.png) |
+| Repositories | Status | Diff |
+|---|---|---|
+| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Diff of one file](docs/screenshots/diff.png) |
+
+| Pull | Stage |
+|---|---|
+| ![Decision dialog](docs/screenshots/pull-dialog.png) | ![Staging page](docs/screenshots/stage.png) |
 
 The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
 a real system.

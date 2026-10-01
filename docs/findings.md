@@ -290,3 +290,38 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
 - Deployment: after the MCP edits of slice 5, abapgit-agent blocked every pull
   of the service class (`SYSTEM_EDIT`). With Chris's OK for this one case,
   `ignore` mode was used once; after that, pulls run normally again.
+
+## Open points (as of 2026-10-01)
+
+Next slices, in the order agreed with Chris:
+
+1. **Patch:** staging single lines. It needs a line selection per file, with
+   abapGit's `zcl_abapgit_patch` on the same stage object.
+2. **Ignore and `.gitignore`** on the staging page.
+3. **Pushing to another branch, or a new one.**
+4. **Creating a transport request** from the pull dialog. Today the user is
+   pointed to SE09.
+
+Minor points left open by the reviews:
+
+- Diff:
+  - There is no warning when **both** sides changed (abapGit shows
+    "Attention").
+  - Both row tables (inline and side by side) are built on every round trip;
+    only the visible one should be.
+  - A gap of a single line reads "... 1 unchanged lines ...". Runs of 2 or
+    more should be the only ones folded.
+- Pull dialog:
+  - Cancel closes on the client, so the dialog data stays in the model until
+    the next preview.
+  - A dialog with only "Skipped" rows cannot be pulled.
+  - A pull that changes only repository files shows an empty dialog.
+- Transport:
+  - The request text is shown only in the logon language.
+  - The newest request is preselected, not the user's default request.
+- Stage:
+  - Ignored files from `.abapgit.xml` are offered as candidates.
+  - The status and staging pages read private repositories without
+    credentials, so they work there only through the abapGit user exit.
+- abap2UI5 upstream (worth an issue): `escape_string` in `z2ui5_cl_ajson`
+  escapes no control characters other than tab, CR and LF.
