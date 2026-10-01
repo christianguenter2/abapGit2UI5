@@ -147,28 +147,68 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->mv_filename  = iv_filename.
     ro_app->ms_head-title = |{ iv_obj_type } { iv_obj_name }|.
     ro_app->ms_head-file  = |{ iv_path }{ iv_filename }|.
-    ro_app->mv_remote_is_new = iv_remote_is_new.
-    ro_app->ms_head-old_label = COND #( WHEN iv_remote_is_new = abap_true THEN `System (old)` ELSE `Git (old)` ).
-    ro_app->ms_head-new_label = COND #( WHEN iv_remote_is_new = abap_true THEN `Git (new)` ELSE `System (new)` ).
-    ro_app->ms_head-direction = COND #( WHEN iv_remote_is_new = abap_true
+    " a patch is made on local changes: the system is always the new side
+    ro_app->mv_remote_is_new = xsdbool( iv_remote_is_new = abap_true AND iv_patch = abap_false ).
+    ro_app->mv_patch  = iv_patch.
+    ro_app->mt_picked = it_picked.
+    IF iv_patch = abap_true.
+      ro_app->ms_head-title = |Pick lines - { ro_app->ms_head-title }|.
+    ENDIF.
+    ro_app->ms_head-old_label = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `System (old)` ELSE `Git (old)` ).
+    ro_app->ms_head-new_label = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `Git (new)` ELSE `System (new)` ).
+    ro_app->ms_head-direction = COND #( WHEN ro_app->mv_remote_is_new = abap_true
                                         THEN `Changes in Git, compared with this system`
                                         ELSE `Changes in this system, compared with Git` ).
 
   ENDMETHOD.
 
   METHOD get_patch.
+
+    rs_patch = ms_patch.
+
   ENDMETHOD.
 
   METHOD pick.
+
+    " the ID arrives from the browser: only IDs of this diff count
+    DATA(lt_ids) = patch_ids( ).
+    IF NOT line_exists( lt_ids[ table_line = iv_id ] ).
+      RETURN.
+    ENDIF.
+    DELETE mt_picked WHERE table_line = iv_id.
+    IF iv_picked = abap_true.
+      INSERT iv_id INTO TABLE mt_picked.
+    ENDIF.
+    rows_build( ).
+
   ENDMETHOD.
 
   METHOD pick_all.
+
+    mt_picked = COND #( WHEN iv_picked = abap_true THEN patch_ids( ) ).
+    rows_build( ).
+
   ENDMETHOD.
 
   METHOD patch_ids.
+
+    " distinct, in file order: both halves of a changed line count once
+    LOOP AT mt_all INTO DATA(ls_line) WHERE patch_id IS NOT INITIAL.
+      IF NOT line_exists( rt_ids[ table_line = ls_line-patch_id ] ).
+        INSERT ls_line-patch_id INTO TABLE rt_ids.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD picked_in_order.
+
+    LOOP AT patch_ids( ) INTO DATA(lv_id).
+      IF line_exists( mt_picked[ table_line = lv_id ] ).
+        INSERT lv_id INTO TABLE rt_ids.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD z2ui5_if_app~main.
@@ -200,7 +240,27 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
 
     DATA(header_content) = page->ele( `headerContent` ).
-    header_content->ele( `SegmentedButton`
+    IF mv_patch = abap_true.
+      header_content->tag( `Text`
+          )->a( n = `text` v = client->_bind( mv_pick_text ) ).
+      header_content->tag( `Button`
+          )->a( n = `text`  v = `All lines`
+          )->a( n = `press` v = client->_event( `PICK_ALL` ) ).
+      header_content->tag( `Button`
+          )->a( n = `text`  v = `No lines`
+          )->a( n = `press` v = client->_event( `PICK_NONE` ) ).
+      header_content->tag( `Button`
+          )->a( n = `text`  v = client->_bind( mv_toggle_text )
+          )->a( n = `press` v = client->_event( `TOGGLE` ) ).
+      IF mv_binary = abap_false.
+        header_content->tag( `Button`
+            )->a( n = `text`  v = `Apply`
+            )->a( n = `type`  v = `Emphasized`
+            )->a( n = `icon`  v = `sap-icon://accept`
+            )->a( n = `press` v = client->_event( `APPLY` ) ).
+      ENDIF.
+    ELSE.
+      header_content->ele( `SegmentedButton`
         )->a( n = `selectedKey`     v = client->_bind( mv_layout )
         )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
         )->ele( `items`
@@ -210,9 +270,10 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
             )->tag( `SegmentedButtonItem`
                 )->a( n = `key`  v = `SBS`
                 )->a( n = `text` v = `Side by side` ).
-    header_content->tag( `Button`
-        )->a( n = `text`  v = client->_bind( mv_toggle_text )
-        )->a( n = `press` v = client->_event( `TOGGLE` ) ).
+      header_content->tag( `Button`
+          )->a( n = `text`  v = client->_bind( mv_toggle_text )
+          )->a( n = `press` v = client->_event( `TOGGLE` ) ).
+    ENDIF.
 
     DATA(content) = page->ele( `content` ).
 
@@ -230,6 +291,12 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `text`     v = `Local: the version in this system. Remote: the version in Git. Green (+) is the side that changed.`
         )->a( n = `showIcon` v = `true`
         )->a( n = `class`    v = `sapUiSmallMarginBeginEnd` ).
+    IF mv_patch = abap_true.
+      content->tag( `MessageStrip`
+          )->a( n = `text`     v = `Pick the changes to commit. The two halves of a changed line go together.`
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMarginBeginEnd sapUiTinyMarginTop` ).
+    ENDIF.
 
     IF mv_binary = abap_true.
       content->tag( `MessageStrip`
@@ -241,7 +308,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    IF mv_layout = `SBS`.
+    IF mv_layout = `SBS` AND mv_patch = abap_false.
       side_by_side_display( content ).
     ELSE.
       inline_display( content ).
@@ -262,6 +329,12 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `class`               v = `sapUiSmallMarginTop` ).
 
     DATA(columns) = table->ele( `columns` ).
+    IF mv_patch = abap_true.
+      columns->ele( `Column`
+          )->a( n = `width` v = `3rem`
+          )->tag( `Text`
+              )->a( n = `text` v = `Commit` ).
+    ENDIF.
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
         )->tag( `Text`
@@ -280,6 +353,13 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->ele( `ColumnListItem`
             )->a( n = `highlight` v = `{HIGHLIGHT}`
             )->ele( `cells` ).
+    IF mv_patch = abap_true.
+      " two-way binding has set PICKED already when select fires
+      cells->tag( `CheckBox`
+          )->a( n = `selected` v = `{PICKED}`
+          )->a( n = `visible`  v = `{PICKABLE}`
+          )->a( n = `select`   v = client->_event( val = `PICK` t_arg = VALUE #( ( `${PATCH_ID}` ) ( `${PICKED}` ) ) ) ).
+    ENDIF.
     cells->tag( `Text`
         )->a( n = `text` v = `{REMOTE_NUM}` ).
     cells->tag( `Text`
@@ -357,6 +437,22 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       WHEN `TOGGLE`.
         mv_show_all = xsdbool( mv_show_all = abap_false ).
         rows_build( ).
+      WHEN `PICK`.
+        pick( iv_id     = client->get_event_arg( )
+              iv_picked = xsdbool( client->get_event_arg( 2 ) = `true` ) ).
+      WHEN `PICK_ALL`.
+        pick_all( abap_true ).
+      WHEN `PICK_NONE`.
+        pick_all( abap_false ).
+      WHEN `APPLY`.
+        " in file order, so the result does not depend on the click order
+        ms_patch = VALUE #( applied     = abap_true
+                            path        = mv_path
+                            filename    = mv_filename
+                            ids         = picked_in_order( )
+                            total       = lines( patch_ids( ) )
+                            fingerprint = mv_fingerprint ).
+        client->nav_app_leave( ).
       WHEN `LAYOUT`.
         " the layout changes the view's structure, not only its data
         view_display( ).
@@ -379,6 +475,9 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     mt_all    = ls_diff-lines.
     mv_binary = ls_diff-binary.
+    mv_fingerprint = ls_diff-fingerprint.
+    " earlier picks that are no longer a change of this diff are dropped
+    mt_picked = picked_in_order( ).
     ms_head-counts = zcl_ag2ui5_repo_service=>counts_text( iv_local         = ls_diff-local_count
                                                           iv_remote        = ls_diff-remote_count
                                                           iv_remote_is_new = mv_remote_is_new ).
@@ -410,9 +509,14 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                                            WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-local
                                              OR ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-remote THEN `Error`
                                            WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-gap THEN `Information`
-                                           ELSE `None` ) )
+                                           ELSE `None` )
+                      patch_id   = ls_line-patch_id
+                      pickable   = xsdbool( mv_patch = abap_true AND ls_line-patch_id IS NOT INITIAL )
+                      picked     = xsdbool( ls_line-patch_id IS NOT INITIAL
+                                            AND line_exists( mt_picked[ table_line = ls_line-patch_id ] ) ) )
         INTO TABLE mt_rows.
     ENDLOOP.
+    mv_pick_text = |{ lines( mt_picked ) } of { lines( patch_ids( ) ) } lines picked|.
 
     CLEAR mt_sbs.
     LOOP AT zcl_ag2ui5_repo_service=>to_side_by_side( it_lines         = lt_lines
