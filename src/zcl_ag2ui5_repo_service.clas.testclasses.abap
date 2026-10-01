@@ -1514,3 +1514,89 @@ CLASS ltcl_patch IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_branches DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS remote_list
+      RETURNING
+        VALUE(rt_branches) TYPE zif_abapgit_git_definitions=>ty_git_branch_list_tt.
+    METHODS rows
+      RETURNING
+        VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_branches.
+
+    METHODS head_duplicate_and_empty_gone FOR TESTING.
+    METHODS default_first_then_by_name FOR TESTING.
+    METHODS default_and_current_marked FOR TESTING.
+    METHODS listed_branch_accepted FOR TESTING RAISING cx_static_check.
+    METHODS unknown_branch_refused FOR TESTING.
+    METHODS empty_branch_refused FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS ltcl_branches IMPLEMENTATION.
+
+  METHOD remote_list.
+    " as get_branches_only( ) returns it: HEAD next to the real default
+    rt_branches = VALUE #(
+      ( name = `refs/heads/zeta`  display_name = `zeta` )
+      ( name = `HEAD`             display_name = `HEAD` is_head = abap_true )
+      ( name = `refs/heads/main`  display_name = `main` is_head = abap_true )
+      ( name = ``                 display_name = `` )
+      ( name = `refs/heads/alpha` display_name = `alpha` ) ).
+  ENDMETHOD.
+
+  METHOD rows.
+    rt_rows = zcl_ag2ui5_repo_service=>branch_rows( it_branches    = remote_list( )
+                                                    iv_head_symref = `refs/heads/main`
+                                                    iv_current     = `refs/heads/zeta` ).
+  ENDMETHOD.
+
+  METHOD head_duplicate_and_empty_gone.
+    DATA(lt_rows) = rows( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 3 ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_rows[ name = `HEAD` ] ) ) ).
+  ENDMETHOD.
+
+  METHOD default_first_then_by_name.
+    cl_abap_unit_assert=>assert_equals(
+      act = concat_lines_of( table = VALUE string_table( FOR r IN rows( ) ( r-display ) ) sep = `,` )
+      exp = `main,alpha,zeta` ).
+  ENDMETHOD.
+
+  METHOD default_and_current_marked.
+    DATA(lt_rows) = rows( ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_rows[ 1 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/main` display = `main` default = abap_true ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_rows[ 3 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/zeta` display = `zeta` current = abap_true ) ).
+  ENDMETHOD.
+
+  METHOD listed_branch_accepted.
+    zcl_ag2ui5_repo_service=>assert_branch( iv_branch = `refs/heads/alpha` it_branches = rows( ) ).
+  ENDMETHOD.
+
+  METHOD unknown_branch_refused.
+    " the name comes from the browser
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_branch( iv_branch = `refs/heads/nope` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `An unknown branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD empty_branch_refused.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_branch( iv_branch = `` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `An empty branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+ENDCLASS.

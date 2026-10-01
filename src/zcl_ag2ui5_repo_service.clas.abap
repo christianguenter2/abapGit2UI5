@@ -143,6 +143,24 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_lstate) TYPE string.
 
+    "! abapGit's branch list as rows: without empty names and the HEAD
+    "! duplicate, default first, then by name - as abapGit's branch popup
+    CLASS-METHODS branch_rows
+      IMPORTING
+        it_branches        TYPE zif_abapgit_git_definitions=>ty_git_branch_list_tt
+        iv_head_symref     TYPE string
+        iv_current         TYPE string
+      RETURNING
+        VALUE(rt_branches) TYPE zif_ag2ui5_repo_service=>ty_branches.
+
+    "! Raises unless the branch is one of the listed ones
+    CLASS-METHODS assert_branch
+      IMPORTING
+        iv_branch   TYPE string
+        it_branches TYPE zif_ag2ui5_repo_service=>ty_branches
+      RAISING
+        zcx_abapgit_exception.
+
     "! The files changed locally, and what a commit does with each
     CLASS-METHODS stage_candidates
       IMPORTING
@@ -882,6 +900,18 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       THEN |+{ iv_remote } in Git, -{ iv_local } in this system|
                       ELSE |+{ iv_local } in this system, -{ iv_remote } in Git| ).
 
+  ENDMETHOD.
+
+  METHOD branch_rows.
+  ENDMETHOD.
+
+  METHOD assert_branch.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~list_branches.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~switch_branch.
   ENDMETHOD.
 
   METHOD fingerprint.

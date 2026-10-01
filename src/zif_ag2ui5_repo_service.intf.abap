@@ -229,6 +229,18 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       commit  TYPE string,
     END OF ty_push_result.
 
+  TYPES:
+    BEGIN OF ty_branch,
+      "! The full name, refs/heads/...
+      name    TYPE string,
+      display TYPE string,
+      "! The remote's HEAD points here
+      default TYPE abap_bool,
+      "! The branch the repository follows now
+      current TYPE abap_bool,
+    END OF ty_branch,
+    ty_branches TYPE STANDARD TABLE OF ty_branch WITH EMPTY KEY.
+
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos
@@ -314,6 +326,24 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_token         TYPE string OPTIONAL
     RETURNING
       VALUE(rs_result) TYPE ty_push_result
+    RAISING
+      zcx_abapgit_exception.
+
+  "! The remote's branches, the default one first
+  METHODS list_branches
+    IMPORTING
+      iv_key             TYPE string
+    RETURNING
+      VALUE(rt_branches) TYPE ty_branches
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Follows another branch of the remote, as abapGit does. No object in the
+  "! system changes; the status then shows what a pull would bring
+  METHODS switch_branch
+    IMPORTING
+      iv_key    TYPE string
+      iv_branch TYPE string
     RAISING
       zcx_abapgit_exception.
 
