@@ -354,11 +354,12 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
             )->a( n = `highlight` v = `{HIGHLIGHT}`
             )->ele( `cells` ).
     IF mv_patch = abap_true.
-      " two-way binding has set PICKED already when select fires
+      " the new state comes from the event itself, not from the model
       cells->tag( `CheckBox`
           )->a( n = `selected` v = `{PICKED}`
           )->a( n = `visible`  v = `{PICKABLE}`
-          )->a( n = `select`   v = client->_event( val = `PICK` t_arg = VALUE #( ( `${PATCH_ID}` ) ( `${PICKED}` ) ) ) ).
+          )->a( n = `select`   v = client->_event( val   = `PICK`
+                                                   t_arg = VALUE #( ( `${PATCH_ID}` ) ( `${$parameters>/selected}` ) ) ) ).
     ENDIF.
     cells->tag( `Text`
         )->a( n = `text` v = `{REMOTE_NUM}` ).
@@ -439,7 +440,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         rows_build( ).
       WHEN `PICK`.
         pick( iv_id     = client->get_event_arg( )
-              iv_picked = xsdbool( client->get_event_arg( 2 ) = `true` ) ).
+              " abap2UI5 hands booleans over as abap_bool
+              iv_picked = xsdbool( client->get_event_arg( 2 ) = abap_true ) ).
       WHEN `PICK_ALL`.
         pick_all( abap_true ).
       WHEN `PICK_NONE`.
