@@ -668,7 +668,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDLOOP.
     LOOP AT li_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true
                                                         ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
-        WHERE path = iv_path AND filename = iv_filename.
+        USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
       lv_remote = ls_remote-data.
       lv_found = abap_true.
       EXIT.
