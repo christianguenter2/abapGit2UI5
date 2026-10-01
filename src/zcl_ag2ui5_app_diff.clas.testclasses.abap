@@ -72,6 +72,7 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS back_discards FOR TESTING.
     METHODS earlier_picks_shown FOR TESTING.
     METHODS unknown_id_ignored FOR TESTING.
+    METHODS no_apply_without_diff FOR TESTING.
 ENDCLASS.
 
 
@@ -171,6 +172,14 @@ CLASS ltcl_patch IMPLEMENTATION.
     mo_app->rows_build( ).
 
     cl_abap_unit_assert=>assert_equals( act = picked_rows( ) exp = `X` ).
+  ENDMETHOD.
+
+  METHOD no_apply_without_diff.
+    " the diff did not load: Apply must not hand back "no lines"
+    CLEAR: mo_app->mv_fingerprint, mo_app->mt_all.
+    fire( `APPLY` ).
+
+    cl_abap_unit_assert=>assert_false( mo_app->get_patch( )-applied ).
   ENDMETHOD.
 
   METHOD unknown_id_ignored.

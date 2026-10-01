@@ -1133,6 +1133,7 @@ CLASS ltcl_stage DEFINITION FINAL FOR TESTING
     METHODS conflict_refused FOR TESTING.
     METHODS moved_needs_old_path FOR TESTING.
     METHODS moved_with_old_path FOR TESTING RAISING cx_static_check.
+    METHODS moved_partial_removal FOR TESTING.
     METHODS message_title_only FOR TESTING.
     METHODS message_with_body FOR TESTING.
 
@@ -1249,6 +1250,19 @@ CLASS ltcl_stage IMPLEMENTATION.
       VALUE #( ( ls_new ) ( item( iv_filename = `zcl_a.clas.abap` iv_action = `RM` ) ) ) ).
   ENDMETHOD.
 
+  METHOD moved_partial_removal.
+    " some lines of the old path are no removal: the file would stay in both
+    DATA(ls_new) = item( `zcl_a.clas.abap` ).
+    ls_new-path = `/src/new/`.
+    DATA(ls_old) = item( iv_filename = `zcl_a.clas.abap` iv_action = `RM` ).
+    ls_old-patch_ids = VALUE #( ( `O2` ) ).
+    TRY.
+        zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_new ) ( ls_old ) ) ).
+        cl_abap_unit_assert=>fail( `A move with a partial removal was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
   METHOD message_title_only.
     cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>commit_message( iv_title = `Fix it` iv_body = `` )
                                         exp = `Fix it` ).
@@ -1279,6 +1293,7 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS patch_content_partial FOR TESTING RAISING cx_static_check.
     METHODS patch_content_partial_delete FOR TESTING RAISING cx_static_check.
     METHODS patch_content_no_final_newline FOR TESTING RAISING cx_static_check.
+    METHODS patch_content_mixed_newline FOR TESTING RAISING cx_static_check.
 
     "! unchanged, insert, delete, update - as in map_all_results
     METHODS sample_diff
@@ -1467,6 +1482,21 @@ CLASS ltcl_patch IMPLEMENTATION.
                                         exp = text_of( VALUE #( ( `a` ) ( `c` ) ( `` ) ) ) ).
     cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `D` it_diff = lt_flagged )
                                         exp = `M` ).
+  ENDMETHOD.
+
+  METHOD patch_content_mixed_newline.
+    " Git's last line has no newline, the system's has one: abapGit's diff
+    " marks the old last line with a form feed, which must not reach Git
+    DATA(lt_diff) = real_diff( iv_local  = text_of( VALUE #( ( `a` ) ( `b` ) ( `c` ) ( `` ) ) )
+                               iv_remote = text_of( VALUE #( ( `a` ) ( `b` ) ) ) ).
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+
+    DATA(lv_text) = patched( zcl_ag2ui5_repo_service=>apply_patch(
+      it_diff = lt_diff
+      it_ids  = VALUE #( ( lt_lines[ text = `c` ]-patch_id ) ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = lv_text
+                                        exp = text_of( VALUE #( ( `a` ) ( `b` ) ( `c` ) ( `` ) ) ) ).
   ENDMETHOD.
 
   METHOD patch_content_no_final_newline.

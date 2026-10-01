@@ -191,6 +191,7 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS some_lines_select_row FOR TESTING.
     METHODS all_lines_mean_whole_file FOR TESTING.
     METHODS no_lines_reset_row FOR TESTING.
+    METHODS no_lines_restore_tick FOR TESTING.
     METHODS back_without_apply_keeps_row FOR TESTING.
     METHODS push_sends_patch FOR TESTING.
     METHODS pick_opens_patch_mode FOR TESTING.
@@ -242,6 +243,18 @@ CLASS ltcl_patch IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( ls_row-patched ).
     cl_abap_unit_assert=>assert_equals( act = ls_row-change exp = `modify` ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_patches ).
+    " the row was not ticked before the first patch: pushing would commit
+    " the whole file the user just took every line out of
+    cl_abap_unit_assert=>assert_false( ls_row-selected ).
+  ENDMETHOD.
+
+  METHOD no_lines_restore_tick.
+    " ticked before the first patch: it stays ticked, as before
+    mo_app->mt_rows[ 1 ]-selected = abap_true.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_app->take_patch( patch( VALUE #( ) ) ).
+
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
   ENDMETHOD.
 
   METHOD back_without_apply_keeps_row.
