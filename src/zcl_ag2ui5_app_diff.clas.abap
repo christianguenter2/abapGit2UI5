@@ -331,7 +331,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     DATA(columns) = table->ele( `columns` ).
     IF mv_patch = abap_true.
       columns->ele( `Column`
-          )->a( n = `width` v = `3rem`
+          )->a( n = `width` v = `4rem`
           )->tag( `Text`
               )->a( n = `text` v = `Commit` ).
     ENDIF.
