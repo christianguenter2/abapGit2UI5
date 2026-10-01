@@ -249,6 +249,36 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
   - abapGit's login manager is empty afterwards.
 - abapGit stores no committer for the user, so name and e-mail start empty.
   The app now asks for both before pushing.
+- A security review found one critical issue, fixed and covered by a test that
+  failed first:
+  - **The token reached abap2UI5's draft table.** A typed token arrives with
+    whatever button is pressed next ("Select all", a diff, Back). abap2UI5
+    saves the app state after every event, so the token was stored in
+    `Z2UI5_T_01` in plain text, for hours. `on_event( )` now takes it out of
+    the attribute first, for every event. The app test runs ALL, NONE, DIFF,
+    BACK and PUSH.
+
+  No token had been typed in the browser before the fix: the wrong-token test
+  called the service directly, and the browser test left the token field empty.
+- The review also led to these fixes in the push:
+  - **Credentials first:** they are set before the first fetch. Private
+    repositories need them there already, and a 401 is no longer shown as
+    "changed".
+  - **Cleanup:** the login manager is cleared in `CLEANUP`, so it is cleared
+    for every exception.
+  - **`COMMIT WORK AND WAIT` after the push**, as abapGit does. abap2UI5 rolls
+    back after `main( )`, and push writes the checksums.
+  - **abapGit's push exits** `validate_before_push` and `validate_after_push`
+    are called.
+  - **Refusals, as abapGit's stage page does:** a file that Git changed too
+    (shown as "changed in Git too, pull first"), and an object moved to
+    another folder without the removal of its old path.
+  - **The server works with the fresh state:** the client's rows only say
+    which files are selected.
+
+  ABAP Unit: service 73/73, app 5/5.
+- Not in scope: reading the status of private repositories. The status and
+  staging pages fetch without credentials.
 - The real push with a valid token is still open. Chris runs it himself to a
   test repository.
 - Deployment: after the MCP edits of slice 5, abapgit-agent blocked every pull
