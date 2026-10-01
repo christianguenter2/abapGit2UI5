@@ -207,6 +207,19 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Both versions of one file: the system's and Git's (empty when absent).
+    "! Raises when neither exists
+    METHODS read_file_pair
+      IMPORTING
+        ii_repo     TYPE REF TO zif_abapgit_repo_online
+        iv_path     TYPE string
+        iv_filename TYPE string
+      EXPORTING
+        ev_local    TYPE xstring
+        ev_remote   TYPE xstring
+      RAISING
+        zcx_abapgit_exception.
+
     "! Refuses to replace code that runs in this very session
     METHODS assert_pull_allowed
       IMPORTING
@@ -713,40 +726,16 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~get_diff.
 
-    DATA lv_local TYPE xstring.
-    DATA lv_remote TYPE xstring.
-
     assert_authorized( ).
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
-
-    " only the file's object is serialized and read, as in abapGit's diff page
-    zcl_abapgit_filename_logic=>file_to_object(
-      EXPORTING iv_filename = iv_filename
-                iv_path     = iv_path
-                io_dot      = li_repo->zif_abapgit_repo~get_dot_abapgit( )
-                iv_devclass = li_repo->zif_abapgit_repo~get_package( )
-      IMPORTING es_item     = DATA(ls_item) ).
-    DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( is_item = ls_item ) ).
-
-    DATA(lv_found) = abap_false.
-    LOOP AT li_repo->zif_abapgit_repo~get_files_local_filtered( li_filter ) INTO DATA(ls_local)
-        WHERE file-path = iv_path AND file-filename = iv_filename.
-      lv_local = ls_local-file-data.
-      lv_found = abap_true.
-      EXIT.
-    ENDLOOP.
-    LOOP AT li_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true
-                                                        ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
-        USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
-      lv_remote = ls_remote-data.
-      lv_found = abap_true.
-      EXIT.
-    ENDLOOP.
-    IF lv_found = abap_false.
-      zcx_abapgit_exception=>raise( |File not found: { iv_path }{ iv_filename }| ).
-    ENDIF.
+    read_file_pair( EXPORTING ii_repo     = li_repo
+                              iv_path     = iv_path
+                              iv_filename = iv_filename
+                    IMPORTING ev_local    = DATA(lv_local)
+                              ev_remote   = DATA(lv_remote) ).
+    rs_diff-fingerprint = fingerprint( iv_local = lv_local iv_remote = lv_remote ).
 
     IF zcl_abapgit_utils=>is_binary( COND #( WHEN lv_local IS NOT INITIAL THEN lv_local ELSE lv_remote ) ) = abap_true.
       rs_diff-binary = abap_true.
@@ -768,6 +757,39 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     LOOP AT rs_diff-lines TRANSPORTING NO FIELDS WHERE kind = zif_ag2ui5_repo_service=>c_line_kind-remote.
       rs_diff-remote_count = rs_diff-remote_count + 1.
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD read_file_pair.
+
+    CLEAR: ev_local, ev_remote.
+
+    " only the file's object is serialized and read, as in abapGit's diff page
+    zcl_abapgit_filename_logic=>file_to_object(
+      EXPORTING iv_filename = iv_filename
+                iv_path     = iv_path
+                io_dot      = ii_repo->zif_abapgit_repo~get_dot_abapgit( )
+                iv_devclass = ii_repo->zif_abapgit_repo~get_package( )
+      IMPORTING es_item     = DATA(ls_item) ).
+    DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( is_item = ls_item ) ).
+
+    DATA(lv_found) = abap_false.
+    LOOP AT ii_repo->zif_abapgit_repo~get_files_local_filtered( li_filter ) INTO DATA(ls_local)
+        WHERE file-path = iv_path AND file-filename = iv_filename.
+      ev_local = ls_local-file-data.
+      lv_found = abap_true.
+      EXIT.
+    ENDLOOP.
+    LOOP AT ii_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true
+                                                        ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
+        USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
+      ev_remote = ls_remote-data.
+      lv_found = abap_true.
+      EXIT.
+    ENDLOOP.
+    IF lv_found = abap_false.
+      zcx_abapgit_exception=>raise( |File not found: { iv_path }{ iv_filename }| ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -1033,9 +1055,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         " from here on only the fresh state counts, the client's rows only say
         " which files are selected
         LOOP AT lt_fresh ASSIGNING FIELD-SYMBOL(<ls_fresh>).
-          <ls_fresh>-selected = xsdbool( line_exists( it_items[ path     = <ls_fresh>-path
-                                                                filename = <ls_fresh>-filename
-                                                                selected = abap_true ] ) ).
+          READ TABLE it_items INTO DATA(ls_posted)
+            WITH KEY path = <ls_fresh>-path filename = <ls_fresh>-filename selected = abap_true.
+          <ls_fresh>-selected = xsdbool( sy-subrc = 0 ).
+          IF sy-subrc = 0.
+            <ls_fresh>-patch_ids   = ls_posted-patch_ids.
+            <ls_fresh>-fingerprint = ls_posted-fingerprint.
+          ENDIF.
         ENDLOOP.
         check_push_allowed( lt_fresh ).
 
@@ -1048,7 +1074,33 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
         DATA(lo_stage) = NEW zcl_abapgit_stage( ).
         LOOP AT lt_fresh INTO ls_item WHERE selected = abap_true.
-          IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-rm.
+          IF ls_item-patch_ids IS NOT INITIAL.
+            read_file_pair( EXPORTING ii_repo     = li_repo
+                                      iv_path     = ls_item-path
+                                      iv_filename = ls_item-filename
+                            IMPORTING ev_local    = DATA(lv_local)
+                                      ev_remote   = DATA(lv_remote) ).
+            " the lines were picked on another version of the file
+            IF fingerprint( iv_local = lv_local iv_remote = lv_remote ) <> ls_item-fingerprint.
+              rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
+              zcl_abapgit_login_manager=>clear( ).
+              RETURN.
+            ENDIF.
+            DATA(lt_diff) = apply_patch(
+              it_diff = zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_local iv_old = lv_remote )->get( )
+              it_ids  = ls_item-patch_ids ).
+            DATA(lv_lstate) = patch_lstate( iv_lstate = ls_item-lstate it_diff = lt_diff ).
+            IF lv_lstate = zif_abapgit_definitions=>c_state-deleted.
+              lo_stage->rm( iv_path     = CONV #( ls_item-path )
+                            iv_filename = CONV #( ls_item-filename )
+                            is_status   = VALUE #( lstate = lv_lstate ) ).
+            ELSE.
+              lo_stage->add( iv_path     = CONV #( ls_item-path )
+                             iv_filename = CONV #( ls_item-filename )
+                             is_status   = VALUE #( lstate = lv_lstate )
+                             iv_data     = NEW zcl_abapgit_git_add_patch( lt_diff )->get_patch_binary( ) ).
+            ENDIF.
+          ELSEIF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-rm.
             lo_stage->rm( iv_path = CONV #( ls_item-path ) iv_filename = CONV #( ls_item-filename ) ).
           ELSE.
             READ TABLE lt_local INTO DATA(ls_local)

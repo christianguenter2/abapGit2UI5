@@ -199,6 +199,10 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       rstate   TYPE string,
       action   TYPE ty_stage_action,
       selected TYPE abap_bool,
+      "! The picked lines (patch IDs of get_diff); empty for the whole file
+      patch_ids   TYPE string_table,
+      "! get_diff's fingerprint the lines were picked on
+      fingerprint TYPE string,
     END OF ty_stage_item,
     ty_stage_items TYPE STANDARD TABLE OF ty_stage_item WITH EMPTY KEY.
 
@@ -299,7 +303,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
 
   "! Commits the selected files and pushes them. The credentials are used for
   "! this call only and never stored. Outcome changed, and nothing is pushed,
-  "! when a selected file is no longer changed locally as it was
+  "! when a selected file is no longer changed locally as it was, or a
+  "! patched file is no longer the version its lines were picked on
   METHODS commit_push
     IMPORTING
       iv_key           TYPE string
