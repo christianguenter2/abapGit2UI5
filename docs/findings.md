@@ -279,8 +279,14 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
   ABAP Unit: service 73/73, app 5/5.
 - Not in scope: reading the status of private repositories. The status and
   staging pages fetch without credentials.
-- The real push with a valid token is still open. Chris runs it himself to a
-  test repository.
+- **Real push (Chris, 2026-10-01):** `$UMLAUT` / `sapgui_java_umlaut` was
+  pushed successfully through the staging page. abapGit's user exit supplied
+  the credentials. Afterwards the remote is at `900c4e5`, and system and Git
+  match.
+- **Draft table after the push:** `Z2UI5_T_01.DATA` is plain text (STRG,
+  XML). 14 of its 62 drafts contain the staging app with its `MV_TOKEN` field.
+  None of them contains a GitHub token pattern (`ghp_`, `github_pat_`) or the
+  test marker.
 - Deployment: after the MCP edits of slice 5, abapgit-agent blocked every pull
   of the service class (`SYSTEM_EDIT`). With Chris's OK for this one case,
   `ignore` mode was used once; after that, pulls run normally again.
