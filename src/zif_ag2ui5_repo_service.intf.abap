@@ -146,7 +146,23 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     ty_diff_lines TYPE STANDARD TABLE OF ty_diff_line WITH EMPTY KEY.
 
   TYPES:
+    "! One row of the side-by-side view: the old version left, the new right
+    BEGIN OF ty_sbs_row,
+      old_num     TYPE string,
+      old_text    TYPE string,
+      old_changed TYPE abap_bool,
+      new_num     TYPE string,
+      new_text    TYPE string,
+      new_changed TYPE abap_bool,
+      gap         TYPE abap_bool,
+    END OF ty_sbs_row,
+    ty_sbs_rows TYPE STANDARD TABLE OF ty_sbs_row WITH EMPTY KEY.
+
+  TYPES:
     BEGIN OF ty_diff,
+      "! The side that changed is "new": the remote when only Git changed,
+      "! otherwise the system - as abapGit decides
+      remote_is_new TYPE abap_bool,
       lines        TYPE ty_diff_lines,
       "! Lines only in this system / only in Git
       local_count  TYPE i,
@@ -211,6 +227,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_key         TYPE string
       iv_path        TYPE string
       iv_filename    TYPE string
+      iv_remote_is_new TYPE abap_bool DEFAULT abap_false
     RETURNING
       VALUE(rs_diff) TYPE ty_diff
     RAISING

@@ -69,12 +69,39 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
 
-    "! abapGit's diff (local = new, remote = old) as plain lines
+    "! abapGit's diff as plain lines. abapGit's "new" is the system, or the
+    "! remote when iv_remote_is_new is set
     CLASS-METHODS map_diff
       IMPORTING
-        it_diff         TYPE zif_abapgit_definitions=>ty_diffs_tt
+        it_diff          TYPE zif_abapgit_definitions=>ty_diffs_tt
+        iv_remote_is_new TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    "! abapGit's rule for the diff direction: only when nothing changed locally
+    "! and something changed remotely is the remote the new side
+    CLASS-METHODS remote_is_new
+      IMPORTING
+        iv_lstate     TYPE string
+        iv_rstate     TYPE string
+      RETURNING
+        VALUE(rv_yes) TYPE abap_bool.
+
+    "! The same lines side by side: old left, new right; a changed block is
+    "! paired line by line, the longer side padded with empty cells
+    CLASS-METHODS to_side_by_side
+      IMPORTING
+        it_lines         TYPE zif_ag2ui5_repo_service=>ty_diff_lines
+        iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+      RETURNING
+        VALUE(rt_rows)   TYPE zif_ag2ui5_repo_service=>ty_sbs_rows.
+
+    "! Code for sap.m.FormattedText: escaped, monospace, indentation kept
+    CLASS-METHODS code_html
+      IMPORTING
+        iv_text        TYPE string
+      RETURNING
+        VALUE(rv_html) TYPE string.
 
     "! Keeps the files that differ or are inactive
     CLASS-METHODS filter_status
@@ -638,6 +665,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       rs_diff-remote_count = rs_diff-remote_count + 1.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD remote_is_new.
+  ENDMETHOD.
+
+  METHOD to_side_by_side.
+  ENDMETHOD.
+
+  METHOD code_html.
   ENDMETHOD.
 
   METHOD filter_status.

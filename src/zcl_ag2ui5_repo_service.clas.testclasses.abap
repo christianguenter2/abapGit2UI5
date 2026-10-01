@@ -967,3 +967,123 @@ CLASS ltcl_diff IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_side_by_side DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS direction FOR TESTING.
+    METHODS map_swapped FOR TESTING.
+    METHODS pairs_changed_block FOR TESTING.
+    METHODS pads_uneven_block FOR TESTING.
+    METHODS same_and_gap FOR TESTING.
+    METHODS swapped_sides FOR TESTING.
+    METHODS html_escaped_and_indented FOR TESTING.
+
+    METHODS line
+      IMPORTING
+        iv_kind        TYPE zif_ag2ui5_repo_service=>ty_line_kind
+        iv_local       TYPE string OPTIONAL
+        iv_remote      TYPE string OPTIONAL
+        iv_text        TYPE string
+      RETURNING
+        VALUE(rs_line) TYPE zif_ag2ui5_repo_service=>ty_diff_line.
+
+ENDCLASS.
+
+
+CLASS ltcl_side_by_side IMPLEMENTATION.
+
+  METHOD line.
+    rs_line = VALUE #( kind = iv_kind local_num = iv_local remote_num = iv_remote text = iv_text ).
+  ENDMETHOD.
+
+  METHOD direction.
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = `` iv_rstate = `M` ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = `M` iv_rstate = `M` ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = `A` iv_rstate = `` ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = `` iv_rstate = `` ) ).
+  ENDMETHOD.
+
+  METHOD map_swapped.
+    " the remote is abapGit's "new" side now: an insert is a remote line
+    DATA lt_diff TYPE zif_abapgit_definitions=>ty_diffs_tt.
+
+    INSERT VALUE #( new_num = '5' new = `from git` result = zif_abapgit_definitions=>c_diff-insert ) INTO TABLE lt_diff.
+    INSERT VALUE #( old_num = '6' old = `only here` result = zif_abapgit_definitions=>c_diff-delete ) INTO TABLE lt_diff.
+
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( it_diff = lt_diff iv_remote_is_new = abap_true ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_lines[ 1 ]
+      exp = line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `5` iv_text = `from git` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_lines[ 2 ]
+      exp = line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local iv_local = `6` iv_text = `only here` ) ).
+  ENDMETHOD.
+
+  METHOD pairs_changed_block.
+    " not swapped: the remote is old (left), the system is new (right)
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>to_side_by_side( VALUE #(
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `3` iv_text = `old a` ) )
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `4` iv_text = `old b` ) )
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local  iv_local  = `3` iv_text = `new a` ) )
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local  iv_local  = `4` iv_text = `new b` ) ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows )
+                                        exp = 2 ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_rows[ 2 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_sbs_row( old_num = `4` old_text = `old b` old_changed = abap_true
+                                                        new_num = `4` new_text = `new b` new_changed = abap_true ) ).
+  ENDMETHOD.
+
+  METHOD pads_uneven_block.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>to_side_by_side( VALUE #(
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local iv_local = `7` iv_text = `added 1` ) )
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local iv_local = `8` iv_text = `added 2` ) ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows )
+                                        exp = 2 ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 2 ]-old_text ).
+    cl_abap_unit_assert=>assert_false( lt_rows[ 2 ]-old_changed ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 2 ]-new_text
+                                        exp = `added 2` ).
+  ENDMETHOD.
+
+  METHOD same_and_gap.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>to_side_by_side( VALUE #(
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-gap  iv_text = `... 9 unchanged lines ...` ) )
+      ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-same iv_local = `11` iv_remote = `10` iv_text = `x` ) ) ) ).
+
+    cl_abap_unit_assert=>assert_true( lt_rows[ 1 ]-gap ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_rows[ 2 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_sbs_row( old_num = `10` old_text = `x` new_num = `11` new_text = `x` ) ).
+  ENDMETHOD.
+
+  METHOD swapped_sides.
+    " the remote is new: it goes right, its numbers with it
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>to_side_by_side(
+      it_lines         = VALUE #( ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-same iv_local = `11` iv_remote = `10` iv_text = `x` ) )
+                                  ( line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `11` iv_text = `from git` ) ) )
+      iv_remote_is_new = abap_true ).
+
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-old_num
+                                        exp = `11` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-new_num
+                                        exp = `10` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 2 ]-new_text
+                                        exp = `from git` ).
+    cl_abap_unit_assert=>assert_true( lt_rows[ 2 ]-new_changed ).
+  ENDMETHOD.
+
+  METHOD html_escaped_and_indented.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>code_html( `  IF a < b & c.` )
+      exp = `<code>&nbsp;&nbsp;IF a &lt; b &amp; c.</code>` ).
+  ENDMETHOD.
+
+ENDCLASS.
