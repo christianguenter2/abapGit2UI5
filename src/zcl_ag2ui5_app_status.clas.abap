@@ -75,6 +75,11 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! The branch dialog: the remote's branches, and the one picked
     DATA mt_branches     TYPE ty_branch_rows.
     DATA mv_branch       TYPE string.
+    "! New branch... is picked: the name field shows, the button creates
+    DATA mv_new_mode     TYPE abap_bool.
+    DATA mv_new_name     TYPE string.
+    DATA mv_start_text   TYPE string.
+    DATA mv_branch_button TYPE string VALUE `Switch`.
 
     CLASS-METHODS create
       IMPORTING
@@ -83,6 +88,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    CONSTANTS c_new_branch TYPE string VALUE `NEW`.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
     "! Every file of the last status; sorting and the switch start from here
@@ -101,6 +107,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS popup_branches_display.
     METHODS load_branches.
     METHODS switch_branch.
+    METHODS create_branch.
 
     "! One group of the decision dialog; nothing when the group is empty
     METHODS group_display
@@ -445,14 +452,27 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `selectedKey` v = client->_bind( mv_branch )
         )->a( n = `width`       v = `100%`
         )->a( n = `items`       v = client->_bind( mt_branches )
+        )->a( n = `change`      v = client->_event( `BRANCH_PICK` )
         )->ele( `items`
             )->tag( n = `Item` ns = `core`
                 )->a( n = `key`  v = `{NAME}`
                 )->a( n = `text` v = `{TEXT}` ).
+    box->tag( `Text`
+        )->a( n = `text`    v = client->_bind( mv_start_text )
+        )->a( n = `visible` v = client->_bind( mv_new_mode )
+        )->a( n = `class`   v = `sapUiSmallMarginTop` ).
+    box->tag( `Label`
+        )->a( n = `text`     v = `Name`
+        )->a( n = `required` v = `true`
+        )->a( n = `visible`  v = client->_bind( mv_new_mode ) ).
+    box->tag( `Input`
+        )->a( n = `value`       v = client->_bind( mv_new_name )
+        )->a( n = `placeholder` v = `feature/my-change`
+        )->a( n = `visible`     v = client->_bind( mv_new_mode ) ).
 
     dialog->ele( `beginButton`
         )->tag( `Button`
-            )->a( n = `text`  v = `Switch`
+            )->a( n = `text`  v = client->_bind( mv_branch_button )
             )->a( n = `type`  v = `Emphasized`
             )->a( n = `press` v = client->_event( `SWITCH_BRANCH` ) ).
     dialog->ele( `endButton`
@@ -482,11 +502,20 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         mv_branch = ls_branch-name.
       ENDIF.
     ENDLOOP.
+    INSERT VALUE #( name = c_new_branch text = `New branch...` ) INTO TABLE mt_branches.
+    mv_start_text = |Starts from: { ms_head-branch } at { ms_head-remote_commit }|.
+    CLEAR: mv_new_mode, mv_new_name.
+    mv_branch_button = `Switch`.
     popup_branches_display( ).
 
   ENDMETHOD.
 
   METHOD switch_branch.
+
+    IF mv_branch = c_new_branch.
+      create_branch( ).
+      RETURN.
+    ENDIF.
 
     TRY.
         service( )->switch_branch( iv_key    = mv_key
@@ -498,6 +527,23 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     client->popup_destroy( ).
     client->message_toast_display( |Following { VALUE #( mt_branches[ name = mv_branch ]-text OPTIONAL ) } now| ).
+    load_status( ).
+
+  ENDMETHOD.
+
+  METHOD create_branch.
+
+    TRY.
+        DATA(lv_branch) = service( )->create_branch( iv_key  = mv_key
+                                                     iv_name = mv_new_name ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        " the dialog stays open with the name
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    client->popup_destroy( ).
+    client->message_toast_display( |Created and following { substring( val = lv_branch off = 11 ) }| ).
     load_status( ).
 
   ENDMETHOD.
@@ -609,6 +655,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         ENDIF.
       WHEN `BRANCHES`.
         load_branches( ).
+      WHEN `BRANCH_PICK`.
+        mv_new_mode      = xsdbool( mv_branch = c_new_branch ).
+        mv_branch_button = COND #( WHEN mv_new_mode = abap_true THEN `Create` ELSE `Switch` ).
       WHEN `SWITCH_BRANCH`.
         switch_branch( ).
       WHEN `PULL`.
