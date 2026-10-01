@@ -391,6 +391,21 @@ slice, one row per file; a per-object view with a switch comes later.
   system afterwards, and Git still has the pushed one. The checksums of a
   partial push are as in abapGit (the pushed content's SHA1).
 
+## Diff colours (2026-10-01)
+
+A small change, approved in chat: the code cell of an added line gets a light
+green background (`#e6ffec`), a removed one light red (`#ffebe9`), a folded
+gap light grey (`#f6f8fa`), in both views. `tinted_html` wraps the code in a
+block `<span>` with that style.
+
+- Checked first in the browser: UI5 1.153's `sap.m.FormattedText` keeps the
+  `background-color` style.
+- ABAP Unit: service 95/95, diff app 9/9, stage app 12/12.
+- Browser: the diff of `zcl_ag2ui5_app_diff.clas.abap` in `$ABAPGIT2UI5`
+  shows 18 green, 4 red and 3 grey lines, inline and side by side.
+- Only the code cell is coloured; the row keeps its highlight bar. The colours
+  are fixed and suit light themes.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:

@@ -43,7 +43,7 @@ present. It is Git-ignored.
 |---|---|
 | Pull | `preview`, `merge_decisions`, `apply_decisions`, `effective_transport`, `assert_transport` |
 | Status | `status_rows`, `change_highlight`, `format_timestamp` |
-| Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `counts_text`, `visible` |
+| Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `tinted_html`, `counts_text`, `visible` |
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch` |
