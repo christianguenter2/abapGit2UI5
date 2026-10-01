@@ -167,7 +167,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `value` v = client->_bind( ms_commit-body )
         )->a( n = `rows`  v = `4` ).
     form->tag( `Label`
-        )->a( n = `text` v = `Committer` ).
+        )->a( n = `text`     v = `Committer`
+        )->a( n = `required` v = `true` ).
     form->tag( `Input`
         )->a( n = `value`       v = client->_bind( ms_commit-name )
         )->a( n = `placeholder` v = `Name` ).
@@ -259,6 +260,10 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     ENDIF.
     IF ms_commit-title IS INITIAL.
       client->message_toast_display( `Enter a commit title` ).
+      RETURN.
+    ENDIF.
+    IF ms_commit-name IS INITIAL OR ms_commit-email IS INITIAL.
+      client->message_toast_display( `Enter the committer's name and e-mail` ).
       RETURN.
     ENDIF.
 
