@@ -467,12 +467,117 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD compact.
+
+    DATA lt_keep TYPE STANDARD TABLE OF abap_bool WITH EMPTY KEY.
+    DATA lv_gap TYPE i.
+
+    IF it_lines IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    " mark every change and its context
+    DATA(lv_lines) = lines( it_lines ).
+    DO lv_lines TIMES.
+      INSERT abap_false INTO TABLE lt_keep.
+    ENDDO.
+    LOOP AT it_lines INTO DATA(ls_line) WHERE kind <> zif_ag2ui5_repo_service=>c_line_kind-same.
+      DATA(lv_from) = nmax( val1 = 1        val2 = sy-tabix - iv_context ).
+      DATA(lv_to)   = nmin( val1 = lv_lines val2 = sy-tabix + iv_context ).
+      DATA(lv_index) = lv_from.
+      WHILE lv_index <= lv_to.
+        lt_keep[ lv_index ] = abap_true.
+        lv_index = lv_index + 1.
+      ENDWHILE.
+    ENDLOOP.
+
+    IF NOT line_exists( lt_keep[ table_line = abap_true ] ).
+      INSERT VALUE #( text = |No differences ({ lv_lines } lines)|
+                      kind = zif_ag2ui5_repo_service=>c_line_kind-gap ) INTO TABLE rt_lines.
+      RETURN.
+    ENDIF.
+
+    " copy what is kept, fold each unkept run into one gap line
+    LOOP AT it_lines INTO ls_line.
+      IF lt_keep[ sy-tabix ] = abap_true.
+        IF lv_gap > 0.
+          INSERT VALUE #( text = |... { lv_gap } unchanged lines ...|
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-gap ) INTO TABLE rt_lines.
+          lv_gap = 0.
+        ENDIF.
+        INSERT ls_line INTO TABLE rt_lines.
+      ELSE.
+        lv_gap = lv_gap + 1.
+      ENDIF.
+    ENDLOOP.
+    IF lv_gap > 0.
+      INSERT VALUE #( text = |... { lv_gap } unchanged lines ...|
+                      kind = zif_ag2ui5_repo_service=>c_line_kind-gap ) INTO TABLE rt_lines.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD map_diff.
+
+    LOOP AT it_diff INTO DATA(ls_diff).
+      DATA(lv_local_num)  = condense( CONV string( ls_diff-new_num ) ).
+      DATA(lv_remote_num) = condense( CONV string( ls_diff-old_num ) ).
+      CASE ls_diff-result.
+        WHEN zif_abapgit_definitions=>c_diff-insert.
+          INSERT VALUE #( local_num = lv_local_num text = ls_diff-new
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE rt_lines.
+        WHEN zif_abapgit_definitions=>c_diff-delete.
+          INSERT VALUE #( remote_num = lv_remote_num text = ls_diff-old
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE rt_lines.
+        WHEN zif_abapgit_definitions=>c_diff-update.
+          " one changed line is the remote version going and the local one coming
+          INSERT VALUE #( remote_num = lv_remote_num text = ls_diff-old
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE rt_lines.
+          INSERT VALUE #( local_num = lv_local_num text = ls_diff-new
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE rt_lines.
+        WHEN OTHERS.
+          INSERT VALUE #( local_num = lv_local_num remote_num = lv_remote_num text = ls_diff-new
+                          kind = zif_ag2ui5_repo_service=>c_line_kind-same ) INTO TABLE rt_lines.
+      ENDCASE.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~get_diff.
+
+    DATA lv_local TYPE xstring.
+    DATA lv_remote TYPE xstring.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+
+    LOOP AT li_repo->zif_abapgit_repo~get_files_local( ) INTO DATA(ls_local)
+        WHERE file-path = iv_path AND file-filename = iv_filename.
+      lv_local = ls_local-file-data.
+      EXIT.
+    ENDLOOP.
+    LOOP AT li_repo->zif_abapgit_repo~get_files_remote( ) INTO DATA(ls_remote)
+        WHERE path = iv_path AND filename = iv_filename.
+      lv_remote = ls_remote-data.
+      EXIT.
+    ENDLOOP.
+
+    IF zcl_abapgit_utils=>is_binary( COND #( WHEN lv_local IS NOT INITIAL THEN lv_local ELSE lv_remote ) ) = abap_true.
+      rs_diff-binary = abap_true.
+      RETURN.
+    ENDIF.
+
+    " abapGit's convention: local is new, remote is old
+    rs_diff-lines = map_diff( zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_local
+                                                                        iv_old = lv_remote )->get( ) ).
+    LOOP AT rs_diff-lines TRANSPORTING NO FIELDS WHERE kind = zif_ag2ui5_repo_service=>c_line_kind-local.
+      rs_diff-local_count = rs_diff-local_count + 1.
+    ENDLOOP.
+    LOOP AT rs_diff-lines TRANSPORTING NO FIELDS WHERE kind = zif_ag2ui5_repo_service=>c_line_kind-remote.
+      rs_diff-remote_count = rs_diff-remote_count + 1.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD filter_status.
