@@ -108,15 +108,15 @@ CLASS ltcl_patch IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD pick_ticks_both_halves.
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `true` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `X` ) ) ).
 
     cl_abap_unit_assert=>assert_equals( act = picked_rows( ) exp = `.--XX` ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mv_pick_text exp = `1 of 3 lines picked` ).
   ENDMETHOD.
 
   METHOD unpick_clears_both_halves.
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `true` ) ) ).
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `false` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `X` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `` ) ) ).
 
     cl_abap_unit_assert=>assert_equals( act = picked_rows( ) exp = `.----` ).
   ENDMETHOD.
@@ -132,7 +132,7 @@ CLASS ltcl_patch IMPLEMENTATION.
 
   METHOD picks_survive_toggle.
     " Show all / Changes only rebuilds the rows from mt_all
-    fire( iv_event = `PICK` it_args = VALUE #( ( `O2` ) ( `true` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `O2` ) ( `X` ) ) ).
     fire( `TOGGLE` ).
     fire( `TOGGLE` ).
 
@@ -140,8 +140,8 @@ CLASS ltcl_patch IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD apply_hands_back.
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `true` ) ) ).
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N2` ) ( `true` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `X` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N2` ) ( `X` ) ) ).
     fire( `APPLY` ).
 
     DATA(ls_patch) = mo_app->get_patch( ).
@@ -154,7 +154,7 @@ CLASS ltcl_patch IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD back_discards.
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `true` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N3` ) ( `X` ) ) ).
     fire( `BACK` ).
 
     cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
@@ -175,7 +175,7 @@ CLASS ltcl_patch IMPLEMENTATION.
 
   METHOD unknown_id_ignored.
     " the ID comes from the browser; one that is not in the diff is dropped
-    fire( iv_event = `PICK` it_args = VALUE #( ( `N99` ) ( `true` ) ) ).
+    fire( iv_event = `PICK` it_args = VALUE #( ( `N99` ) ( `X` ) ) ).
     fire( `APPLY` ).
 
     cl_abap_unit_assert=>assert_initial( mo_app->get_patch( )-ids ).
