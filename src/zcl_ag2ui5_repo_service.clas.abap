@@ -903,15 +903,65 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD branch_rows.
+
+    LOOP AT it_branches INTO DATA(ls_branch) WHERE name IS NOT INITIAL.
+      " the remote's HEAD is listed next to the branch it points to
+      IF ls_branch-is_head = abap_true AND iv_head_symref IS NOT INITIAL AND ls_branch-name <> iv_head_symref.
+        CONTINUE.
+      ENDIF.
+      INSERT VALUE #( name    = ls_branch-name
+                      display = ls_branch-display_name
+                      default = xsdbool( ls_branch-name = iv_head_symref
+                                         OR ( iv_head_symref IS INITIAL AND ls_branch-is_head = abap_true ) )
+                      current = xsdbool( ls_branch-name = iv_current ) ) INTO TABLE rt_branches.
+    ENDLOOP.
+    SORT rt_branches BY default DESCENDING display ASCENDING.
+
   ENDMETHOD.
 
   METHOD assert_branch.
+
+    IF iv_branch IS INITIAL OR NOT line_exists( it_branches[ name = iv_branch ] ).
+      zcx_abapgit_exception=>raise( |Branch { iv_branch } is not on the remote| ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    DATA(li_list) = zcl_abapgit_git_factory=>get_git_transport( )->branches( li_repo->get_url( ) ).
+    rt_branches = branch_rows( it_branches    = li_list->get_branches_only( )
+                               iv_head_symref = li_list->get_head_symref( )
+                               iv_current     = li_repo->get_selected_branch( ) ).
+    IF rt_branches IS INITIAL.
+      zcx_abapgit_exception=>raise( `The remote has no branches` ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~switch_branch.
+
+    " list_branches checks the authorization; the name comes from the
+    " browser and is checked against the fresh list
+    assert_branch( iv_branch   = iv_branch
+                   it_branches = zif_ag2ui5_repo_service~list_branches( iv_key ) ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    IF li_repo->get_selected_branch( ) = iv_branch.
+      RETURN.
+    ENDIF.
+
+    " as abapGit's switch_branch: a fixed commit or another origin is reset
+    li_repo->select_commit( '' ).
+    li_repo->switch_origin( '' ).
+    li_repo->select_branch( iv_branch ).
+    " abap2UI5 rolls back after main( )
+    COMMIT WORK AND WAIT.
+
   ENDMETHOD.
 
   METHOD fingerprint.
