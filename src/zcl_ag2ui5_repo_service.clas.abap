@@ -648,6 +648,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         ls_new-local_num  = lv_new_num.
         ls_old-remote_num = lv_old_num.
       ENDIF.
+      " the patch ID uses abapGit's numbers, which set_patch_new/_old use too
+      ls_new-patch_id = COND #( WHEN ls_diff-result = zif_abapgit_definitions=>c_diff-insert
+                                  OR ls_diff-result = zif_abapgit_definitions=>c_diff-update
+                                THEN |N{ lv_new_num }| ).
+      ls_old-patch_id = COND #( WHEN ls_diff-result = zif_abapgit_definitions=>c_diff-delete
+                                THEN |O{ lv_old_num }|
+                                WHEN ls_diff-result = zif_abapgit_definitions=>c_diff-update
+                                THEN |N{ lv_new_num }| ).
 
       " a run of changed lines is shown as a block: all old lines, then all
       " new ones, as git and abapGit's unified view do
@@ -855,12 +863,48 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD fingerprint.
+
+    " each side hashed on its own, so no two pairs share a fingerprint
+    rv_fingerprint = |{ zcl_abapgit_hash=>sha1_raw( iv_local ) }{ zcl_abapgit_hash=>sha1_raw( iv_remote ) }|.
+
   ENDMETHOD.
 
   METHOD apply_patch.
+
+    IF it_ids IS INITIAL.
+      zcx_abapgit_exception=>raise( `No lines picked` ).
+    ENDIF.
+
+    rt_diff = it_diff.
+    LOOP AT it_ids INTO DATA(lv_id).
+      DATA(lv_side) = substring( val = lv_id len = 1 ).
+      DATA(lv_num)  = substring( val = lv_id off = 1 ).
+      DATA(lv_hit)  = abap_false.
+      LOOP AT rt_diff ASSIGNING FIELD-SYMBOL(<ls_diff>).
+        IF ( lv_side = `N` AND condense( CONV string( <ls_diff>-new_num ) ) = lv_num
+             AND ( <ls_diff>-result = zif_abapgit_definitions=>c_diff-insert
+                OR <ls_diff>-result = zif_abapgit_definitions=>c_diff-update ) )
+        OR ( lv_side = `O` AND condense( CONV string( <ls_diff>-old_num ) ) = lv_num
+             AND <ls_diff>-result = zif_abapgit_definitions=>c_diff-delete ).
+          <ls_diff>-patch_flag = abap_true.
+          lv_hit = abap_true.
+        ENDIF.
+      ENDLOOP.
+      IF lv_hit = abap_false.
+        zcx_abapgit_exception=>raise( |Line { lv_id } is not a change| ).
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD patch_lstate.
+
+    " every row flagged, as abapGit's are_all_lines_patched counts: an added
+    " or deleted file has no unchanged rows, so this is "every change picked"
+    DATA(lv_all) = xsdbool( NOT line_exists( it_diff[ patch_flag = abap_false ] ) ).
+    rv_lstate = COND #( WHEN lv_all = abap_true AND ( iv_lstate = `D` OR iv_lstate = `A` ) THEN iv_lstate
+                        ELSE `M` ).
+
   ENDMETHOD.
 
   METHOD stage_candidates.

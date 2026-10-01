@@ -1270,6 +1270,7 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS unknown_id_raises FOR TESTING.
     METHODS unchanged_line_id_raises FOR TESTING.
     METHODS empty_ids_raise FOR TESTING.
+    METHODS malformed_id_raises FOR TESTING.
     METHODS lstate_matrix FOR TESTING.
     METHODS patch_content_partial FOR TESTING RAISING cx_static_check.
     METHODS patch_content_partial_delete FOR TESTING RAISING cx_static_check.
@@ -1399,6 +1400,18 @@ CLASS ltcl_patch IMPLEMENTATION.
         cl_abap_unit_assert=>fail( `An empty patch must be refused` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
+  ENDMETHOD.
+
+  METHOD malformed_id_raises.
+    " the IDs come from the browser: a short one must be refused, not dump
+    LOOP AT VALUE string_table( ( `` ) ( `N` ) ( `X2` ) ) INTO DATA(lv_id).
+      TRY.
+          zcl_ag2ui5_repo_service=>apply_patch( it_diff = sample_diff( )
+                                                it_ids  = VALUE #( ( lv_id ) ) ).
+          cl_abap_unit_assert=>fail( |ID "{ lv_id }" must be refused| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD lstate_matrix.
