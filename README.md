@@ -13,10 +13,13 @@ This is a proof of concept. It supports three things:
 - **Diff:** pressing a file in the status list shows its line diff, inline or
   side by side, with changes in context or the whole file. As in abapGit, the
   side that changed is the "new" one, in green.
+- **Stage, commit, push:** select the locally changed files, enter a commit
+  message, then push with a Git user and token. The credentials are used for
+  that one push only and never stored.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed.
 
-Stage, commit and push are not part of it yet.
+Not part of it yet: patch (single lines), ignore, pushing to another branch.
 
 | Repositories | Status | Diff | Pull |
 |---|---|---|---|

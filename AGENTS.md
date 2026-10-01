@@ -26,3 +26,8 @@ is in `AGENTS-LOCAL.md` if that file is present. It is Git-ignored.
   the dialog on a system.
 - Checks: `npm run check` runs abaplint and the abap2UI5 linter, including the
   render gate. ABAP Unit only runs on a system.
+- The push token must never reach the app state, which abap2UI5 writes to
+  its draft table after every round trip. `ZCL_AG2UI5_APP_STAGE->push` takes
+  it out of `mv_token` first, and the app tests check that on every path. The
+  service sets it in abapGit's login manager for the one call and clears it
+  again in every case.

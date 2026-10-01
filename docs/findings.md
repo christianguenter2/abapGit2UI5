@@ -232,3 +232,25 @@ See `docs/superpowers/specs/2026-10-01-diff-view-design.md`.
   - abapGit keeps local left and remote right in its split view, while this
     app puts old left and new right. The column titles now say which is
     which.
+
+## Slice 6: stage, commit, push (2026-10-01)
+
+See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
+
+- ABAP Unit: service 69/69, app 4/4. The app tests run the push handler with
+  doubles for the abap2UI5 client and the service. They check that the token
+  is gone from the app object after a successful push, after an error, when
+  nothing is selected, and when the committer is missing.
+- End to end on A4H25, with `$UMLAUT` and its local change in
+  `ZCL_TEST_UMLAUT`:
+  - The candidates are correct: one ADD.
+  - A push with an invalid dummy token is refused cleanly ("Unauthorized
+    access. Check your credentials").
+  - abapGit's login manager is empty afterwards.
+- abapGit stores no committer for the user, so name and e-mail start empty.
+  The app now asks for both before pushing.
+- The real push with a valid token is still open. Chris runs it himself to a
+  test repository.
+- Deployment: after the MCP edits of slice 5, abapgit-agent blocked every pull
+  of the service class (`SYSTEM_EDIT`). With Chris's OK for this one case,
+  `ignore` mode was used once; after that, pulls run normally again.
