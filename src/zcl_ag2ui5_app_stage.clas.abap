@@ -53,6 +53,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         filename    TYPE string,
         ids         TYPE string_table,
         fingerprint TYPE string,
+        "! The row's tick before its first patch, restored when no line is left
+        was_selected TYPE abap_bool,
       END OF ty_patch,
       ty_patches TYPE STANDARD TABLE OF ty_patch WITH EMPTY KEY.
     "! The picked lines per file; a file without an entry is committed whole
@@ -111,13 +113,17 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       RETURN.
     ENDIF.
 
+    READ TABLE mt_patches INTO DATA(ls_earlier)
+      WITH KEY path = is_patch-path filename = is_patch-filename.
+    DATA(lv_was_selected) = COND #( WHEN sy-subrc = 0 THEN ls_earlier-was_selected ELSE <ls_row>-selected ).
     DELETE mt_patches WHERE path = is_patch-path AND filename = is_patch-filename.
     " every line picked is the whole file, none picked is no patch
     IF is_patch-ids IS NOT INITIAL AND lines( is_patch-ids ) < is_patch-total.
-      INSERT VALUE #( path        = is_patch-path
-                      filename    = is_patch-filename
-                      ids         = is_patch-ids
-                      fingerprint = is_patch-fingerprint ) INTO TABLE mt_patches.
+      INSERT VALUE #( path         = is_patch-path
+                      filename     = is_patch-filename
+                      ids          = is_patch-ids
+                      fingerprint  = is_patch-fingerprint
+                      was_selected = lv_was_selected ) INTO TABLE mt_patches.
       <ls_row>-patched  = abap_true.
       <ls_row>-selected = abap_true.
       <ls_row>-change   = change_text( is_row    = <ls_row>
@@ -125,7 +131,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                        iv_total  = is_patch-total ).
     ELSE.
       <ls_row>-patched  = abap_false.
-      <ls_row>-selected = xsdbool( is_patch-ids IS NOT INITIAL OR <ls_row>-selected = abap_true ).
+      " all lines: the whole file; none: the tick from before the first patch
+      <ls_row>-selected = xsdbool( is_patch-ids IS NOT INITIAL OR lv_was_selected = abap_true ).
       <ls_row>-change   = change_text( <ls_row> ).
     ENDIF.
 

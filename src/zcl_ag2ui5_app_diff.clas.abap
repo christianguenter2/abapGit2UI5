@@ -252,7 +252,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       header_content->tag( `Button`
           )->a( n = `text`  v = client->_bind( mv_toggle_text )
           )->a( n = `press` v = client->_event( `TOGGLE` ) ).
-      IF mv_binary = abap_false.
+      IF mv_binary = abap_false AND mv_fingerprint IS NOT INITIAL.
         header_content->tag( `Button`
             )->a( n = `text`  v = `Apply`
             )->a( n = `type`  v = `Emphasized`
@@ -447,6 +447,10 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       WHEN `PICK_NONE`.
         pick_all( abap_false ).
       WHEN `APPLY`.
+        " the diff did not load: there is nothing to hand back
+        IF mv_fingerprint IS INITIAL.
+          RETURN.
+        ENDIF.
         " in file order, so the result does not depend on the click order
         ms_patch = VALUE #( applied     = abap_true
                             path        = mv_path

@@ -921,6 +921,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+    " abapGit's diff marks a last line without newline with a form feed when
+    " only one side has one; the patch is built from these texts, so the
+    " marker would be committed
+    LOOP AT rt_diff ASSIGNING <ls_diff>.
+      <ls_diff>-old = replace( val = <ls_diff>-old regex = |{ cl_abap_char_utilities=>form_feed }$| with = `` ).
+      <ls_diff>-new = replace( val = <ls_diff>-new regex = |{ cl_abap_char_utilities=>form_feed }$| with = `` ).
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD patch_lstate.
@@ -976,11 +984,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         zcx_abapgit_exception=>raise( |{ ls_item-filename } was changed in Git too - pull it first| ).
       ENDIF.
       " as abapGit's stage page: a file added in one folder while it still
-      " exists in another must be removed there in the same commit
+      " exists in another must be removed there in the same commit - wholly,
+      " a removal with only some lines picked keeps the file
       IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-add.
         LOOP AT it_items INTO DATA(ls_other)
             WHERE filename = ls_item-filename AND path <> ls_item-path
-              AND NOT ( selected = abap_true AND action = zif_ag2ui5_repo_service=>c_stage_action-rm ).
+              AND NOT ( selected = abap_true AND action = zif_ag2ui5_repo_service=>c_stage_action-rm
+                        AND patch_ids IS INITIAL ).
           zcx_abapgit_exception=>raise( |{ ls_item-filename } also exists in { ls_other-path } - | &&
                                         |select its removal too| ).
         ENDLOOP.
