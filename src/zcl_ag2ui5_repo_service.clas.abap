@@ -1291,6 +1291,29 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD sort_status_rows.
+
+    TYPES:
+      BEGIN OF ty_keyed,
+        unchanged TYPE abap_bool,
+        key1      TYPE string,
+        key2      TYPE string,
+        key3      TYPE string,
+        row       TYPE zif_ag2ui5_repo_service=>ty_status_row,
+      END OF ty_keyed.
+    DATA lt_keyed TYPE STANDARD TABLE OF ty_keyed WITH EMPTY KEY.
+
+    LOOP AT it_rows INTO DATA(ls_row).
+      " case is ignored: the keys are upper case
+      INSERT VALUE #( unchanged = xsdbool( iv_changes_first = abap_true AND ls_row-changed = abap_false )
+                      key1      = to_upper( COND #( WHEN iv_by = `FILE` THEN ls_row-path ELSE ls_row-obj_type ) )
+                      key2      = to_upper( COND #( WHEN iv_by = `FILE` THEN ls_row-filename ELSE ls_row-obj_name ) )
+                      key3      = to_upper( COND #( WHEN iv_by = `OBJECT` THEN ls_row-filename ) )
+                      row       = ls_row ) INTO TABLE lt_keyed.
+    ENDLOOP.
+    SORT lt_keyed STABLE BY unchanged key1 key2 key3.
+
+    rt_rows = VALUE #( FOR ls_keyed IN lt_keyed ( ls_keyed-row ) ).
+
   ENDMETHOD.
 
   METHOD change_highlight.
