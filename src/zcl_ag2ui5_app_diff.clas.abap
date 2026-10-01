@@ -67,8 +67,6 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     DATA mv_toggle_text TYPE string.
     "! INLINE or SBS
     DATA mv_layout      TYPE string VALUE `INLINE`.
-    "! Patch mode: a checkbox per changed line, Apply instead of the layout switch
-    DATA mv_patch       TYPE abap_bool.
     "! "3 of 7 lines picked"
     DATA mv_pick_text   TYPE string.
 
@@ -112,6 +110,8 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     METHODS load_diff.
     METHODS rows_build.
 
+    "! Patch mode: a checkbox per changed line, Apply instead of the layout switch
+    DATA mv_patch TYPE abap_bool.
     "! The picked patch IDs; the source of truth, rows only show it
     DATA mt_picked TYPE string_table.
     DATA mv_fingerprint TYPE string.
@@ -261,15 +261,15 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       ENDIF.
     ELSE.
       header_content->ele( `SegmentedButton`
-        )->a( n = `selectedKey`     v = client->_bind( mv_layout )
-        )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
-        )->ele( `items`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `INLINE`
-                )->a( n = `text` v = `Inline`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `SBS`
-                )->a( n = `text` v = `Side by side` ).
+          )->a( n = `selectedKey`     v = client->_bind( mv_layout )
+          )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
+          )->ele( `items`
+              )->tag( `SegmentedButtonItem`
+                  )->a( n = `key`  v = `INLINE`
+                  )->a( n = `text` v = `Inline`
+              )->tag( `SegmentedButtonItem`
+                  )->a( n = `key`  v = `SBS`
+                  )->a( n = `text` v = `Side by side` ).
       header_content->tag( `Button`
           )->a( n = `text`  v = client->_bind( mv_toggle_text )
           )->a( n = `press` v = client->_event( `TOGGLE` ) ).
