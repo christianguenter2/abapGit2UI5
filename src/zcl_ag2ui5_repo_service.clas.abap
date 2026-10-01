@@ -877,6 +877,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     rt_diff = it_diff.
     LOOP AT it_ids INTO DATA(lv_id).
+      " the IDs come from the browser
+      IF strlen( lv_id ) < 2 OR NOT ( lv_id(1) = `N` OR lv_id(1) = `O` ).
+        zcx_abapgit_exception=>raise( |Line { lv_id } is not a change| ).
+      ENDIF.
       DATA(lv_side) = substring( val = lv_id len = 1 ).
       DATA(lv_num)  = substring( val = lv_id off = 1 ).
       DATA(lv_hit)  = abap_false.

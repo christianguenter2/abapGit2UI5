@@ -1021,10 +1021,14 @@ CLASS ltcl_side_by_side IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_equals(
       act = lt_lines[ 1 ]
-      exp = line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `5` iv_text = `from git` ) ).
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line(
+              BASE line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-remote iv_remote = `5` iv_text = `from git` )
+              patch_id = `N5` ) ).
     cl_abap_unit_assert=>assert_equals(
       act = lt_lines[ 2 ]
-      exp = line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local iv_local = `6` iv_text = `only here` ) ).
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line(
+              BASE line( iv_kind = zif_ag2ui5_repo_service=>c_line_kind-local iv_local = `6` iv_text = `only here` )
+              patch_id = `O6` ) ).
   ENDMETHOD.
 
   METHOD pairs_changed_block.
