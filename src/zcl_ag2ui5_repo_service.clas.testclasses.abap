@@ -981,6 +981,9 @@ CLASS ltcl_side_by_side DEFINITION FINAL FOR TESTING
     METHODS same_and_gap FOR TESTING.
     METHODS swapped_sides FOR TESTING.
     METHODS html_escaped_and_indented FOR TESTING.
+    METHODS html_keeps_inner_spaces FOR TESTING.
+    METHODS html_expands_tabs FOR TESTING.
+    METHODS counts_follow_direction FOR TESTING.
 
     METHODS line
       IMPORTING
@@ -1078,6 +1081,30 @@ CLASS ltcl_side_by_side IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lt_rows[ 2 ]-new_text
                                         exp = `from git` ).
     cl_abap_unit_assert=>assert_true( lt_rows[ 2 ]-new_changed ).
+  ENDMETHOD.
+
+  METHOD html_keeps_inner_spaces.
+    " aligned columns, and a change that only touches blanks, must stay visible;
+    " every second blank stays a normal one, so long lines can still wrap
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>code_html( `a  = 1` )
+                                        exp = `<code>a&nbsp; = 1</code>` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>code_html( `a   = 1` )
+                                        exp = `<code>a&nbsp;&nbsp; = 1</code>` ).
+  ENDMETHOD.
+
+  METHOD html_expands_tabs.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>code_html( |{ cl_abap_char_utilities=>horizontal_tab }x| )
+      exp = `<code>&nbsp;&nbsp;&nbsp;&nbsp;x</code>` ).
+  ENDMETHOD.
+
+  METHOD counts_follow_direction.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>counts_text( iv_local = 2 iv_remote = 1 iv_remote_is_new = abap_false )
+      exp = `+2 in this system, -1 in Git` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>counts_text( iv_local = 2 iv_remote = 1 iv_remote_is_new = abap_true )
+      exp = `+1 in Git, -2 in this system` ).
   ENDMETHOD.
 
   METHOD html_escaped_and_indented.

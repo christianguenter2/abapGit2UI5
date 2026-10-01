@@ -103,6 +103,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_html) TYPE string.
 
+    "! The line counts with + for the side that changed, - for the other
+    CLASS-METHODS counts_text
+      IMPORTING
+        iv_local         TYPE i
+        iv_remote        TYPE i
+        iv_remote_is_new TYPE abap_bool
+      RETURNING
+        VALUE(rv_text)   TYPE string.
+
     "! Keeps the files that differ or are inactive
     CLASS-METHODS filter_status
       IMPORTING
@@ -762,6 +771,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(lv_indent) = strlen( iv_text ) - strlen( lv_rest ).
     rv_html = |<code>{ repeat( val = `&nbsp;` occ = lv_indent ) }{ escape( val = lv_rest format = cl_abap_format=>e_xml_text ) }</code>|.
 
+  ENDMETHOD.
+
+  METHOD counts_text.
   ENDMETHOD.
 
   METHOD filter_status.
