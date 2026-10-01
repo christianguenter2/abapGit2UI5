@@ -10,12 +10,13 @@ This is a proof of concept. It supports three things:
 - **Repository list:** all abapGit repositories of the system, with a search.
 - **Status:** the files that differ between the system and the remote, or that
   are inactive.
-- **Diff:** pressing a file in the status list shows its line diff, the system's
-  version against Git's, changes with context or the whole file.
+- **Diff:** pressing a file in the status list shows its line diff, inline or
+  side by side, with changes in context or the whole file. As in abapGit, the
+  side that changed is the "new" one, in green.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed.
 
-Stage, commit, push and a side-by-side diff are not part of it yet.
+Stage, commit and push are not part of it yet.
 
 | Repositories | Status | Diff | Pull |
 |---|---|---|---|

@@ -196,3 +196,19 @@ See `docs/superpowers/specs/2026-10-01-diff-view-design.md`.
 - abap2UI5 upstream: `escape_string` in `z2ui5_cl_ajson` escapes no control
   characters other than tab, CR and LF. This is worth an issue, because it
   affects every app.
+
+## Slice 5: side-by-side diff and direction (2026-10-01)
+
+- **Direction as in abapGit:** when only the remote changed, the remote is the
+  "new" side, in green with `+`. Otherwise the system is new. The header says
+  which way the diff reads.
+- **"Inline | Side by side"** switch. Side by side pairs a changed block line
+  by line. On narrow screens the new side moves below the old one (UI5 popin).
+- **Code is monospace** through `sap.m.FormattedText` with `<code>`. It is
+  escaped in ABAP, keeps its indentation as `&nbsp;`, wraps long lines, and
+  UI5 additionally sanitizes it. Tables grow by 500 rows at a time.
+- ABAP Unit is 60/60 (direction, swapped mapping, pairing, code HTML).
+- The screenshots use the real diff of `zabapgit.tran.xml` from A4H25. The
+  console output of `sapcli abap run` escapes `&` a second time; that is an
+  artifact of the screenshot data path, not of the app.
+- Browser test: still waiting for a login in Chrome.
