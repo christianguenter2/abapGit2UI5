@@ -296,7 +296,7 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
 Next slices, in the order agreed with Chris:
 
 1. **Patch:** staging single lines. It needs a line selection per file, with
-   abapGit's `zcl_abapgit_patch` on the same stage object.
+   abapGit's `zcl_abapgit_git_add_patch` on the same stage object. Design: `docs/superpowers/specs/2026-10-01-patch-design.md`.
 2. **Ignore and `.gitignore`** on the staging page.
 3. **Pushing to another branch, or a new one.**
 4. **Creating a transport request** from the pull dialog. Today the user is
