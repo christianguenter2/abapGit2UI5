@@ -57,6 +57,16 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mt_customizing  TYPE zif_ag2ui5_repo_service=>ty_transports.
     DATA mv_customizing  TYPE string.
 
+    TYPES:
+      BEGIN OF ty_branch_row,
+        name TYPE string,
+        text TYPE string,
+      END OF ty_branch_row,
+      ty_branch_rows TYPE STANDARD TABLE OF ty_branch_row WITH EMPTY KEY.
+    "! The branch dialog: the remote's branches, and the one picked
+    DATA mt_branches     TYPE ty_branch_rows.
+    DATA mv_branch       TYPE string.
+
     CLASS-METHODS create
       IMPORTING
         iv_key        TYPE string
@@ -75,6 +85,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
     METHODS view_display.
     METHODS popup_decisions_display.
+    METHODS popup_branches_display.
+    METHODS load_branches.
+    METHODS switch_branch.
 
     "! One group of the decision dialog; nothing when the group is empty
     METHODS group_display
@@ -165,6 +178,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `icon`    v = `sap-icon://refresh`
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
+    header_content->tag( `Button`
+        )->a( n = `text`  v = `Switch branch`
+        )->a( n = `icon`  v = `sap-icon://split`
+        )->a( n = `press` v = client->_event( `BRANCHES` ) ).
     header_content->tag( `Button`
         )->a( n = `text`    v = `Stage`
         )->a( n = `icon`    v = `sap-icon://upload`
@@ -327,6 +344,86 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD popup_branches_display.
+
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns`      v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title`        v = `Switch branch`
+            )->a( n = `contentWidth` v = `28rem` ).
+
+    DATA(box) = dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin` ).
+    box->tag( `Text`
+        )->a( n = `text`  v = `Only the branch the repository follows changes. The status then shows what a pull would bring.`
+        )->a( n = `class` v = `sapUiSmallMarginBottom` ).
+    box->tag( `Label`
+        )->a( n = `text` v = `Branch` ).
+    box->ele( `Select`
+        )->a( n = `selectedKey` v = client->_bind( mv_branch )
+        )->a( n = `width`       v = `100%`
+        )->a( n = `items`       v = client->_bind( mt_branches )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `{NAME}`
+                )->a( n = `text` v = `{TEXT}` ).
+
+    dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text`  v = `Switch`
+            )->a( n = `type`  v = `Emphasized`
+            )->a( n = `press` v = client->_event( `SWITCH_BRANCH` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`  v = `Cancel`
+            )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
+
+    client->popup_display( popup->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD load_branches.
+
+    TRY.
+        DATA(lt_branches) = service( )->list_branches( mv_key ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    CLEAR: mt_branches, mv_branch.
+    LOOP AT lt_branches INTO DATA(ls_branch).
+      INSERT VALUE #( name = ls_branch-name
+                      text = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)` ) )
+        INTO TABLE mt_branches.
+      IF ls_branch-current = abap_true.
+        mv_branch = ls_branch-name.
+      ENDIF.
+    ENDLOOP.
+    popup_branches_display( ).
+
+  ENDMETHOD.
+
+  METHOD switch_branch.
+
+    TRY.
+        service( )->switch_branch( iv_key    = mv_key
+                                   iv_branch = mv_branch ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    client->popup_destroy( ).
+    client->message_toast_display( |Following { VALUE #( mt_branches[ name = mv_branch ]-text OPTIONAL ) } now| ).
+    load_status( ).
+
+  ENDMETHOD.
+
   METHOD transport_display.
 
     IF it_transports IS INITIAL.
@@ -430,6 +527,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                                                   iv_lstate = ls_row-lstate
                                                                                   iv_rstate = ls_row-rstate ) ) ).
         ENDIF.
+      WHEN `BRANCHES`.
+        load_branches( ).
+      WHEN `SWITCH_BRANCH`.
+        switch_branch( ).
       WHEN `PULL`.
         preview_pull( ).
       WHEN `PULL_SELECTED`.
