@@ -798,6 +798,8 @@ CLASS ltcl_diff DEFINITION FINAL FOR TESTING
     METHODS compact_context_zero FOR TESTING.
     METHODS compact_empty FOR TESTING.
     METHODS map_all_results FOR TESTING.
+    METHODS map_changed_block FOR TESTING.
+    METHODS map_control_characters FOR TESTING.
 
     "! n unchanged lines, numbered from iv_from
     METHODS same_lines
@@ -890,6 +892,50 @@ CLASS ltcl_diff IMPLEMENTATION.
     DATA lt_lines TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
 
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>compact( lt_lines ) ).
+  ENDMETHOD.
+
+  METHOD map_changed_block.
+    " a run of changed lines reads as a block, as in git and abapGit
+    DATA lt_diff TYPE zif_abapgit_definitions=>ty_diffs_tt.
+
+    INSERT VALUE #( new_num = '1' new = `new 1` old_num = '1' old = `old 1`
+                    result = zif_abapgit_definitions=>c_diff-update ) INTO TABLE lt_diff.
+    INSERT VALUE #( new_num = '2' new = `new 2` old_num = '2' old = `old 2`
+                    result = zif_abapgit_definitions=>c_diff-update ) INTO TABLE lt_diff.
+    INSERT VALUE #( new_num = '3' new = `same` old_num = '3' old = `same`
+                    result = zif_abapgit_definitions=>c_diff-unchanged ) INTO TABLE lt_diff.
+
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( lt_lines )
+                                        exp = `RRLLS` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 2 ]-text
+                                        exp = `old 2` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 3 ]-text
+                                        exp = `new 1` ).
+  ENDMETHOD.
+
+  METHOD map_control_characters.
+    " abapGit marks a missing final newline with a form feed; raw control
+    " characters break the JSON the frontend parses
+    DATA lt_diff TYPE zif_abapgit_definitions=>ty_diffs_tt.
+
+    INSERT VALUE #( new_num = '1' new = |last{ cl_abap_char_utilities=>form_feed }|
+                    result = zif_abapgit_definitions=>c_diff-insert ) INTO TABLE lt_diff.
+    INSERT VALUE #( old_num = '1' old = |crlf{ cl_abap_char_utilities=>cr_lf(1) }|
+                    result = zif_abapgit_definitions=>c_diff-delete ) INTO TABLE lt_diff.
+    INSERT VALUE #( new_num = '2' new = |a{ cl_abap_char_utilities=>horizontal_tab }b|
+                    result = zif_abapgit_definitions=>c_diff-insert ) INTO TABLE lt_diff.
+
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 1 ]-text
+                                        exp = `last (no newline at end of file)` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 2 ]-text
+                                        exp = `crlf[CR]` ).
+    " a tab is legal in JSON and stays
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 3 ]-text
+                                        exp = |a{ cl_abap_char_utilities=>horizontal_tab }b| ).
   ENDMETHOD.
 
   METHOD map_all_results.
