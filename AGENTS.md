@@ -26,6 +26,7 @@ present. It is Git-ignored.
   - `merge_decisions` for pull decisions (object **and** group)
   - `effective_transport` / `assert_transport` for transport requests
   - `check_selection` / `check_push_allowed` for staged files
+  - `assert_branch` for a branch to switch to, against a fresh branch list
   - `apply_patch` and the fingerprint for picked lines: the diff is computed
     again, and a different fingerprint gives `changed`
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
@@ -45,6 +46,7 @@ present. It is Git-ignored.
 | Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `counts_text`, `visible` |
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
+| Branch | `branch_rows`, `assert_branch` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every
 row of abapGit's four check tables needs a decision, or abapGit's

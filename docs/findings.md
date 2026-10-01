@@ -350,6 +350,29 @@ See `docs/superpowers/specs/2026-10-01-patch-design.md`.
   - `check_on_navigated` could use `IS INSTANCE OF`, and has no app test of
     its own.
 
+## Slice 8: switch branch (2026-10-01)
+
+See `docs/superpowers/specs/2026-10-01-switch-branch-design.md`. A bounded
+slice: existing branches only, no new branch.
+
+- ABAP Unit: service 92/92 (6 new tests for `branch_rows` and
+  `assert_branch`), diff app 9/9, stage app 12/12.
+- Smoke test: `list_branches` gives the 9 branches of `$ABAPGIT2UI5`
+  (`main` default, the current one marked) and `main`/`Test` of `$UMLAUT`.
+  An unknown branch is refused.
+- Browser test on `$ABAPGIT2UI5`: the dialog lists the branches with
+  `main (default)` first and the current one preselected. Switching to
+  `patch` showed its head `f8c649d` and the 5 files that differ; switching
+  back gave `aa49879` and only `.abapgit.xml`, as before.
+- The first switch in the browser ended with abap2UI5's "Network error:
+  Failed to fetch". Nothing was switched, and there was no dump; the repeat
+  went through. Not reproduced.
+- The status app still has no test include. Its new code is view wiring and
+  one service call each.
+- Deployment: abapgit-agent flagged the service class and the interface with
+  `SYSTEM_EDIT` too (after the ADT writes, and its own import). All sources
+  went over ADT; `get_status` showed only `.abapgit.xml` differing.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
