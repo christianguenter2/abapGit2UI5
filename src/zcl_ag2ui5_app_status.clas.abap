@@ -28,6 +28,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         "! abapGit's one-letter states, for the diff direction
         lstate   TYPE string,
         rstate   TYPE string,
+        "! The bar at the row's left edge: which side changed
+        highlight TYPE string,
+        changed   TYPE abap_bool,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
@@ -43,7 +46,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       END OF ty_decisions.
 
     DATA ms_head         TYPE ty_head.
+    "! The rows shown: all files, or only the changed ones
     DATA mt_rows         TYPE ty_rows.
+    "! ALL or CHANGES
+    DATA mv_view         TYPE string VALUE `ALL`.
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
@@ -76,6 +82,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
+    "! Every file of the last status; the switch filters from here
+    DATA mt_all TYPE ty_rows.
+    "! Set once a status was loaded, for the empty table's text
+    DATA mv_loaded TYPE abap_bool.
     "! Which requests the open dialog asks for (request types, not bound)
     DATA:
       BEGIN OF ms_transport_types,
@@ -111,6 +121,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
     METHODS on_event.
     METHODS load_status.
+    METHODS rows_build.
     METHODS preview_pull.
     METHODS pull_selected.
 
@@ -174,6 +185,16 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
 
     DATA(header_content) = page->ele( `headerContent` ).
+    header_content->ele( `SegmentedButton`
+        )->a( n = `selectedKey`     v = client->_bind( mv_view )
+        )->a( n = `selectionChange` v = client->_event( `VIEW` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `ALL`
+                )->a( n = `text` v = `All files`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `CHANGES`
+                )->a( n = `text` v = `Changes only` ).
     header_content->tag( `Button`
         )->a( n = `icon`    v = `sap-icon://refresh`
         )->a( n = `tooltip` v = `Refresh status`
@@ -209,8 +230,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `text`  v = client->_bind( ms_head-remote_commit ) ).
 
     DATA(table) = content->ele( `Table`
-        )->a( n = `items`      v = client->_bind( mt_rows )
-        )->a( n = `noDataText` v = client->_bind( mv_no_data ) ).
+        )->a( n = `items`               v = client->_bind( mt_rows )
+        )->a( n = `noDataText`          v = client->_bind( mv_no_data )
+        )->a( n = `growing`             v = `true`
+        )->a( n = `growingThreshold`    v = `200`
+        )->a( n = `growingScrollToLoad` v = `true` ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -238,8 +262,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
-            )->a( n = `type`  v = `Navigation`
-            )->a( n = `press` v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
+            )->a( n = `type`      v = `Navigation`
+            )->a( n = `highlight` v = `{HIGHLIGHT}`
+            )->a( n = `press`     v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
             )->ele( `cells` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
@@ -341,6 +366,18 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
 
     client->popup_display( popup->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD rows_build.
+
+    mt_rows = mt_all.
+    IF mv_view = `CHANGES`.
+      DELETE mt_rows WHERE changed = abap_false.
+    ENDIF.
+    IF mv_loaded = abap_true.
+      mv_no_data = COND #( WHEN mv_view = `CHANGES` THEN `Local and remote match` ELSE `The repository has no files` ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -512,6 +549,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
+      WHEN `VIEW`.
+        rows_build( ).
       WHEN `STAGE`.
         client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
       WHEN `DIFF`.
@@ -544,13 +583,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(ls_status) = service( )->get_status( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        CLEAR mt_rows.
+        CLEAR: mt_rows, mt_all, mv_loaded.
         mv_no_data = `Status could not be loaded`.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
     ENDTRY.
 
-    mv_no_data = `Local and remote match`.
+    mv_loaded = abap_true.
     mv_can_stage = xsdbool( line_exists( ls_status-rows[ lstate = `A` ] )
                          OR line_exists( ls_status-rows[ lstate = `M` ] )
                          OR line_exists( ls_status-rows[ lstate = `D` ] ) ).
@@ -559,7 +598,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                     THEN substring( val = ls_status-remote_commit len = 7 )
                                     ELSE ls_status-remote_commit ).
 
-    CLEAR mt_rows.
+    CLEAR mt_all.
     LOOP AT ls_status-rows INTO DATA(ls_status_row).
       INSERT VALUE #( obj_type = ls_status_row-obj_type
                       obj_name = ls_status_row-obj_name
@@ -569,10 +608,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                       remote   = state_text( ls_status_row-rstate )
                       lstate   = ls_status_row-lstate
                       rstate   = ls_status_row-rstate
-                      inactive = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` ) )
-        INTO TABLE mt_rows.
+                      inactive = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` )
+                      changed   = ls_status_row-changed
+                      highlight = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate   = ls_status_row-lstate
+                                                                             iv_rstate   = ls_status_row-rstate
+                                                                             iv_inactive = ls_status_row-inactive ) )
+        INTO TABLE mt_all.
     ENDLOOP.
-
+    rows_build( ).
   ENDMETHOD.
 
   METHOD preview_pull.
