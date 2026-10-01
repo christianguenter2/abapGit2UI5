@@ -174,5 +174,25 @@ See `docs/superpowers/specs/2026-10-01-diff-view-design.md`.
   expired, and Chrome waits for a login that the agent must not enter. The
   page was checked with both linters and with a headless render that uses the
   real diff result (`docs/screenshots/diff.png`).
-- Open point: the code column is not in a monospace font yet. That is planned
-  together with side by side.
+- A review led to four fixes:
+  - **Control characters:** abapGit marks a missing final newline with a form
+    feed, and abap2UI5 does not escape it in the JSON, which would have blanked
+    the page. It now shows as "(no newline at end of file)", CR as `[CR]`, and
+    other control characters as `?`.
+  - **Changed blocks:** a run of changed lines reads as a block (all remote
+    lines, then all local), as in git.
+  - **Only the file's object is fetched**, through an object filter, as
+    abapGit's diff page does. A diff in `$ABAPGIT` (about 640 objects) takes
+    1.2 s.
+  - **A missing file** raises "File not found" instead of showing an empty
+    file.
+
+  ABAP Unit is 53/53.
+- Open points:
+  - The code column is not in a monospace font yet, and long lines are cut off.
+  - The colour of the remote side is still undecided (see below).
+
+  Both are planned together with side by side.
+- abap2UI5 upstream: `escape_string` in `z2ui5_cl_ajson` escapes no control
+  characters other than tab, CR and LF. This is worth an issue, because it
+  affects every app.
