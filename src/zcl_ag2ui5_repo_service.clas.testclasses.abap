@@ -784,3 +784,140 @@ CLASS ltcl_pull_internals IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_diff DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS compact_no_change FOR TESTING.
+    METHODS compact_change_in_middle FOR TESTING.
+    METHODS compact_change_at_edges FOR TESTING.
+    METHODS compact_context_overlaps FOR TESTING.
+    METHODS compact_context_zero FOR TESTING.
+    METHODS compact_empty FOR TESTING.
+    METHODS map_all_results FOR TESTING.
+
+    "! n unchanged lines, numbered from iv_from
+    METHODS same_lines
+      IMPORTING
+        iv_count        TYPE i
+        iv_from         TYPE i DEFAULT 1
+      RETURNING
+        VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    METHODS kinds
+      IMPORTING
+        it_lines       TYPE zif_ag2ui5_repo_service=>ty_diff_lines
+      RETURNING
+        VALUE(rv_text) TYPE string.
+
+ENDCLASS.
+
+
+CLASS ltcl_diff IMPLEMENTATION.
+
+  METHOD same_lines.
+    DO iv_count TIMES.
+      DATA(lv_num) = |{ iv_from + sy-index - 1 }|.
+      INSERT VALUE #( local_num = lv_num remote_num = lv_num text = |line { lv_num }|
+                      kind = zif_ag2ui5_repo_service=>c_line_kind-same ) INTO TABLE rt_lines.
+    ENDDO.
+  ENDMETHOD.
+
+  METHOD kinds.
+    " one letter per line: S same, L local, R remote, G gap
+    LOOP AT it_lines INTO DATA(ls_line).
+      rv_text = rv_text && ls_line-kind(1).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD compact_no_change.
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>compact( same_lines( 20 ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( lt_lines )
+                                        exp = `G` ).
+  ENDMETHOD.
+
+  METHOD compact_change_in_middle.
+    DATA(lt_lines) = same_lines( 10 ).
+    INSERT VALUE #( local_num = `11` text = `new` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_lines.
+    INSERT LINES OF same_lines( iv_count = 10 iv_from = 12 ) INTO TABLE lt_lines.
+
+    DATA(lt_compact) = zcl_ag2ui5_repo_service=>compact( lt_lines ).
+
+    " 7 unchanged, 3 context, the change, 3 context, 7 unchanged
+    cl_abap_unit_assert=>assert_equals( act = kinds( lt_compact )
+                                        exp = `GSSSLSSSG` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lt_compact[ 1 ]-text
+                                         exp = `*7 unchanged lines*` ).
+  ENDMETHOD.
+
+  METHOD compact_change_at_edges.
+    DATA lt_lines TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    INSERT VALUE #( remote_num = `1` text = `old` kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE lt_lines.
+    INSERT LINES OF same_lines( 10 ) INTO TABLE lt_lines.
+    INSERT VALUE #( local_num = `11` text = `new` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_lines.
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( zcl_ag2ui5_repo_service=>compact( lt_lines ) )
+                                        exp = `RSSSGSSSL` ).
+  ENDMETHOD.
+
+  METHOD compact_context_overlaps.
+    " two changes 4 lines apart: their contexts touch, so no gap between them
+    DATA(lt_lines) = same_lines( 5 ).
+    INSERT VALUE #( local_num = `6` text = `a` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_lines.
+    INSERT LINES OF same_lines( iv_count = 4 iv_from = 7 ) INTO TABLE lt_lines.
+    INSERT VALUE #( local_num = `11` text = `b` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_lines.
+    INSERT LINES OF same_lines( iv_count = 5 iv_from = 12 ) INTO TABLE lt_lines.
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( zcl_ag2ui5_repo_service=>compact( lt_lines ) )
+                                        exp = `GSSSLSSSSLSSSG` ).
+  ENDMETHOD.
+
+  METHOD compact_context_zero.
+    DATA(lt_lines) = same_lines( 3 ).
+    INSERT VALUE #( local_num = `4` text = `new` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_lines.
+    INSERT LINES OF same_lines( iv_count = 3 iv_from = 5 ) INTO TABLE lt_lines.
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( zcl_ag2ui5_repo_service=>compact( it_lines = lt_lines iv_context = 0 ) )
+                                        exp = `GLG` ).
+  ENDMETHOD.
+
+  METHOD compact_empty.
+    DATA lt_lines TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>compact( lt_lines ) ).
+  ENDMETHOD.
+
+  METHOD map_all_results.
+    DATA lt_diff TYPE zif_abapgit_definitions=>ty_diffs_tt.
+
+    INSERT VALUE #( new_num = '1' new = `same` old_num = '1' old = `same`
+                    result = zif_abapgit_definitions=>c_diff-unchanged ) INTO TABLE lt_diff.
+    INSERT VALUE #( new_num = '2' new = `added`
+                    result = zif_abapgit_definitions=>c_diff-insert ) INTO TABLE lt_diff.
+    INSERT VALUE #( old_num = '2' old = `removed`
+                    result = zif_abapgit_definitions=>c_diff-delete ) INTO TABLE lt_diff.
+    INSERT VALUE #( new_num = '3' new = `changed new` old_num = '3' old = `changed old`
+                    result = zif_abapgit_definitions=>c_diff-update ) INTO TABLE lt_diff.
+
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+
+    cl_abap_unit_assert=>assert_equals( act = kinds( lt_lines )
+                                        exp = `SLRRL` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_lines[ 4 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( remote_num = `3` text = `changed old`
+                                                          kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lt_lines[ 5 ]
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( local_num = `3` text = `changed new`
+                                                          kind = zif_ag2ui5_repo_service=>c_line_kind-local ) ).
+    cl_abap_unit_assert=>assert_equals( act = lt_lines[ 1 ]-local_num
+                                        exp = `1` ).
+  ENDMETHOD.
+
+ENDCLASS.

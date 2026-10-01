@@ -60,6 +60,22 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Every change with iv_context unchanged lines around it; each longer
+    "! unchanged run becomes one gap line
+    CLASS-METHODS compact
+      IMPORTING
+        it_lines        TYPE zif_ag2ui5_repo_service=>ty_diff_lines
+        iv_context      TYPE i DEFAULT 3
+      RETURNING
+        VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    "! abapGit's diff (local = new, remote = old) as plain lines
+    CLASS-METHODS map_diff
+      IMPORTING
+        it_diff         TYPE zif_abapgit_definitions=>ty_diffs_tt
+      RETURNING
+        VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
     "! Keeps the files that differ or are inactive
     CLASS-METHODS filter_status
       IMPORTING
@@ -448,6 +464,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                           THEN zif_abapgit_definitions=>c_yes
                           ELSE zif_abapgit_definitions=>c_no ).
 
+  ENDMETHOD.
+
+  METHOD compact.
+  ENDMETHOD.
+
+  METHOD map_diff.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~get_diff.
   ENDMETHOD.
 
   METHOD filter_status.

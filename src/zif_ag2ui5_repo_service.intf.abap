@@ -123,6 +123,37 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       messages TYPE ty_messages,
     END OF ty_pull_result.
 
+  TYPES ty_line_kind TYPE string.
+
+  CONSTANTS:
+    BEGIN OF c_line_kind,
+      same   TYPE ty_line_kind VALUE `SAME`,
+      "! Only in this system
+      local  TYPE ty_line_kind VALUE `LOCAL`,
+      "! Only in Git
+      remote TYPE ty_line_kind VALUE `REMOTE`,
+      "! A run of unchanged lines that compact( ) left out
+      gap    TYPE ty_line_kind VALUE `GAP`,
+    END OF c_line_kind.
+
+  TYPES:
+    BEGIN OF ty_diff_line,
+      local_num  TYPE string,
+      remote_num TYPE string,
+      text       TYPE string,
+      kind       TYPE ty_line_kind,
+    END OF ty_diff_line,
+    ty_diff_lines TYPE STANDARD TABLE OF ty_diff_line WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_diff,
+      lines        TYPE ty_diff_lines,
+      "! Lines only in this system / only in Git
+      local_count  TYPE i,
+      remote_count TYPE i,
+      binary       TYPE abap_bool,
+    END OF ty_diff.
+
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos
@@ -171,6 +202,17 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_type              TYPE string
     RETURNING
       VALUE(rt_transports) TYPE ty_transports
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Line diff of one file, the system's version against Git's
+  METHODS get_diff
+    IMPORTING
+      iv_key         TYPE string
+      iv_path        TYPE string
+      iv_filename    TYPE string
+    RETURNING
+      VALUE(rs_diff) TYPE ty_diff
     RAISING
       zcx_abapgit_exception.
 
