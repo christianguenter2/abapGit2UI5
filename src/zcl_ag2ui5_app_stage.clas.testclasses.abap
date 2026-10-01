@@ -74,6 +74,7 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS token_cleared_after_push FOR TESTING.
     METHODS token_cleared_after_error FOR TESTING.
     METHODS token_cleared_without_select FOR TESTING.
+    METHODS committer_required FOR TESTING.
 
 ENDCLASS.
 
@@ -91,6 +92,8 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->ms_commit-title = `Test`.
     mo_app->mv_user  = `someone`.
     mo_app->mv_token = `secret-token`.
+    mo_app->ms_commit-name  = `Someone`.
+    mo_app->ms_commit-email = `someone@example.com`.
   ENDMETHOD.
 
   METHOD token_cleared_after_push.
@@ -121,6 +124,18 @@ CLASS ltcl_push IMPLEMENTATION.
 
     cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_received_token ).
+  ENDMETHOD.
+
+  METHOD committer_required.
+    " abapGit needs a committer; without one the push must not start
+    CLEAR mo_app->ms_commit-email.
+
+    mo_app->z2ui5_if_app~main( mo_client ).
+
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_received_token ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message
+                                         exp = `*committer*` ).
   ENDMETHOD.
 
 ENDCLASS.
