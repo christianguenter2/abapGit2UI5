@@ -625,6 +625,19 @@ CLASS ltcl_status_rows DEFINITION FINAL FOR TESTING
   PRIVATE SECTION.
     METHODS every_file_kept FOR TESTING.
     METHODS highlight_per_side FOR TESTING.
+    METHODS sort_by_object FOR TESTING.
+    METHODS sort_by_file FOR TESTING.
+    METHODS sort_by_type FOR TESTING.
+    METHODS changes_on_top FOR TESTING.
+    "! b.prog (changed), A.clas xml + abap, a.intf in /src/z/ (changed)
+    METHODS unsorted
+      RETURNING
+        VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+    METHODS order
+      IMPORTING
+        it_rows        TYPE zif_ag2ui5_repo_service=>ty_status_rows
+      RETURNING
+        VALUE(rv_text) TYPE string.
 
 ENDCLASS.
 
@@ -666,6 +679,44 @@ CLASS ltcl_status_rows IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lt_rows[ 3 ]
       exp = VALUE zif_ag2ui5_repo_service=>ty_status_row( obj_type = `CLAS` obj_name = `ZCL_CHANGED` lstate = `M` changed = abap_true ) ).
+  ENDMETHOD.
+
+  METHOD unsorted.
+    rt_rows = VALUE #(
+      ( obj_type = `PROG` obj_name = `ZB`  path = `/src/`   filename = `zb.prog.abap` changed = abap_true )
+      ( obj_type = `CLAS` obj_name = `za`  path = `/src/`   filename = `za.clas.xml` )
+      ( obj_type = `CLAS` obj_name = `ZA`  path = `/src/`   filename = `za.clas.abap` )
+      ( obj_type = `INTF` obj_name = `ZC`  path = `/src/z/` filename = `a.intf.abap` changed = abap_true ) ).
+  ENDMETHOD.
+
+  METHOD order.
+    rv_text = concat_lines_of( table = VALUE string_table( FOR r IN it_rows ( r-filename ) ) sep = `,` ).
+  ENDMETHOD.
+
+  METHOD sort_by_object.
+    " type, then name ignoring case, then file: a class's files stay together
+    cl_abap_unit_assert=>assert_equals(
+      act = order( zcl_ag2ui5_repo_service=>sort_status_rows( it_rows = unsorted( ) iv_by = `OBJECT` iv_changes_first = abap_false ) )
+      exp = `za.clas.abap,za.clas.xml,a.intf.abap,zb.prog.abap` ).
+  ENDMETHOD.
+
+  METHOD sort_by_file.
+    cl_abap_unit_assert=>assert_equals(
+      act = order( zcl_ag2ui5_repo_service=>sort_status_rows( it_rows = unsorted( ) iv_by = `FILE` iv_changes_first = abap_false ) )
+      exp = `za.clas.abap,za.clas.xml,zb.prog.abap,a.intf.abap` ).
+  ENDMETHOD.
+
+  METHOD sort_by_type.
+    " within a type and name the original order stays
+    cl_abap_unit_assert=>assert_equals(
+      act = order( zcl_ag2ui5_repo_service=>sort_status_rows( it_rows = unsorted( ) iv_by = `TYPE` iv_changes_first = abap_false ) )
+      exp = `za.clas.xml,za.clas.abap,a.intf.abap,zb.prog.abap` ).
+  ENDMETHOD.
+
+  METHOD changes_on_top.
+    cl_abap_unit_assert=>assert_equals(
+      act = order( zcl_ag2ui5_repo_service=>sort_status_rows( it_rows = unsorted( ) iv_by = `OBJECT` iv_changes_first = abap_true ) )
+      exp = `a.intf.abap,zb.prog.abap,za.clas.abap,za.clas.xml` ).
   ENDMETHOD.
 
   METHOD highlight_per_side.

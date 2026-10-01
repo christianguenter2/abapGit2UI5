@@ -209,6 +209,17 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_status_rows.
 
+    "! The status rows in order: OBJECT (type, name, file), FILE (path, file)
+    "! or TYPE (type, name); case is ignored. With iv_changes_first, the
+    "! changed rows come first, in the same order among themselves
+    CLASS-METHODS sort_status_rows
+      IMPORTING
+        it_rows          TYPE zif_ag2ui5_repo_service=>ty_status_rows
+        iv_by            TYPE string
+        iv_changes_first TYPE abap_bool
+      RETURNING
+        VALUE(rt_rows)   TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+
     "! The row highlight of a status row: Warning for a local change,
     "! Information for a change in Git only, Error for both, None otherwise
     CLASS-METHODS change_highlight
@@ -1277,6 +1288,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         INTO TABLE rt_rows.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD sort_status_rows.
   ENDMETHOD.
 
   METHOD change_highlight.
