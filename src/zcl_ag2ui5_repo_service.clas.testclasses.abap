@@ -1125,6 +1125,10 @@ CLASS ltcl_stage DEFINITION FINAL FOR TESTING
     METHODS selection_still_valid FOR TESTING RAISING cx_static_check.
     METHODS selection_file_gone FOR TESTING.
     METHODS selection_action_changed FOR TESTING.
+    METHODS selection_remote_changed FOR TESTING.
+    METHODS conflict_refused FOR TESTING.
+    METHODS moved_needs_old_path FOR TESTING.
+    METHODS moved_with_old_path FOR TESTING RAISING cx_static_check.
     METHODS message_title_only FOR TESTING.
     METHODS message_with_body FOR TESTING.
 
@@ -1149,7 +1153,7 @@ CLASS ltcl_stage IMPLEMENTATION.
 
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_A' path = '/src/' filename = 'zcl_a.clas.abap' lstate = 'M' ) INTO TABLE lt_results.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_B' path = '/src/' filename = 'zcl_b.clas.abap' lstate = 'D' ) INTO TABLE lt_results.
-    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_C' path = '/src/' filename = 'zcl_c.clas.abap' lstate = 'A' ) INTO TABLE lt_results.
+    INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_C' path = '/src/' filename = 'zcl_c.clas.abap' lstate = 'A' rstate = 'M' ) INTO TABLE lt_results.
     " changed only remotely, or not at all: nothing to commit
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_D' path = '/src/' filename = 'zcl_d.clas.abap' rstate = 'M' ) INTO TABLE lt_results.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_E' path = '/src/' filename = 'zcl_e.clas.abap' match = abap_true ) INTO TABLE lt_results.
@@ -1165,6 +1169,8 @@ CLASS ltcl_stage IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_c.clas.abap` ]-obj_name
                                         exp = `ZCL_C` ).
     cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_c.clas.abap` ]-rstate
+                                        exp = `M` ).
   ENDMETHOD.
 
   METHOD selection_still_valid.
@@ -1193,6 +1199,50 @@ CLASS ltcl_stage IMPLEMENTATION.
         cl_abap_unit_assert=>fail( `A changed action was accepted` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
+  ENDMETHOD.
+
+  METHOD selection_remote_changed.
+    " Git touched the file between page load and push
+    DATA(ls_fresh) = item( `zcl_a.clas.abap` ).
+    ls_fresh-rstate = `M`.
+    TRY.
+        zcl_ag2ui5_repo_service=>check_selection(
+          it_fresh    = VALUE #( ( ls_fresh ) )
+          it_selected = VALUE #( ( item( `zcl_a.clas.abap` ) ) ) ).
+        cl_abap_unit_assert=>fail( `A remote change since the page load was not detected` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD conflict_refused.
+    " changed on both sides: pushing would overwrite the remote change
+    DATA(ls_item) = item( `zcl_a.clas.abap` ).
+    ls_item-rstate = `M`.
+    TRY.
+        zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_item ) ) ).
+        cl_abap_unit_assert=>fail( `A file changed in Git too was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD moved_needs_old_path.
+    " the object moved folders: adding the new path alone duplicates it
+    DATA(ls_new) = item( `zcl_a.clas.abap` ).
+    ls_new-path = `/src/new/`.
+    DATA(ls_old) = item( iv_filename = `zcl_a.clas.abap` iv_action = `RM` ).
+    ls_old-selected = abap_false.
+    TRY.
+        zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_new ) ( ls_old ) ) ).
+        cl_abap_unit_assert=>fail( `A move without removing the old path was accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD moved_with_old_path.
+    DATA(ls_new) = item( `zcl_a.clas.abap` ).
+    ls_new-path = `/src/new/`.
+    zcl_ag2ui5_repo_service=>check_push_allowed(
+      VALUE #( ( ls_new ) ( item( iv_filename = `zcl_a.clas.abap` iv_action = `RM` ) ) ) ).
   ENDMETHOD.
 
   METHOD message_title_only.

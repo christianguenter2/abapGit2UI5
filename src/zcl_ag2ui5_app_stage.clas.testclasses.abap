@@ -34,6 +34,16 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~message_box_display.
     mv_message = text.
   ENDMETHOD.
+
+  METHOD z2ui5_if_client~get_event_arg.
+    result = SWITCH #( v WHEN 1 THEN `/src/` ELSE `zcl_a.clas.abap` ).
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~nav_app_call ##NEEDED.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~nav_app_leave ##NEEDED.
+  ENDMETHOD.
 ENDCLASS.
 
 
@@ -75,6 +85,7 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS token_cleared_after_error FOR TESTING.
     METHODS token_cleared_without_select FOR TESTING.
     METHODS committer_required FOR TESTING.
+    METHODS token_cleared_on_other_events FOR TESTING.
 
 ENDCLASS.
 
@@ -136,6 +147,20 @@ CLASS ltcl_push IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message
                                          exp = `*committer*` ).
+  ENDMETHOD.
+
+  METHOD token_cleared_on_other_events.
+    " abap2UI5 saves the draft after every event, and a typed token arrives
+    " with whatever button is pressed next
+    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `BACK` ) ) INTO DATA(lv_event).
+      mo_app->mv_token = `secret-token`.
+      mo_client->mv_event = lv_event.
+
+      mo_app->z2ui5_if_app~main( mo_client ).
+
+      cl_abap_unit_assert=>assert_initial( act = mo_app->mv_token
+                                           msg = |Token kept after { lv_event }| ).
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

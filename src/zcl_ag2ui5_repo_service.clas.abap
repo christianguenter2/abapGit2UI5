@@ -127,6 +127,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Refuses what abapGit's stage page refuses: a file Git changed too
+    "! (pushing would overwrite that change), and an object moved to another
+    "! folder whose old path is not removed in the same commit
+    CLASS-METHODS check_push_allowed
+      IMPORTING
+        it_items TYPE zif_ag2ui5_repo_service=>ty_stage_items
+      RAISING
+        zcx_abapgit_exception.
+
     "! The title, and after an empty line the body, if there is one
     CLASS-METHODS commit_message
       IMPORTING
@@ -846,6 +855,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD check_push_allowed.
   ENDMETHOD.
 
   METHOD commit_message.

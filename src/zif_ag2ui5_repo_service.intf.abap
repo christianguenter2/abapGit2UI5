@@ -188,6 +188,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       obj_type TYPE string,
       obj_name TYPE string,
       lstate   TYPE string,
+      "! Set when Git changed the file too - it must be pulled first
+      rstate   TYPE string,
       action   TYPE ty_stage_action,
       selected TYPE abap_bool,
     END OF ty_stage_item,
