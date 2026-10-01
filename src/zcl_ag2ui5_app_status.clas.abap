@@ -25,6 +25,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         local    TYPE string,
         remote   TYPE string,
         inactive TYPE string,
+        "! abapGit's one-letter states, for the diff direction
+        lstate   TYPE string,
+        rstate   TYPE string,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
@@ -413,7 +416,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                              iv_path     = ls_row-path
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
-                                                             iv_obj_name = ls_row-obj_name ) ).
+                                                             iv_obj_name = ls_row-obj_name
+                                                             iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
+                                                                                  iv_lstate = ls_row-lstate
+                                                                                  iv_rstate = ls_row-rstate ) ) ).
         ENDIF.
       WHEN `PULL`.
         preview_pull( ).
@@ -448,6 +454,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                       filename = ls_status_row-filename
                       local    = state_text( ls_status_row-lstate )
                       remote   = state_text( ls_status_row-rstate )
+                      lstate   = ls_status_row-lstate
+                      rstate   = ls_status_row-rstate
                       inactive = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` ) )
         INTO TABLE mt_rows.
     ENDLOOP.

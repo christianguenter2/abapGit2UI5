@@ -9,9 +9,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
 
     TYPES:
       BEGIN OF ty_head,
-        title  TYPE string,
-        file   TYPE string,
-        counts TYPE string,
+        title     TYPE string,
+        file      TYPE string,
+        counts    TYPE string,
+        direction TYPE string,
       END OF ty_head.
 
     TYPES:
@@ -19,16 +20,33 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         remote_num TYPE string,
         local_num  TYPE string,
         marker     TYPE string,
-        text       TYPE string,
-        "! sap.ui.core.MessageType of the row: Success local, Error remote
+        "! The line for sap.m.FormattedText: escaped, monospace
+        code_html  TYPE string,
+        "! sap.ui.core.MessageType of the row: Success new, Error old
         highlight  TYPE string,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
+    TYPES:
+      BEGIN OF ty_sbs_row,
+        old_num        TYPE string,
+        old_html       TYPE string,
+        "! ObjectStatus marker per side: - (Error) old, + (Success) new
+        old_marker     TYPE string,
+        new_num        TYPE string,
+        new_html       TYPE string,
+        new_marker     TYPE string,
+        highlight      TYPE string,
+      END OF ty_sbs_row,
+      ty_sbs_rows TYPE STANDARD TABLE OF ty_sbs_row WITH EMPTY KEY.
+
     DATA ms_head        TYPE ty_head.
     "! Only the visible rows travel to the browser
     DATA mt_rows        TYPE ty_rows.
+    DATA mt_sbs         TYPE ty_sbs_rows.
     DATA mv_toggle_text TYPE string.
+    "! INLINE or SBS
+    DATA mv_layout      TYPE string VALUE `INLINE`.
 
     CLASS-METHODS create
       IMPORTING
@@ -37,6 +55,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         iv_filename   TYPE string
         iv_obj_type   TYPE string
         iv_obj_name   TYPE string
+        iv_remote_is_new TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_diff.
 
@@ -47,10 +66,17 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     DATA mv_filename TYPE string.
     DATA mv_show_all TYPE abap_bool.
     DATA mv_binary TYPE abap_bool.
+    DATA mv_remote_is_new TYPE abap_bool.
     "! Every line of the diff - serialized with the app, never sent to the browser
     DATA mt_all TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
 
     METHODS view_display.
+    METHODS inline_display
+      IMPORTING
+        io_content TYPE REF TO z2ui5_cl_ui5_view_builder.
+    METHODS side_by_side_display
+      IMPORTING
+        io_content TYPE REF TO z2ui5_cl_ui5_view_builder.
     METHODS on_event.
     METHODS load_diff.
     METHODS rows_build.
@@ -70,6 +96,10 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->mv_filename  = iv_filename.
     ro_app->ms_head-title = |{ iv_obj_type } { iv_obj_name }|.
     ro_app->ms_head-file  = |{ iv_path }{ iv_filename }|.
+    ro_app->mv_remote_is_new = iv_remote_is_new.
+    ro_app->ms_head-direction = COND #( WHEN iv_remote_is_new = abap_true
+                                        THEN `Changes in Git, compared with this system`
+                                        ELSE `Changes in this system, compared with Git` ).
 
   ENDMETHOD.
 
@@ -101,10 +131,20 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `showNavButton`  v = `true`
         )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
 
-    page->ele( `headerContent`
-        )->tag( `Button`
-            )->a( n = `text`  v = client->_bind( mv_toggle_text )
-            )->a( n = `press` v = client->_event( `TOGGLE` ) ).
+    DATA(header_content) = page->ele( `headerContent` ).
+    header_content->ele( `SegmentedButton`
+        )->a( n = `selectedKey`     v = client->_bind( mv_layout )
+        )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `INLINE`
+                )->a( n = `text` v = `Inline`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `SBS`
+                )->a( n = `text` v = `Side by side` ).
+    header_content->tag( `Button`
+        )->a( n = `text`  v = client->_bind( mv_toggle_text )
+        )->a( n = `press` v = client->_event( `TOGGLE` ) ).
 
     DATA(content) = page->ele( `content` ).
 
@@ -113,10 +153,13 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->ele( `attributes`
             )->tag( `ObjectAttribute`
                 )->a( n = `title` v = `Lines`
-                )->a( n = `text`  v = client->_bind( ms_head-counts ) ).
+                )->a( n = `text`  v = client->_bind( ms_head-counts )
+            )->tag( `ObjectAttribute`
+                )->a( n = `title` v = `Direction`
+                )->a( n = `text`  v = client->_bind( ms_head-direction ) ).
 
     content->tag( `MessageStrip`
-        )->a( n = `text`     v = `Local: the version in this system. Remote: the version in Git.`
+        )->a( n = `text`     v = `Local: the version in this system. Remote: the version in Git. Green (+) is the side that changed.`
         )->a( n = `showIcon` v = `true`
         )->a( n = `class`    v = `sapUiSmallMarginBeginEnd` ).
 
@@ -130,10 +173,25 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    DATA(table) = content->ele( `Table`
-        )->a( n = `items`      v = client->_bind( mt_rows )
-        )->a( n = `noDataText` v = `Empty file`
-        )->a( n = `class`      v = `sapUiSmallMarginTop` ).
+    IF mv_layout = `SBS`.
+      side_by_side_display( content ).
+    ELSE.
+      inline_display( content ).
+    ENDIF.
+
+    client->view_display( view->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD inline_display.
+
+    DATA(table) = io_content->ele( `Table`
+        )->a( n = `items`               v = client->_bind( mt_rows )
+        )->a( n = `noDataText`          v = `Empty file`
+        )->a( n = `growing`             v = `true`
+        )->a( n = `growingThreshold`    v = `500`
+        )->a( n = `growingScrollToLoad` v = `true`
+        )->a( n = `class`               v = `sapUiSmallMarginTop` ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -160,12 +218,66 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `text` v = `{LOCAL_NUM}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{MARKER}` ).
-    cells->tag( `Text`
-        )->a( n = `text`             v = `{TEXT}`
-        )->a( n = `renderWhitespace` v = `true`
-        )->a( n = `wrapping`         v = `false` ).
+    cells->tag( `FormattedText`
+        )->a( n = `htmlText` v = `{CODE_HTML}` ).
 
-    client->view_display( view->stringify( ) ).
+  ENDMETHOD.
+
+  METHOD side_by_side_display.
+
+    DATA(table) = io_content->ele( `Table`
+        )->a( n = `items`               v = client->_bind( mt_sbs )
+        )->a( n = `noDataText`          v = `Empty file`
+        )->a( n = `growing`             v = `true`
+        )->a( n = `growingThreshold`    v = `500`
+        )->a( n = `growingScrollToLoad` v = `true`
+        )->a( n = `class`               v = `sapUiSmallMarginTop` ).
+
+    " on narrow screens the new side pops in below the old one
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `4rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Old` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `2rem` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Code` ).
+    columns->ele( `Column`
+        )->a( n = `width`          v = `4rem`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `New` ).
+    columns->ele( `Column`
+        )->a( n = `width`          v = `2rem`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true` ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Code` ).
+
+    DATA(cells) = table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->a( n = `highlight` v = `{HIGHLIGHT}`
+            )->ele( `cells` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{OLD_NUM}` ).
+    cells->tag( `ObjectStatus`
+        )->a( n = `text`  v = `{OLD_MARKER}`
+        )->a( n = `state` v = `Error` ).
+    cells->tag( `FormattedText`
+        )->a( n = `htmlText` v = `{OLD_HTML}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{NEW_NUM}` ).
+    cells->tag( `ObjectStatus`
+        )->a( n = `text`  v = `{NEW_MARKER}`
+        )->a( n = `state` v = `Success` ).
+    cells->tag( `FormattedText`
+        )->a( n = `htmlText` v = `{NEW_HTML}` ).
 
   ENDMETHOD.
 
@@ -177,6 +289,9 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       WHEN `TOGGLE`.
         mv_show_all = xsdbool( mv_show_all = abap_false ).
         rows_build( ).
+      WHEN `LAYOUT`.
+        " the layout changes the view's structure, not only its data
+        view_display( ).
     ENDCASE.
 
   ENDMETHOD.
@@ -187,7 +302,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         DATA(ls_diff) = NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~get_diff(
           iv_key      = mv_key
           iv_path     = mv_path
-          iv_filename = mv_filename ).
+          iv_filename = mv_filename
+          iv_remote_is_new = mv_remote_is_new ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
@@ -207,20 +323,44 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                              ELSE zcl_ag2ui5_repo_service=>compact( mt_all ) ).
     mv_toggle_text = COND #( WHEN mv_show_all = abap_true THEN `Changes only` ELSE `Show all` ).
 
+    " green and + for the side that changed, red and - for the other
+    DATA(lv_new_kind) = COND zif_ag2ui5_repo_service=>ty_line_kind(
+      WHEN mv_remote_is_new = abap_true THEN zif_ag2ui5_repo_service=>c_line_kind-remote
+      ELSE zif_ag2ui5_repo_service=>c_line_kind-local ).
+
     CLEAR mt_rows.
     LOOP AT lt_lines INTO DATA(ls_line).
       INSERT VALUE #( remote_num = ls_line-remote_num
                       local_num  = ls_line-local_num
-                      text       = ls_line-text
-                      marker     = SWITCH #( ls_line-kind
-                                             WHEN zif_ag2ui5_repo_service=>c_line_kind-local  THEN `+`
-                                             WHEN zif_ag2ui5_repo_service=>c_line_kind-remote THEN `-` )
-                      highlight  = SWITCH #( ls_line-kind
-                                             WHEN zif_ag2ui5_repo_service=>c_line_kind-local  THEN `Success`
-                                             WHEN zif_ag2ui5_repo_service=>c_line_kind-remote THEN `Error`
-                                             WHEN zif_ag2ui5_repo_service=>c_line_kind-gap    THEN `Information`
-                                             ELSE `None` ) )
+                      code_html  = zcl_ag2ui5_repo_service=>code_html( ls_line-text )
+                      marker     = COND #( WHEN ls_line-kind = lv_new_kind THEN `+`
+                                           WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-local
+                                             OR ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-remote THEN `-` )
+                      highlight  = COND #( WHEN ls_line-kind = lv_new_kind THEN `Success`
+                                           WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-local
+                                             OR ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-remote THEN `Error`
+                                           WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-gap THEN `Information`
+                                           ELSE `None` ) )
         INTO TABLE mt_rows.
+    ENDLOOP.
+
+    CLEAR mt_sbs.
+    LOOP AT zcl_ag2ui5_repo_service=>to_side_by_side( it_lines         = lt_lines
+                                                      iv_remote_is_new = mv_remote_is_new ) INTO DATA(ls_sbs).
+      INSERT VALUE #( old_num    = ls_sbs-old_num
+                      old_html   = COND #( WHEN ls_sbs-gap = abap_true
+                                           THEN |<em>{ escape( val = ls_sbs-old_text format = cl_abap_format=>e_xml_text ) }</em>|
+                                           ELSE zcl_ag2ui5_repo_service=>code_html( ls_sbs-old_text ) )
+                      old_marker = COND #( WHEN ls_sbs-old_changed = abap_true THEN `-` )
+                      new_num    = ls_sbs-new_num
+                      new_html   = COND #( WHEN ls_sbs-gap = abap_false THEN zcl_ag2ui5_repo_service=>code_html( ls_sbs-new_text ) )
+                      new_marker = COND #( WHEN ls_sbs-new_changed = abap_true THEN `+` )
+                      highlight  = COND #( WHEN ls_sbs-gap = abap_true THEN `Information`
+                                           WHEN ls_sbs-old_changed = abap_true AND ls_sbs-new_changed = abap_true THEN `Warning`
+                                           WHEN ls_sbs-new_changed = abap_true THEN `Success`
+                                           WHEN ls_sbs-old_changed = abap_true THEN `Error`
+                                           ELSE `None` ) )
+        INTO TABLE mt_sbs.
     ENDLOOP.
 
   ENDMETHOD.
