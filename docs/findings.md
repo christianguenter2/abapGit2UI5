@@ -376,9 +376,27 @@ slice: existing branches only, no new branch.
   `SYSTEM_EDIT` too (after the ADT writes, and its own import). All sources
   went over ADT; `get_status` showed only `.abapgit.xml` differing.
 
+## Slice 9: status lists all files (2026-10-01)
+
+See `docs/superpowers/specs/2026-10-01-all-files-design.md`. A bounded
+slice, one row per file; a per-object view with a switch comes later.
+
+- ABAP Unit: service 93/93 (`status_rows` replaces `filter_status`;
+  `change_highlight`), diff app 9/9, stage app 12/12.
+- Browser: `$UMLAUT` shows 4 files, one marked; "Changes only" shows that
+  one, "All files" the 4 again, without a new fetch. `$ABAPGIT2UI5` shows
+  21 files.
+- While checking, `ZCL_TEST_UMLAUT` showed as "changed in Git only" after
+  Chris's partial push. That is correct: both comments were removed in the
+  system afterwards, and Git still has the pushed one. The checksums of a
+  partial push are as in abapGit (the pushed content's SHA1).
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
+
+- **Create a new branch** (needs credentials: it pushes a new ref).
+- **A per-object view** of the status, with a switch to the per-file view.
 
 1. **Ignore and `.gitignore`** on the staging page.
 2. **Pushing to another branch, or a new one.**
