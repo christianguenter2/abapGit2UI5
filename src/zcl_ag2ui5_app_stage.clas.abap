@@ -1,5 +1,6 @@
 "! Select locally changed files, commit them and push. The credentials are
-"! used for the push only: the token is cleared before the state is saved
+"! used for the push only: the token is cleared on every event, before
+"! abap2UI5 saves the state
 CLASS zcl_ag2ui5_app_stage DEFINITION
   PUBLIC
   FINAL
@@ -15,6 +16,7 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         obj_type TYPE string,
         obj_name TYPE string,
         lstate   TYPE string,
+        rstate   TYPE string,
         action   TYPE string,
         "! What the commit does with the file, for the table
         change   TYPE string,
@@ -25,8 +27,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     DATA mt_rows   TYPE ty_rows.
     DATA ms_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
     DATA mv_user   TYPE string.
-    "! Bound to a password field; cleared in the PUSH handler, so it is never
-    "! part of the state abap2UI5 saves
+    "! Bound to a password field; on_event( ) clears it first on every event,
+    "! so it is never part of the state abap2UI5 saves
     DATA mv_token  TYPE string.
 
     CLASS-METHODS create
@@ -46,7 +48,9 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     METHODS view_display.
     METHODS on_event.
     METHODS load_stage.
-    METHODS push.
+    METHODS push
+      IMPORTING
+        iv_token TYPE string.
     METHODS select_all
       IMPORTING
         iv_selected TYPE abap_bool.
@@ -77,6 +81,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       load_stage( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
+      CLEAR mv_token.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
@@ -197,6 +202,12 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   METHOD on_event.
 
+    " a typed token arrives with whatever button is pressed next, and abap2UI5
+    " saves the app state after every event (into its draft table) - so it is
+    " taken out of the attribute before anything else, for every event
+    DATA(lv_token) = mv_token.
+    CLEAR mv_token.
+
     CASE client->get_event( ).
       WHEN `BACK`.
         client->nav_app_leave( ).
@@ -215,7 +226,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                                              iv_obj_name = ls_row-obj_name ) ).
         ENDIF.
       WHEN `PUSH`.
-        push( ).
+        push( lv_token ).
     ENDCASE.
 
   ENDMETHOD.
@@ -236,6 +247,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                 WHEN `A` THEN `add`
                                 WHEN `D` THEN `delete`
                                 ELSE `modify` ).
+      IF ls_item-rstate IS NOT INITIAL.
+        ls_row-change = |{ ls_row-change } - changed in Git too, pull first|.
+      ENDIF.
       INSERT ls_row INTO TABLE mt_rows.
     ENDLOOP.
     IF ms_commit-name IS INITIAL.
@@ -249,10 +263,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 
-    " the token must not outlive this round trip - abap2UI5 saves the app
-    " state after main( ), so it is taken out of the attribute right away
-    DATA(lv_token) = mv_token.
-    CLEAR mv_token.
+    DATA(lv_token) = iv_token.
 
     IF NOT line_exists( mt_rows[ selected = abap_true ] ).
       client->message_toast_display( `Select at least one file` ).

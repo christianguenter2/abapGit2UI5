@@ -834,6 +834,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       obj_type = ls_result-obj_type
                       obj_name = ls_result-obj_name
                       lstate   = ls_result-lstate
+                      rstate   = ls_result-rstate
                       action   = COND #( WHEN ls_result-lstate = zif_abapgit_definitions=>c_state-deleted
                                          THEN zif_ag2ui5_repo_service=>c_stage_action-rm
                                          ELSE zif_ag2ui5_repo_service=>c_stage_action-add ) )
@@ -850,7 +851,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       IF sy-subrc <> 0.
         zcx_abapgit_exception=>raise( |{ ls_selected-filename } is no longer changed locally| ).
       ENDIF.
-      IF ls_fresh-action <> ls_selected-action.
+      IF ls_fresh-action <> ls_selected-action OR ls_fresh-rstate <> ls_selected-rstate.
         zcx_abapgit_exception=>raise( |{ ls_selected-filename } changed again since the page was loaded| ).
       ENDIF.
     ENDLOOP.
@@ -858,6 +859,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD check_push_allowed.
+
+    LOOP AT it_items INTO DATA(ls_item) WHERE selected = abap_true.
+      " changed on both sides: pushing would overwrite the change in Git
+      IF ls_item-rstate IS NOT INITIAL.
+        zcx_abapgit_exception=>raise( |{ ls_item-filename } was changed in Git too - pull it first| ).
+      ENDIF.
+      " as abapGit's stage page: a file added in one folder while it still
+      " exists in another must be removed there in the same commit
+      IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-add.
+        LOOP AT it_items INTO DATA(ls_other)
+            WHERE filename = ls_item-filename AND path <> ls_item-path
+              AND NOT ( selected = abap_true AND action = zif_ag2ui5_repo_service=>c_stage_action-rm ).
+          zcx_abapgit_exception=>raise( |{ ls_item-filename } also exists in { ls_other-path } - | &&
+                                        |select its removal too| ).
+        ENDLOOP.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD commit_message.
@@ -893,72 +912,93 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~commit_push.
 
-    DATA lt_items TYPE zif_abapgit_definitions=>ty_items_tt.
+    DATA lt_objects TYPE zif_abapgit_definitions=>ty_items_tt.
 
     assert_authorized( ).
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
-    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
 
-    " check again - the system or the remote may have changed since the page loaded
-    TRY.
-        check_selection( it_fresh    = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) )
-                         it_selected = it_items ).
-      CATCH zcx_abapgit_exception.
-        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
-        RETURN.
-    ENDTRY.
-
-    " read only the selected objects' files
-    LOOP AT it_items INTO DATA(ls_item) WHERE selected = abap_true AND obj_type IS NOT INITIAL.
-      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_items.
-    ENDLOOP.
-    DATA(lt_local) = li_repo->zif_abapgit_repo~get_files_local_filtered(
-      NEW zcl_ag2ui5_object_filter( it_items = lt_items ) ).
-
-    DATA(lo_stage) = NEW zcl_abapgit_stage( ).
-    LOOP AT it_items INTO ls_item WHERE selected = abap_true.
-      IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-rm.
-        lo_stage->rm( iv_path = CONV #( ls_item-path ) iv_filename = CONV #( ls_item-filename ) ).
-      ELSE.
-        READ TABLE lt_local INTO DATA(ls_local)
-          WITH KEY file-path = ls_item-path file-filename = ls_item-filename.
-        IF sy-subrc <> 0.
-          zcx_abapgit_exception=>raise( |File not found: { ls_item-path }{ ls_item-filename }| ).
-        ENDIF.
-        lo_stage->add( iv_path     = ls_local-file-path
-                       iv_filename = ls_local-file-filename
-                       iv_data     = ls_local-file-data ).
-      ENDIF.
-    ENDLOOP.
-
-    DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
-    li_user->set_repo_git_user_name( iv_url = li_repo->get_url( ) iv_username = is_commit-name ).
-    li_user->set_repo_git_user_email( iv_url = li_repo->get_url( ) iv_email = is_commit-email ).
-
-    DATA(ls_comment) = VALUE zif_abapgit_git_definitions=>ty_comment(
-      committer = VALUE #( name = is_commit-name email = is_commit-email )
-      author    = VALUE #( name = is_commit-name email = is_commit-email )
-      comment   = commit_message( iv_title = is_commit-title iv_body = is_commit-body ) ).
-
-    " the credentials live only for this call
+    " the credentials live for this call only: they are set before the first
+    " fetch (a private repository needs them there already) and cleared on
+    " every way out, whatever exception leaves the block
     TRY.
         IF iv_token IS NOT INITIAL.
           zcl_abapgit_login_manager=>set_basic( iv_uri      = li_repo->get_url( )
                                                 iv_username = iv_user
                                                 iv_password = iv_token ).
         ENDIF.
+
+        li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+        DATA(lt_fresh) = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+
+        " check again - the system or the remote may have changed since the page loaded
+        TRY.
+            check_selection( it_fresh    = lt_fresh
+                             it_selected = it_items ).
+          CATCH zcx_abapgit_exception.
+            rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
+            zcl_abapgit_login_manager=>clear( ).
+            RETURN.
+        ENDTRY.
+
+        " from here on only the fresh state counts, the client's rows only say
+        " which files are selected
+        LOOP AT lt_fresh ASSIGNING FIELD-SYMBOL(<ls_fresh>).
+          <ls_fresh>-selected = xsdbool( line_exists( it_items[ path     = <ls_fresh>-path
+                                                                filename = <ls_fresh>-filename
+                                                                selected = abap_true ] ) ).
+        ENDLOOP.
+        check_push_allowed( lt_fresh ).
+
+        " read only the selected objects' files
+        LOOP AT lt_fresh INTO DATA(ls_item) WHERE selected = abap_true AND obj_type IS NOT INITIAL.
+          INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_objects.
+        ENDLOOP.
+        DATA(lt_local) = li_repo->zif_abapgit_repo~get_files_local_filtered(
+          NEW zcl_ag2ui5_object_filter( it_items = lt_objects ) ).
+
+        DATA(lo_stage) = NEW zcl_abapgit_stage( ).
+        LOOP AT lt_fresh INTO ls_item WHERE selected = abap_true.
+          IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-rm.
+            lo_stage->rm( iv_path = CONV #( ls_item-path ) iv_filename = CONV #( ls_item-filename ) ).
+          ELSE.
+            READ TABLE lt_local INTO DATA(ls_local)
+              WITH KEY file-path = ls_item-path file-filename = ls_item-filename.
+            IF sy-subrc <> 0.
+              zcx_abapgit_exception=>raise( |File not found: { ls_item-path }{ ls_item-filename }| ).
+            ENDIF.
+            lo_stage->add( iv_path     = ls_local-file-path
+                           iv_filename = ls_local-file-filename
+                           iv_data     = ls_local-file-data ).
+          ENDIF.
+        ENDLOOP.
+
+        DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
+        li_user->set_repo_git_user_name( iv_url = li_repo->get_url( ) iv_username = is_commit-name ).
+        li_user->set_repo_git_user_email( iv_url = li_repo->get_url( ) iv_email = is_commit-email ).
+
+        DATA(ls_comment) = VALUE zif_abapgit_git_definitions=>ty_comment(
+          committer = VALUE #( name = is_commit-name email = is_commit-email )
+          author    = VALUE #( name = is_commit-name email = is_commit-email )
+          comment   = commit_message( iv_title = is_commit-title iv_body = is_commit-body ) ).
+
+        " the same sequence as abapGit's own commit: exit, push, commit work, exit
+        zcl_abapgit_exit=>get_instance( )->validate_before_push( is_comment     = ls_comment
+                                                                 io_stage       = lo_stage
+                                                                 ii_repo_online = li_repo ).
         li_repo->push( is_comment = ls_comment
                        io_stage   = lo_stage ).
-        zcl_abapgit_login_manager=>clear( ).
-      CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        zcl_abapgit_login_manager=>clear( ).
-        RAISE EXCEPTION lx_error.
-    ENDTRY.
+        " push( ) writes the new checksums; abap2UI5 rolls back after main( )
+        COMMIT WORK AND WAIT.
+        zcl_abapgit_exit=>get_instance( )->validate_after_push( li_repo ).
 
-    rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
-    rs_result-commit  = substring( val = li_repo->get_current_remote( ) len = 7 ).
+        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
+        rs_result-commit  = substring( val = li_repo->get_current_remote( ) len = 7 ).
+      CLEANUP.
+        zcl_abapgit_login_manager=>clear( ).
+    ENDTRY.
+    zcl_abapgit_login_manager=>clear( ).
 
   ENDMETHOD.
 
