@@ -1633,6 +1633,13 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS listed_branch_accepted FOR TESTING RAISING cx_static_check.
     METHODS unknown_branch_refused FOR TESTING.
     METHODS empty_branch_refused FOR TESTING.
+    METHODS branch_name_normalized FOR TESTING.
+    METHODS branch_name_keeps_prefix FOR TESTING.
+    METHODS branch_name_trims FOR TESTING.
+    METHODS valid_name_accepted FOR TESTING RAISING cx_static_check.
+    METHODS invalid_names_refused FOR TESTING.
+    METHODS existing_branch_refused FOR TESTING.
+    METHODS case_differs_is_new FOR TESTING RAISING cx_static_check.
 
 ENDCLASS.
 
@@ -1696,6 +1703,54 @@ CLASS ltcl_branches IMPLEMENTATION.
         cl_abap_unit_assert=>fail( `An empty branch must be refused` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
+  ENDMETHOD.
+
+  METHOD branch_name_normalized.
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>branch_name( `feature x` )
+                                        exp = `refs/heads/feature-x` ).
+  ENDMETHOD.
+
+  METHOD branch_name_keeps_prefix.
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>branch_name( `refs/heads/a` )
+                                        exp = `refs/heads/a` ).
+  ENDMETHOD.
+
+  METHOD branch_name_trims.
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>branch_name( `  x  ` )
+                                        exp = `refs/heads/x` ).
+  ENDMETHOD.
+
+  METHOD valid_name_accepted.
+    zcl_ag2ui5_repo_service=>assert_branch_name( `refs/heads/feature/x-1` ).
+  ENDMETHOD.
+
+  METHOD invalid_names_refused.
+    " the name comes from the browser; the remote would reject these too
+    LOOP AT VALUE string_table( ( `refs/heads/` ) ( `refs/heads/a..b` ) ( `refs/heads/a~b` )
+                                ( `refs/heads/a:b` ) ( `refs/heads/a^b` ) ( `refs/heads/a?b` )
+                                ( `refs/heads/a*b` ) ( `refs/heads/a[b` ) ( `refs/heads/a\b` )
+                                ( `refs/heads//a` ) ( `refs/heads/a/` ) ( `refs/heads/.a` )
+                                ( `refs/heads/a.` ) ( `refs/heads/a.lock` )
+                                ( |refs/heads/a{ cl_abap_char_utilities=>horizontal_tab }b| ) ) INTO DATA(lv_name).
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_branch_name( lv_name ).
+          cl_abap_unit_assert=>fail( |{ lv_name } must be refused| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD existing_branch_refused.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_new_branch( iv_branch = `refs/heads/main` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `An existing branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD case_differs_is_new.
+    " Git refs are case-sensitive, as abapGit's check
+    zcl_ag2ui5_repo_service=>assert_new_branch( iv_branch = `refs/heads/Main` it_branches = rows( ) ).
   ENDMETHOD.
 
 ENDCLASS.

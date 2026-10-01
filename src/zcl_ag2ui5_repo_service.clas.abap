@@ -170,6 +170,29 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! The full name of a new branch, as abapGit makes it: blanks at the
+    "! ends removed, inner blanks as -, refs/heads/ added unless present
+    CLASS-METHODS branch_name
+      IMPORTING
+        iv_name          TYPE string
+      RETURNING
+        VALUE(rv_branch) TYPE string.
+
+    "! Raises unless the name after refs/heads/ follows Git's rules for a ref
+    CLASS-METHODS assert_branch_name
+      IMPORTING
+        iv_branch TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
+    "! Raises if the branch is already on the remote
+    CLASS-METHODS assert_new_branch
+      IMPORTING
+        iv_branch   TYPE string
+        it_branches TYPE zif_ag2ui5_repo_service=>ty_branches
+      RAISING
+        zcx_abapgit_exception.
+
     "! The files changed locally, and what a commit does with each
     CLASS-METHODS stage_candidates
       IMPORTING
@@ -967,6 +990,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       zcx_abapgit_exception=>raise( |Branch { iv_branch } is not on the remote| ).
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD branch_name.
+  ENDMETHOD.
+
+  METHOD assert_branch_name.
+  ENDMETHOD.
+
+  METHOD assert_new_branch.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.
