@@ -130,6 +130,14 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_messages) TYPE zif_ag2ui5_repo_service=>ty_messages.
 
+    "! Control characters as visible text - raw ones break the JSON the
+    "! frontend parses (only tab is legal there)
+    CLASS-METHODS visible
+      IMPORTING
+        iv_text        TYPE string
+      RETURNING
+        VALUE(rv_text) TYPE string.
+
     "! Deletes the objects whose deletion was selected, as abapGit's
     "! delete_unnecessary_objects does before deserializing
     METHODS delete_selected
@@ -518,27 +526,63 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD map_diff.
 
+    DATA lt_changed_remote TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+    DATA lt_changed_local TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
     LOOP AT it_diff INTO DATA(ls_diff).
       DATA(lv_local_num)  = condense( CONV string( ls_diff-new_num ) ).
       DATA(lv_remote_num) = condense( CONV string( ls_diff-old_num ) ).
+
+      " a run of changed lines is shown as a block: all remote lines, then
+      " all local ones, as git and abapGit's unified view do
+      IF ls_diff-result = zif_abapgit_definitions=>c_diff-update.
+        INSERT VALUE #( remote_num = lv_remote_num text = visible( ls_diff-old )
+                        kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE lt_changed_remote.
+        INSERT VALUE #( local_num = lv_local_num text = visible( ls_diff-new )
+                        kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_changed_local.
+        CONTINUE.
+      ENDIF.
+      INSERT LINES OF lt_changed_remote INTO TABLE rt_lines.
+      INSERT LINES OF lt_changed_local INTO TABLE rt_lines.
+      CLEAR: lt_changed_remote, lt_changed_local.
+
       CASE ls_diff-result.
         WHEN zif_abapgit_definitions=>c_diff-insert.
-          INSERT VALUE #( local_num = lv_local_num text = ls_diff-new
+          INSERT VALUE #( local_num = lv_local_num text = visible( ls_diff-new )
                           kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE rt_lines.
         WHEN zif_abapgit_definitions=>c_diff-delete.
-          INSERT VALUE #( remote_num = lv_remote_num text = ls_diff-old
+          INSERT VALUE #( remote_num = lv_remote_num text = visible( ls_diff-old )
                           kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE rt_lines.
-        WHEN zif_abapgit_definitions=>c_diff-update.
-          " one changed line is the remote version going and the local one coming
-          INSERT VALUE #( remote_num = lv_remote_num text = ls_diff-old
-                          kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE rt_lines.
-          INSERT VALUE #( local_num = lv_local_num text = ls_diff-new
-                          kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE rt_lines.
         WHEN OTHERS.
-          INSERT VALUE #( local_num = lv_local_num remote_num = lv_remote_num text = ls_diff-new
+          INSERT VALUE #( local_num = lv_local_num remote_num = lv_remote_num text = visible( ls_diff-new )
                           kind = zif_ag2ui5_repo_service=>c_line_kind-same ) INTO TABLE rt_lines.
       ENDCASE.
     ENDLOOP.
+    INSERT LINES OF lt_changed_remote INTO TABLE rt_lines.
+    INSERT LINES OF lt_changed_local INTO TABLE rt_lines.
+
+  ENDMETHOD.
+
+  METHOD visible.
+
+    rv_text = iv_text.
+
+    " abapGit's diff appends a form feed when only one side ends in a newline
+    DATA(lv_length) = strlen( rv_text ).
+    IF lv_length > 0 AND substring( val = rv_text off = lv_length - 1 len = 1 ) = cl_abap_char_utilities=>form_feed.
+      rv_text = |{ substring( val = rv_text len = lv_length - 1 ) } (no newline at end of file)|.
+    ENDIF.
+
+    REPLACE ALL OCCURRENCES OF cl_abap_char_utilities=>cr_lf(1) IN rv_text WITH `[CR]`.
+
+    DO 32 TIMES.
+      DATA(lv_code) = sy-index - 1.
+      IF lv_code = 9.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_char) = cl_abap_conv_in_ce=>uccpi( lv_code ).
+      REPLACE ALL OCCURRENCES OF lv_char IN rv_text WITH `?`.
+    ENDDO.
 
   ENDMETHOD.
 
@@ -552,16 +596,32 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     DATA(li_repo) = get_online_repo( iv_key ).
 
-    LOOP AT li_repo->zif_abapgit_repo~get_files_local( ) INTO DATA(ls_local)
+    " only the file's object is serialized and read, as in abapGit's diff page
+    zcl_abapgit_filename_logic=>file_to_object(
+      EXPORTING iv_filename = iv_filename
+                iv_path     = iv_path
+                io_dot      = li_repo->zif_abapgit_repo~get_dot_abapgit( )
+                iv_devclass = li_repo->zif_abapgit_repo~get_package( )
+      IMPORTING es_item     = DATA(ls_item) ).
+    DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( ls_item ) ).
+
+    DATA(lv_found) = abap_false.
+    LOOP AT li_repo->zif_abapgit_repo~get_files_local_filtered( li_filter ) INTO DATA(ls_local)
         WHERE file-path = iv_path AND file-filename = iv_filename.
       lv_local = ls_local-file-data.
+      lv_found = abap_true.
       EXIT.
     ENDLOOP.
-    LOOP AT li_repo->zif_abapgit_repo~get_files_remote( ) INTO DATA(ls_remote)
+    LOOP AT li_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true
+                                                        ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
         WHERE path = iv_path AND filename = iv_filename.
       lv_remote = ls_remote-data.
+      lv_found = abap_true.
       EXIT.
     ENDLOOP.
+    IF lv_found = abap_false.
+      zcx_abapgit_exception=>raise( |File not found: { iv_path }{ iv_filename }| ).
+    ENDIF.
 
     IF zcl_abapgit_utils=>is_binary( COND #( WHEN lv_local IS NOT INITIAL THEN lv_local ELSE lv_remote ) ) = abap_true.
       rs_diff-binary = abap_true.
