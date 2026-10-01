@@ -211,4 +211,24 @@ See `docs/superpowers/specs/2026-10-01-diff-view-design.md`.
 - The screenshots use the real diff of `zabapgit.tran.xml` from A4H25. The
   console output of `sapcli abap run` escapes `&` a second time; that is an
   artifact of the screenshot data path, not of the app.
+- A review led to two fixes, both with tests that failed first:
+  - **Header counts follow the direction:** "+N in Git, -M in this system", or
+    the other way round. The side-by-side column titles now name the side
+    ("Git (old)" / "System (new)").
+  - **Blanks inside a line are kept:** every second blank of a run becomes
+    `&nbsp;`, so aligned columns survive, whitespace-only changes stay
+    visible, and long lines still wrap. Tabs become four blanks.
+
+  ABAP Unit is 63/63.
+- Deployment: abapgit-agent aborted a pull with a `SYSTEM_EDIT` conflict on
+  `ZCL_AG2UI5_APP_DIFF`, its known habit of flagging its own earlier imports.
+  The two changed classes were therefore deployed through MCP as surgical
+  edits. abapGit's status of `$ABAPGIT2UI5` against the branch afterwards
+  shows no object differences.
 - Browser test: still waiting for a login in Chrome.
+- Not addressed yet (minor):
+  - Files where **both** sides changed carry no warning.
+  - Both row tables are built on every round trip.
+  - abapGit keeps local left and remote right in its split view, while this
+    app puts old left and new right. The column titles now say which is
+    which.
