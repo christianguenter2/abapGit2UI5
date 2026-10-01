@@ -295,7 +295,7 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
 
 See `docs/superpowers/specs/2026-10-01-patch-design.md`.
 
-- ABAP Unit: service 84/84, diff app 8/8 (new test include), stage app 11/11.
+- ABAP Unit: service 86/86, diff app 9/9 (new test include), stage app 12/12.
 - **Smoke test on A4H25**, `$UMLAUT` with two local comments in
   `ZCL_TEST_UMLAUT`:
   - The diff has two patch IDs (`N23`, `N27`).
@@ -328,6 +328,27 @@ See `docs/superpowers/specs/2026-10-01-patch-design.md`.
   (it flags its own import), so later changes of that class went over ADT
   with `sapcli class write`, which also writes an existing test include
   (`--type testclasses`). `get_status` showed only `.abapgit.xml` differing.
+
+- **Review** (a fresh reviewer, whole branch): no critical findings. Three
+  important ones, each fixed with a test that failed first:
+  - "No lines" after an earlier patch left the row ticked, so the push
+    committed the whole file. The same happened with Apply after a failed
+    load. Now the tick from before the first patch is restored, and Apply
+    needs a loaded diff.
+  - abapGit's diff appends a form feed to a last line without newline when
+    only the other side has one. The patch is built from those texts, so an
+    unpicked change put the form feed into Git. abapGit's own patch page has
+    the same bug (worth an upstream issue). `apply_patch` now removes it.
+  - A removal with only some lines picked passed the "moved without removing
+    the old path" check. It no longer counts as the removal.
+- Minor points from the review, open:
+  - Reopening Pick lines on a changed file carries old IDs over without a
+    notice.
+  - A `changed` outcome drops all picks without saying so.
+  - "Select none" keeps patches, and "Select all" brings them back.
+  - The "Pick lines" column has no header for screen readers.
+  - `check_on_navigated` could use `IS INSTANCE OF`, and has no app test of
+    its own.
 
 ## Open points (as of 2026-10-01)
 
