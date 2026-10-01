@@ -553,40 +553,58 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD map_diff.
 
-    DATA lt_changed_remote TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
-    DATA lt_changed_local TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+    DATA lt_changed_old TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+    DATA lt_changed_new TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    " which of our sides is abapGit's "new" and "old"
+    DATA(lv_new_kind) = COND zif_ag2ui5_repo_service=>ty_line_kind(
+      WHEN iv_remote_is_new = abap_true THEN zif_ag2ui5_repo_service=>c_line_kind-remote
+      ELSE zif_ag2ui5_repo_service=>c_line_kind-local ).
+    DATA(lv_old_kind) = COND zif_ag2ui5_repo_service=>ty_line_kind(
+      WHEN iv_remote_is_new = abap_true THEN zif_ag2ui5_repo_service=>c_line_kind-local
+      ELSE zif_ag2ui5_repo_service=>c_line_kind-remote ).
 
     LOOP AT it_diff INTO DATA(ls_diff).
-      DATA(lv_local_num)  = condense( CONV string( ls_diff-new_num ) ).
-      DATA(lv_remote_num) = condense( CONV string( ls_diff-old_num ) ).
+      DATA(lv_new_num) = condense( CONV string( ls_diff-new_num ) ).
+      DATA(lv_old_num) = condense( CONV string( ls_diff-old_num ) ).
+      DATA(ls_new) = VALUE zif_ag2ui5_repo_service=>ty_diff_line( text = visible( ls_diff-new ) kind = lv_new_kind ).
+      DATA(ls_old) = VALUE zif_ag2ui5_repo_service=>ty_diff_line( text = visible( ls_diff-old ) kind = lv_old_kind ).
+      IF iv_remote_is_new = abap_true.
+        ls_new-remote_num = lv_new_num.
+        ls_old-local_num  = lv_old_num.
+      ELSE.
+        ls_new-local_num  = lv_new_num.
+        ls_old-remote_num = lv_old_num.
+      ENDIF.
 
-      " a run of changed lines is shown as a block: all remote lines, then
-      " all local ones, as git and abapGit's unified view do
+      " a run of changed lines is shown as a block: all old lines, then all
+      " new ones, as git and abapGit's unified view do
       IF ls_diff-result = zif_abapgit_definitions=>c_diff-update.
-        INSERT VALUE #( remote_num = lv_remote_num text = visible( ls_diff-old )
-                        kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE lt_changed_remote.
-        INSERT VALUE #( local_num = lv_local_num text = visible( ls_diff-new )
-                        kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE lt_changed_local.
+        INSERT ls_old INTO TABLE lt_changed_old.
+        INSERT ls_new INTO TABLE lt_changed_new.
         CONTINUE.
       ENDIF.
-      INSERT LINES OF lt_changed_remote INTO TABLE rt_lines.
-      INSERT LINES OF lt_changed_local INTO TABLE rt_lines.
-      CLEAR: lt_changed_remote, lt_changed_local.
+      INSERT LINES OF lt_changed_old INTO TABLE rt_lines.
+      INSERT LINES OF lt_changed_new INTO TABLE rt_lines.
+      CLEAR: lt_changed_old, lt_changed_new.
 
       CASE ls_diff-result.
         WHEN zif_abapgit_definitions=>c_diff-insert.
-          INSERT VALUE #( local_num = lv_local_num text = visible( ls_diff-new )
-                          kind = zif_ag2ui5_repo_service=>c_line_kind-local ) INTO TABLE rt_lines.
+          INSERT ls_new INTO TABLE rt_lines.
         WHEN zif_abapgit_definitions=>c_diff-delete.
-          INSERT VALUE #( remote_num = lv_remote_num text = visible( ls_diff-old )
-                          kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) INTO TABLE rt_lines.
+          INSERT ls_old INTO TABLE rt_lines.
         WHEN OTHERS.
-          INSERT VALUE #( local_num = lv_local_num remote_num = lv_remote_num text = visible( ls_diff-new )
-                          kind = zif_ag2ui5_repo_service=>c_line_kind-same ) INTO TABLE rt_lines.
+          ls_new-kind = zif_ag2ui5_repo_service=>c_line_kind-same.
+          IF iv_remote_is_new = abap_true.
+            ls_new-local_num = lv_old_num.
+          ELSE.
+            ls_new-remote_num = lv_old_num.
+          ENDIF.
+          INSERT ls_new INTO TABLE rt_lines.
       ENDCASE.
     ENDLOOP.
-    INSERT LINES OF lt_changed_remote INTO TABLE rt_lines.
-    INSERT LINES OF lt_changed_local INTO TABLE rt_lines.
+    INSERT LINES OF lt_changed_old INTO TABLE rt_lines.
+    INSERT LINES OF lt_changed_new INTO TABLE rt_lines.
 
   ENDMETHOD.
 
@@ -655,9 +673,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    " abapGit's convention: local is new, remote is old
-    rs_diff-lines = map_diff( zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_local
-                                                                        iv_old = lv_remote )->get( ) ).
+    " abapGit's convention: the side that changed is new - the remote when
+    " only Git changed, otherwise the system
+    rs_diff-remote_is_new = iv_remote_is_new.
+    IF iv_remote_is_new = abap_true.
+      DATA(li_diff) = zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_remote iv_old = lv_local ).
+    ELSE.
+      li_diff = zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_local iv_old = lv_remote ).
+    ENDIF.
+    rs_diff-lines = map_diff( it_diff = li_diff->get( ) iv_remote_is_new = iv_remote_is_new ).
     LOOP AT rs_diff-lines TRANSPORTING NO FIELDS WHERE kind = zif_ag2ui5_repo_service=>c_line_kind-local.
       rs_diff-local_count = rs_diff-local_count + 1.
     ENDLOOP.
@@ -668,12 +692,76 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD remote_is_new.
+    rv_yes = xsdbool( iv_lstate IS INITIAL AND iv_rstate IS NOT INITIAL ).
   ENDMETHOD.
 
   METHOD to_side_by_side.
+
+    DATA lt_old TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+    DATA lt_new TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
+
+    DATA(lv_old_kind) = COND zif_ag2ui5_repo_service=>ty_line_kind(
+      WHEN iv_remote_is_new = abap_true THEN zif_ag2ui5_repo_service=>c_line_kind-local
+      ELSE zif_ag2ui5_repo_service=>c_line_kind-remote ).
+
+    " the trailing empty line flushes the last changed block
+    DATA(lt_lines) = it_lines.
+    INSERT VALUE #( kind = zif_ag2ui5_repo_service=>c_line_kind-gap ) INTO TABLE lt_lines.
+    DATA(lv_last) = lines( lt_lines ).
+
+    LOOP AT lt_lines INTO DATA(ls_line).
+      DATA(lv_index) = sy-tabix.
+      IF ls_line-kind <> zif_ag2ui5_repo_service=>c_line_kind-same
+          AND ls_line-kind <> zif_ag2ui5_repo_service=>c_line_kind-gap.
+        IF ls_line-kind = lv_old_kind.
+          INSERT ls_line INTO TABLE lt_old.
+        ELSE.
+          INSERT ls_line INTO TABLE lt_new.
+        ENDIF.
+        CONTINUE.
+      ENDIF.
+
+      " pair the changed block line by line, the shorter side stays empty
+      DO nmax( val1 = lines( lt_old ) val2 = lines( lt_new ) ) TIMES.
+        DATA(ls_row) = VALUE zif_ag2ui5_repo_service=>ty_sbs_row( ).
+        READ TABLE lt_old INTO DATA(ls_old) INDEX sy-index.
+        IF sy-subrc = 0.
+          ls_row-old_text    = ls_old-text.
+          ls_row-old_num     = COND #( WHEN iv_remote_is_new = abap_true THEN ls_old-local_num ELSE ls_old-remote_num ).
+          ls_row-old_changed = abap_true.
+        ENDIF.
+        READ TABLE lt_new INTO DATA(ls_new) INDEX sy-index.
+        IF sy-subrc = 0.
+          ls_row-new_text    = ls_new-text.
+          ls_row-new_num     = COND #( WHEN iv_remote_is_new = abap_true THEN ls_new-remote_num ELSE ls_new-local_num ).
+          ls_row-new_changed = abap_true.
+        ENDIF.
+        INSERT ls_row INTO TABLE rt_rows.
+      ENDDO.
+      CLEAR: lt_old, lt_new.
+
+      IF lv_index = lv_last.
+        EXIT.
+      ENDIF.
+      IF ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-gap.
+        INSERT VALUE #( old_text = ls_line-text gap = abap_true ) INTO TABLE rt_rows.
+      ELSE.
+        INSERT VALUE #( old_num  = COND #( WHEN iv_remote_is_new = abap_true THEN ls_line-local_num ELSE ls_line-remote_num )
+                        old_text = ls_line-text
+                        new_num  = COND #( WHEN iv_remote_is_new = abap_true THEN ls_line-remote_num ELSE ls_line-local_num )
+                        new_text = ls_line-text ) INTO TABLE rt_rows.
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD code_html.
+
+    " leading blanks would collapse in HTML; they carry the indentation
+    DATA(lv_rest) = shift_left( iv_text ).
+    DATA(lv_indent) = strlen( iv_text ) - strlen( lv_rest ).
+    rv_html = |<code>{ repeat( val = `&nbsp;` occ = lv_indent ) }{ escape( val = lv_rest format = cl_abap_format=>e_xml_text ) }</code>|.
+
   ENDMETHOD.
 
   METHOD filter_status.
