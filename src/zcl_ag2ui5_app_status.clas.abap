@@ -50,6 +50,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mt_rows         TYPE ty_rows.
     "! ALL or CHANGES
     DATA mv_view         TYPE string VALUE `ALL`.
+    "! OBJECT, FILE or TYPE
+    DATA mv_sort         TYPE string VALUE `OBJECT`.
+    DATA mv_changes_first TYPE abap_bool VALUE abap_true.
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
@@ -82,8 +85,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
-    "! Every file of the last status; the switch filters from here
-    DATA mt_all TYPE ty_rows.
+    "! Every file of the last status; sorting and the switch start from here
+    DATA mt_status TYPE zif_ag2ui5_repo_service=>ty_status_rows.
     "! Set once a status was loaded, for the empty table's text
     DATA mv_loaded TYPE abap_bool.
     "! Which requests the open dialog asks for (request types, not bound)
@@ -176,6 +179,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->ele( n = `View` ns = `mvc`
             )->a( n = `xmlns`        v = `sap.m`
             )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
+            )->a( n = `xmlns:core`   v = `sap.ui.core`
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
 
@@ -195,6 +199,25 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->tag( `SegmentedButtonItem`
                 )->a( n = `key`  v = `CHANGES`
                 )->a( n = `text` v = `Changes only` ).
+    header_content->tag( `Label`
+        )->a( n = `text` v = `Sort by` ).
+    header_content->ele( `Select`
+        )->a( n = `selectedKey` v = client->_bind( mv_sort )
+        )->a( n = `change`      v = client->_event( `VIEW` )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `OBJECT`
+                )->a( n = `text` v = `Object`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `FILE`
+                )->a( n = `text` v = `File`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `TYPE`
+                )->a( n = `text` v = `Type` ).
+    header_content->tag( `ToggleButton`
+        )->a( n = `text`    v = `Changes on top`
+        )->a( n = `pressed` v = client->_bind( mv_changes_first )
+        )->a( n = `press`   v = client->_event( `VIEW` ) ).
     header_content->tag( `Button`
         )->a( n = `icon`    v = `sap-icon://refresh`
         )->a( n = `tooltip` v = `Refresh status`
@@ -371,10 +394,28 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD rows_build.
 
-    mt_rows = mt_all.
-    IF mv_view = `CHANGES`.
-      DELETE mt_rows WHERE changed = abap_false.
-    ENDIF.
+    CLEAR mt_rows.
+    LOOP AT zcl_ag2ui5_repo_service=>sort_status_rows( it_rows          = mt_status
+                                                      iv_by            = mv_sort
+                                                      iv_changes_first = mv_changes_first ) INTO DATA(ls_status_row).
+      IF mv_view = `CHANGES` AND ls_status_row-changed = abap_false.
+        CONTINUE.
+      ENDIF.
+      INSERT VALUE #( obj_type  = ls_status_row-obj_type
+                      obj_name  = ls_status_row-obj_name
+                      path      = ls_status_row-path
+                      filename  = ls_status_row-filename
+                      local     = state_text( ls_status_row-lstate )
+                      remote    = state_text( ls_status_row-rstate )
+                      lstate    = ls_status_row-lstate
+                      rstate    = ls_status_row-rstate
+                      inactive  = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` )
+                      changed   = ls_status_row-changed
+                      highlight = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate   = ls_status_row-lstate
+                                                                             iv_rstate   = ls_status_row-rstate
+                                                                             iv_inactive = ls_status_row-inactive ) )
+        INTO TABLE mt_rows.
+    ENDLOOP.
     IF mv_loaded = abap_true.
       mv_no_data = COND #( WHEN mv_view = `CHANGES` THEN `Local and remote match` ELSE `The repository has no files` ).
     ENDIF.
@@ -583,7 +624,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(ls_status) = service( )->get_status( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        CLEAR: mt_rows, mt_all, mv_loaded.
+        CLEAR: mt_rows, mt_status, mv_loaded.
         mv_no_data = `Status could not be loaded`.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
@@ -598,23 +639,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                     THEN substring( val = ls_status-remote_commit len = 7 )
                                     ELSE ls_status-remote_commit ).
 
-    CLEAR mt_all.
-    LOOP AT ls_status-rows INTO DATA(ls_status_row).
-      INSERT VALUE #( obj_type = ls_status_row-obj_type
-                      obj_name = ls_status_row-obj_name
-                      path     = ls_status_row-path
-                      filename = ls_status_row-filename
-                      local    = state_text( ls_status_row-lstate )
-                      remote   = state_text( ls_status_row-rstate )
-                      lstate   = ls_status_row-lstate
-                      rstate   = ls_status_row-rstate
-                      inactive = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` )
-                      changed   = ls_status_row-changed
-                      highlight = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate   = ls_status_row-lstate
-                                                                             iv_rstate   = ls_status_row-rstate
-                                                                             iv_inactive = ls_status_row-inactive ) )
-        INTO TABLE mt_all.
-    ENDLOOP.
+    mt_status = ls_status-rows.
     rows_build( ).
   ENDMETHOD.
 
