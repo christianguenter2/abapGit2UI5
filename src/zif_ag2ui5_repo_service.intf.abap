@@ -349,4 +349,16 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
+  "! Creates a branch at the head of the branch the repository follows, and
+  "! follows it. The name is normalized and checked; abapGit's exit supplies
+  "! the credentials for the push of the new ref
+  METHODS create_branch
+    IMPORTING
+      iv_key           TYPE string
+      iv_name          TYPE string
+    RETURNING
+      VALUE(rv_branch) TYPE string
+    RAISING
+      zcx_abapgit_exception.
+
 ENDINTERFACE.
