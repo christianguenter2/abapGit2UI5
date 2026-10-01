@@ -1243,9 +1243,29 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD status_rows.
+
+    LOOP AT it_results INTO DATA(ls_result).
+      INSERT VALUE #( obj_type = ls_result-obj_type
+                      obj_name = ls_result-obj_name
+                      path     = ls_result-path
+                      filename = ls_result-filename
+                      lstate   = ls_result-lstate
+                      rstate   = ls_result-rstate
+                      inactive = ls_result-inactive
+                      changed  = xsdbool( ls_result-match = abap_false OR ls_result-inactive = abap_true ) )
+        INTO TABLE rt_rows.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD change_highlight.
+
+    DATA(lv_local) = xsdbool( iv_lstate IS NOT INITIAL OR iv_inactive = abap_true ).
+    rv_highlight = COND #( WHEN lv_local = abap_true AND iv_rstate IS NOT INITIAL THEN `Error`
+                           WHEN lv_local = abap_true THEN `Warning`
+                           WHEN iv_rstate IS NOT INITIAL THEN `Information`
+                           ELSE `None` ).
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_repos.
