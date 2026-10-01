@@ -291,15 +291,51 @@ See `docs/superpowers/specs/2026-10-01-stage-commit-push-design.md`.
   of the service class (`SYSTEM_EDIT`). With Chris's OK for this one case,
   `ignore` mode was used once; after that, pulls run normally again.
 
+## Slice 7: patch, staging single lines (2026-10-01)
+
+See `docs/superpowers/specs/2026-10-01-patch-design.md`.
+
+- ABAP Unit: service 84/84, diff app 8/8 (new test include), stage app 11/11.
+- **Smoke test on A4H25**, `$UMLAUT` with two local comments in
+  `ZCL_TEST_UMLAUT`:
+  - The diff has two patch IDs (`N23`, `N27`).
+  - Picking the first gives Git's 29 lines plus that one comment (30 lines),
+    with state `M`. The fingerprint equals `get_diff`'s.
+  - The umlauts stay intact (U+00FC). The `Ã¼` in the sapcli console comes
+    from the console only.
+- **Browser test** (through UI5, the screen was locked), without typing into
+  the token field: Pick lines, tick, "Show all" and "Changes only", Apply,
+  open again, Back. Every step behaves as specified. The row shows
+  `modify - 1 of 2 lines`.
+- **The browser found a bug the unit tests missed:** abap2UI5 sends booleans
+  in event arguments as `abap_bool` (`X`/space). `PICK` compared with
+  `` `true` ``, so every tick arrived as "unpicked", and the tests sent
+  `` `true` `` too. The tests now send what abap2UI5 sends (red first). The
+  checkbox passes `${$parameters>/selected}`, the event's own value.
+- **Draft table:** 124 drafts, 19 with the staging app, none with a token
+  pattern.
+- Not run: the stale-fingerprint path of `commit_push` end to end. With a
+  dummy token the first fetch is refused (nothing pushed, head unchanged).
+  Without a token, abapGit's exit supplies real credentials. A bug in copying
+  the patch IDs would then push the whole file, so that run waits for
+  Chris's OK. It is covered by code reading and the `apply_patch` tests.
+- Deviation from the spec: "Pick lines" is on every row, because the staging
+  page does not know which files are binary. For a binary file the diff page
+  shows no Apply.
+- **Deployment:** abapgit-agent blocked the diff app with `SYSTEM_EDIT`
+  although the system source equalled Git. With Chris's OK, `ignore` mode was
+  used once, to create the new test include. The next pull was blocked again
+  (it flags its own import), so later changes of that class went over ADT
+  with `sapcli class write`, which also writes an existing test include
+  (`--type testclasses`). `get_status` showed only `.abapgit.xml` differing.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
 
-1. **Patch:** staging single lines. It needs a line selection per file, with
-   abapGit's `zcl_abapgit_git_add_patch` on the same stage object. Design: `docs/superpowers/specs/2026-10-01-patch-design.md`.
-2. **Ignore and `.gitignore`** on the staging page.
-3. **Pushing to another branch, or a new one.**
-4. **Creating a transport request** from the pull dialog. Today the user is
+1. **Ignore and `.gitignore`** on the staging page.
+2. **Pushing to another branch, or a new one.**
+3. **Creating a transport request** from the pull dialog. Today the user is
    pointed to SE09.
 
 Minor points left open by the reviews:

@@ -26,6 +26,8 @@ present. It is Git-ignored.
   - `merge_decisions` for pull decisions (object **and** group)
   - `effective_transport` / `assert_transport` for transport requests
   - `check_selection` / `check_push_allowed` for staged files
+  - `apply_patch` and the fingerprint for picked lines: the diff is computed
+    again, and a different fingerprint gives `changed`
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
@@ -42,6 +44,7 @@ present. It is Git-ignored.
 | Status | `filter_status`, `format_timestamp` |
 | Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `counts_text`, `visible` |
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
+| Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every
 row of abapGit's four check tables needs a decision, or abapGit's
@@ -52,11 +55,13 @@ row of abapGit's four check tables needs a decision, or abapGit's
 - `npm run check` runs abaplint and the abap2UI5 linter, including the render
   gate. It needs no system, and CI runs it too.
 - ABAP Unit runs only on a system (`ZCL_AG2UI5_REPO_SERVICE`,
-  `ZCL_AG2UI5_APP_STAGE`).
+  `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`).
 - The headless screenshot (`abap2ui5lint --screenshot`) cannot follow values
   passed into helper methods (`group_display`, `transport_display`), and it
   renders every branch of an `IF`. Check dialogs on a system, or render a
   scratch copy with the helpers inlined.
+- Event arguments arrive as abap2UI5 sends them: a boolean is `X` or space,
+  not `true`. App tests with a client double must send the same values.
 - Code reaches the browser through `sap.m.FormattedText` (`code_html`): it is
   escaped in ABAP, and UI5 sanitizes it too. Control characters must be
   replaced before they reach the model (`visible`): abap2UI5's JSON escaping

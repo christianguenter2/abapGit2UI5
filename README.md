@@ -16,13 +16,14 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   side that changed is the "new" one, in green.
 - **Stage, commit, push:** select the locally changed files, enter a commit
   message, then push with a Git user and token. The credentials are used for
-  that one push only and never stored.
+  that one push only and never stored. "Pick lines" commits only some changes
+  of a file: both halves of a changed line go together, as in abapGit.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport
   requests.
 
-Not part of it yet: patch (staging single lines), ignore and `.gitignore`,
+Not part of it yet: ignore and `.gitignore`,
 pushing to another branch, and creating a transport request from the dialog.
 
 | Repositories | Status | Diff |
