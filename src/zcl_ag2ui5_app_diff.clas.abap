@@ -27,6 +27,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         code_html  TYPE string,
         "! sap.ui.core.MessageType of the row: Success new, Error old
         highlight  TYPE string,
+        patch_id   TYPE string,
+        "! Patch mode, and a changed line: it has a checkbox
+        pickable   TYPE abap_bool,
+        picked     TYPE abap_bool,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
@@ -43,6 +47,19 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
       END OF ty_sbs_row,
       ty_sbs_rows TYPE STANDARD TABLE OF ty_sbs_row WITH EMPTY KEY.
 
+    TYPES:
+      "! The picked lines, handed back to the staging page by Apply
+      BEGIN OF ty_patch,
+        "! Set by Apply; Back leaves it initial
+        applied     TYPE abap_bool,
+        path        TYPE string,
+        filename    TYPE string,
+        ids         TYPE string_table,
+        "! Distinct patch IDs in the file: "3 of 7 lines"
+        total       TYPE i,
+        fingerprint TYPE string,
+      END OF ty_patch.
+
     DATA ms_head        TYPE ty_head.
     "! Only the visible rows travel to the browser
     DATA mt_rows        TYPE ty_rows.
@@ -50,6 +67,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     DATA mv_toggle_text TYPE string.
     "! INLINE or SBS
     DATA mv_layout      TYPE string VALUE `INLINE`.
+    "! Patch mode: a checkbox per changed line, Apply instead of the layout switch
+    DATA mv_patch       TYPE abap_bool.
+    "! "3 of 7 lines picked"
+    DATA mv_pick_text   TYPE string.
 
     CLASS-METHODS create
       IMPORTING
@@ -59,8 +80,15 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         iv_obj_type   TYPE string
         iv_obj_name   TYPE string
         iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+        iv_patch      TYPE abap_bool DEFAULT abap_false
+        it_picked     TYPE string_table OPTIONAL
       RETURNING
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_diff.
+
+    "! What Apply handed back; applied is initial after Back
+    METHODS get_patch
+      RETURNING
+        VALUE(rs_patch) TYPE ty_patch.
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
@@ -84,6 +112,26 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     METHODS load_diff.
     METHODS rows_build.
 
+    "! The picked patch IDs; the source of truth, rows only show it
+    DATA mt_picked TYPE string_table.
+    DATA mv_fingerprint TYPE string.
+    DATA ms_patch TYPE ty_patch.
+    METHODS pick
+      IMPORTING
+        iv_id     TYPE string
+        iv_picked TYPE abap_bool.
+    METHODS pick_all
+      IMPORTING
+        iv_picked TYPE abap_bool.
+    "! Distinct patch IDs of the diff, in file order
+    METHODS patch_ids
+      RETURNING
+        VALUE(rt_ids) TYPE string_table.
+    "! The picked IDs that are in the diff, in file order
+    METHODS picked_in_order
+      RETURNING
+        VALUE(rt_ids) TYPE string_table.
+
   PRIVATE SECTION.
 ENDCLASS.
 
@@ -106,6 +154,21 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                                         THEN `Changes in Git, compared with this system`
                                         ELSE `Changes in this system, compared with Git` ).
 
+  ENDMETHOD.
+
+  METHOD get_patch.
+  ENDMETHOD.
+
+  METHOD pick.
+  ENDMETHOD.
+
+  METHOD pick_all.
+  ENDMETHOD.
+
+  METHOD patch_ids.
+  ENDMETHOD.
+
+  METHOD picked_in_order.
   ENDMETHOD.
 
   METHOD z2ui5_if_app~main.
