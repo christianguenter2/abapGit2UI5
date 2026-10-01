@@ -103,6 +103,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_html) TYPE string.
 
+    "! The code on a background by what happened to the line: ADDED green,
+    "! REMOVED red, GAP grey; any other tint leaves it as it is
+    CLASS-METHODS tinted_html
+      IMPORTING
+        iv_html        TYPE string
+        iv_tint        TYPE string
+      RETURNING
+        VALUE(rv_html) TYPE string.
+
     "! The line counts with + for the side that changed, - for the other
     CLASS-METHODS counts_text
       IMPORTING
@@ -883,6 +892,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD tinted_html.
   ENDMETHOD.
 
   METHOD code_html.

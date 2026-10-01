@@ -1007,6 +1007,8 @@ CLASS ltcl_side_by_side DEFINITION FINAL FOR TESTING
     METHODS html_escaped_and_indented FOR TESTING.
     METHODS html_keeps_inner_spaces FOR TESTING.
     METHODS html_expands_tabs FOR TESTING.
+    METHODS tint_per_kind FOR TESTING.
+    METHODS no_tint_unchanged FOR TESTING.
     METHODS counts_follow_direction FOR TESTING.
 
     METHODS line
@@ -1133,6 +1135,28 @@ CLASS ltcl_side_by_side IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>counts_text( iv_local = 2 iv_remote = 1 iv_remote_is_new = abap_true )
       exp = `+1 in Git, -2 in this system` ).
+  ENDMETHOD.
+
+  METHOD tint_per_kind.
+    " a block, so the colour fills the cell; min-height keeps an empty line visible
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>tinted_html( iv_html = `<code>a</code>` iv_tint = `ADDED` )
+      exp = `<span style="display:block;min-height:1em;background-color:#e6ffec"><code>a</code></span>` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>tinted_html( iv_html = `<code>a</code>` iv_tint = `REMOVED` )
+      exp = `<span style="display:block;min-height:1em;background-color:#ffebe9"><code>a</code></span>` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>tinted_html( iv_html = `<em>gap</em>` iv_tint = `GAP` )
+      exp = `<span style="display:block;min-height:1em;background-color:#f6f8fa"><em>gap</em></span>` ).
+  ENDMETHOD.
+
+  METHOD no_tint_unchanged.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>tinted_html( iv_html = `<code>a</code>` iv_tint = `` )
+      exp = `<code>a</code>` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>tinted_html( iv_html = `<code>a</code>` iv_tint = `SAME` )
+      exp = `<code>a</code>` ).
   ENDMETHOD.
 
   METHOD html_escaped_and_indented.
