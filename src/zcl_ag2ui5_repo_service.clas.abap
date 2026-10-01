@@ -112,6 +112,37 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_text)   TYPE string.
 
+    "! Identifies a pair of versions: the SHA1 of each side
+    CLASS-METHODS fingerprint
+      IMPORTING
+        iv_local              TYPE xstring
+        iv_remote             TYPE xstring
+      RETURNING
+        VALUE(rv_fingerprint) TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
+    "! abapGit's diff with patch_flag set for each picked patch ID. Raises
+    "! when the list is empty or an ID names no changed line
+    CLASS-METHODS apply_patch
+      IMPORTING
+        it_diff        TYPE zif_abapgit_definitions=>ty_diffs_tt
+        it_ids         TYPE string_table
+      RETURNING
+        VALUE(rt_diff) TYPE zif_abapgit_definitions=>ty_diffs_tt
+      RAISING
+        zcx_abapgit_exception.
+
+    "! How a patched file is staged, as abapGit's patch page does: D (rm)
+    "! when every line of a deleted file is picked, A when every line of an
+    "! added file is, M (add with the patch) otherwise
+    CLASS-METHODS patch_lstate
+      IMPORTING
+        iv_lstate        TYPE string
+        it_diff          TYPE zif_abapgit_definitions=>ty_diffs_tt
+      RETURNING
+        VALUE(rv_lstate) TYPE string.
+
     "! The files changed locally, and what a commit does with each
     CLASS-METHODS stage_candidates
       IMPORTING
@@ -821,6 +852,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       THEN |+{ iv_remote } in Git, -{ iv_local } in this system|
                       ELSE |+{ iv_local } in this system, -{ iv_remote } in Git| ).
 
+  ENDMETHOD.
+
+  METHOD fingerprint.
+  ENDMETHOD.
+
+  METHOD apply_patch.
+  ENDMETHOD.
+
+  METHOD patch_lstate.
   ENDMETHOD.
 
   METHOD stage_candidates.

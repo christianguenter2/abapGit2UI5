@@ -144,6 +144,10 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       remote_num TYPE string,
       text       TYPE string,
       kind       TYPE ty_line_kind,
+      "! What a patch picks: N<new number> for an added line and for both
+      "! halves of a changed one, O<old number> for a removed line; empty
+      "! for unchanged lines and gaps
+      patch_id   TYPE string,
     END OF ty_diff_line,
     ty_diff_lines TYPE STANDARD TABLE OF ty_diff_line WITH EMPTY KEY.
 
@@ -170,6 +174,9 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       local_count  TYPE i,
       remote_count TYPE i,
       binary       TYPE abap_bool,
+      "! Identifies the two versions the lines were computed from; a patch
+      "! is accepted only for the same fingerprint
+      fingerprint  TYPE string,
     END OF ty_diff.
 
   TYPES ty_stage_action TYPE string.

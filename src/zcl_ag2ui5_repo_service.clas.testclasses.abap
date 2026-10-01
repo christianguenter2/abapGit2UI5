@@ -956,11 +956,11 @@ CLASS ltcl_diff IMPLEMENTATION.
                                         exp = `SLRRL` ).
     cl_abap_unit_assert=>assert_equals(
       act = lt_lines[ 4 ]
-      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( remote_num = `3` text = `changed old`
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( remote_num = `3` text = `changed old` patch_id = `N3`
                                                           kind = zif_ag2ui5_repo_service=>c_line_kind-remote ) ).
     cl_abap_unit_assert=>assert_equals(
       act = lt_lines[ 5 ]
-      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( local_num = `3` text = `changed new`
+      exp = VALUE zif_ag2ui5_repo_service=>ty_diff_line( local_num = `3` text = `changed new` patch_id = `N3`
                                                           kind = zif_ag2ui5_repo_service=>c_line_kind-local ) ).
     cl_abap_unit_assert=>assert_equals( act = lt_lines[ 1 ]-local_num
                                         exp = `1` ).
@@ -1254,6 +1254,216 @@ CLASS ltcl_stage IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>commit_message( iv_title = `Fix it` iv_body = `Because.` )
       exp = |Fix it{ cl_abap_char_utilities=>newline }{ cl_abap_char_utilities=>newline }Because.| ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_patch DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS ids_per_result FOR TESTING.
+    METHODS fingerprint_follows_both_sides FOR TESTING RAISING cx_static_check.
+    METHODS flags_by_id FOR TESTING RAISING cx_static_check.
+    METHODS unknown_id_raises FOR TESTING.
+    METHODS unchanged_line_id_raises FOR TESTING.
+    METHODS empty_ids_raise FOR TESTING.
+    METHODS lstate_matrix FOR TESTING.
+    METHODS patch_content_partial FOR TESTING RAISING cx_static_check.
+    METHODS patch_content_partial_delete FOR TESTING RAISING cx_static_check.
+    METHODS patch_content_no_final_newline FOR TESTING RAISING cx_static_check.
+
+    "! unchanged, insert, delete, update - as in map_all_results
+    METHODS sample_diff
+      RETURNING
+        VALUE(rt_diff) TYPE zif_abapgit_definitions=>ty_diffs_tt.
+
+    "! abapGit's real diff of two texts (lines separated by newline), local new
+    METHODS real_diff
+      IMPORTING
+        iv_local       TYPE string
+        iv_remote      TYPE string
+      RETURNING
+        VALUE(rt_diff) TYPE zif_abapgit_definitions=>ty_diffs_tt
+      RAISING
+        zcx_abapgit_exception.
+
+    "! The content zcl_abapgit_git_add_patch builds, as a string
+    METHODS patched
+      IMPORTING
+        it_diff        TYPE zif_abapgit_definitions=>ty_diffs_tt
+      RETURNING
+        VALUE(rv_text) TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
+    METHODS text_of
+      IMPORTING
+        it_lines       TYPE string_table
+      RETURNING
+        VALUE(rv_text) TYPE string.
+
+ENDCLASS.
+
+
+CLASS ltcl_patch IMPLEMENTATION.
+
+  METHOD sample_diff.
+    INSERT VALUE #( new_num = '1' new = `same` old_num = '1' old = `same`
+                    result = zif_abapgit_definitions=>c_diff-unchanged ) INTO TABLE rt_diff.
+    INSERT VALUE #( new_num = '2' new = `added`
+                    result = zif_abapgit_definitions=>c_diff-insert ) INTO TABLE rt_diff.
+    INSERT VALUE #( old_num = '2' old = `removed`
+                    result = zif_abapgit_definitions=>c_diff-delete ) INTO TABLE rt_diff.
+    INSERT VALUE #( new_num = '3' new = `changed new` old_num = '3' old = `changed old`
+                    result = zif_abapgit_definitions=>c_diff-update ) INTO TABLE rt_diff.
+  ENDMETHOD.
+
+  METHOD real_diff.
+    rt_diff = zcl_abapgit_diff_factory=>get( )->create(
+      iv_new = zcl_abapgit_convert=>string_to_xstring_utf8( iv_local )
+      iv_old = zcl_abapgit_convert=>string_to_xstring_utf8( iv_remote ) )->get( ).
+  ENDMETHOD.
+
+  METHOD patched.
+    rv_text = zcl_abapgit_convert=>xstring_to_string_utf8(
+      NEW zcl_abapgit_git_add_patch( it_diff )->get_patch_binary( ) ).
+  ENDMETHOD.
+
+  METHOD text_of.
+    rv_text = concat_lines_of( table = it_lines sep = cl_abap_char_utilities=>newline ).
+  ENDMETHOD.
+
+  METHOD ids_per_result.
+    " both halves of a changed line share one ID, so they are picked together
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( sample_diff( ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = concat_lines_of( table = VALUE string_table(
+                                                FOR l IN lt_lines ( |{ l-patch_id }/| ) ) )
+                                        exp = `/N2/O2/N3/N3/` ).
+  ENDMETHOD.
+
+  METHOD fingerprint_follows_both_sides.
+    DATA(lv_base) = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `41` ) iv_remote = CONV #( `42` ) ).
+
+    cl_abap_unit_assert=>assert_not_initial( lv_base ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `41` ) iv_remote = CONV #( `42` ) )
+      exp = lv_base ).
+    cl_abap_unit_assert=>assert_differs(
+      act = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `43` ) iv_remote = CONV #( `42` ) )
+      exp = lv_base ).
+    cl_abap_unit_assert=>assert_differs(
+      act = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `41` ) iv_remote = CONV #( `43` ) )
+      exp = lv_base ).
+    " no ambiguity where one side ends and the other begins
+    cl_abap_unit_assert=>assert_differs(
+      act = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `4142` ) iv_remote = CONV #( `` ) )
+      exp = zcl_ag2ui5_repo_service=>fingerprint( iv_local = CONV #( `41` ) iv_remote = CONV #( `42` ) ) ).
+  ENDMETHOD.
+
+  METHOD flags_by_id.
+    DATA(lt_diff) = zcl_ag2ui5_repo_service=>apply_patch( it_diff = sample_diff( )
+                                                          it_ids  = VALUE #( ( `O2` ) ( `N3` ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = concat_lines_of( table = VALUE string_table(
+                                                FOR d IN lt_diff ( COND #( WHEN d-patch_flag = abap_true THEN `X` ELSE `-` ) ) ) )
+                                        exp = `--XX` ).
+  ENDMETHOD.
+
+  METHOD unknown_id_raises.
+    TRY.
+        zcl_ag2ui5_repo_service=>apply_patch( it_diff = sample_diff( )
+                                              it_ids  = VALUE #( ( `N9` ) ) ).
+        cl_abap_unit_assert=>fail( `An unknown ID must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD unchanged_line_id_raises.
+    " line 1 is unchanged: N1 names no change, O2 names the deletion only
+    TRY.
+        zcl_ag2ui5_repo_service=>apply_patch( it_diff = sample_diff( )
+                                              it_ids  = VALUE #( ( `N1` ) ) ).
+        cl_abap_unit_assert=>fail( `An unchanged line must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD empty_ids_raise.
+    TRY.
+        zcl_ag2ui5_repo_service=>apply_patch( it_diff = sample_diff( )
+                                              it_ids  = VALUE #( ) ).
+        cl_abap_unit_assert=>fail( `An empty patch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD lstate_matrix.
+    DATA(lt_all)  = sample_diff( ).
+    MODIFY lt_all FROM VALUE #( patch_flag = abap_true ) TRANSPORTING patch_flag WHERE patch_flag = abap_false.
+    DATA(lt_some) = sample_diff( ).
+    lt_some[ 2 ]-patch_flag = abap_true.
+
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `D` it_diff = lt_all )
+                                        exp = `D` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `D` it_diff = lt_some )
+                                        exp = `M` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `A` it_diff = lt_all )
+                                        exp = `A` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `A` it_diff = lt_some )
+                                        exp = `M` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `M` it_diff = lt_all )
+                                        exp = `M` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `M` it_diff = lt_some )
+                                        exp = `M` ).
+  ENDMETHOD.
+
+  METHOD patch_content_partial.
+    " Git: a b c d. Local: a B c e (b changed to B, d replaced by e).
+    " Picking only the first change gives a B c d.
+    DATA(lt_diff) = real_diff( iv_local  = text_of( VALUE #( ( `a` ) ( `B` ) ( `c` ) ( `e` ) ( `` ) ) )
+                               iv_remote = text_of( VALUE #( ( `a` ) ( `b` ) ( `c` ) ( `d` ) ( `` ) ) ) ).
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+    DATA(lv_first) = lt_lines[ text = `B` ]-patch_id.
+
+    DATA(lv_text) = patched( zcl_ag2ui5_repo_service=>apply_patch( it_diff = lt_diff
+                                                                   it_ids  = VALUE #( ( lv_first ) ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = lv_text
+                                        exp = text_of( VALUE #( ( `a` ) ( `B` ) ( `c` ) ( `d` ) ( `` ) ) ) ).
+  ENDMETHOD.
+
+  METHOD patch_content_partial_delete.
+    " deleted locally: every line is a removal. Picking the removal of b
+    " only leaves a c in Git
+    DATA(lt_diff) = real_diff( iv_local  = ``
+                               iv_remote = text_of( VALUE #( ( `a` ) ( `b` ) ( `c` ) ( `` ) ) ) ).
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+
+    DATA(lt_flagged) = zcl_ag2ui5_repo_service=>apply_patch( it_diff = lt_diff
+                                                             it_ids  = VALUE #( ( lt_lines[ text = `b` ]-patch_id ) ) ).
+
+    cl_abap_unit_assert=>assert_equals( act = patched( lt_flagged )
+                                        exp = text_of( VALUE #( ( `a` ) ( `c` ) ( `` ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>patch_lstate( iv_lstate = `D` it_diff = lt_flagged )
+                                        exp = `M` ).
+  ENDMETHOD.
+
+  METHOD patch_content_no_final_newline.
+    " as abapGit: the patch always ends in a newline
+    DATA(lt_diff) = real_diff( iv_local  = text_of( VALUE #( ( `a` ) ( `b` ) ) )
+                               iv_remote = text_of( VALUE #( ( `a` ) ) ) ).
+    DATA(lt_lines) = zcl_ag2ui5_repo_service=>map_diff( lt_diff ).
+    DATA(lt_ids) = VALUE string_table( FOR l IN lt_lines WHERE ( patch_id IS NOT INITIAL ) ( l-patch_id ) ).
+    SORT lt_ids.
+    DELETE ADJACENT DUPLICATES FROM lt_ids.
+
+    cl_abap_unit_assert=>assert_char_cp(
+      act = patched( zcl_ag2ui5_repo_service=>apply_patch( it_diff = lt_diff it_ids = lt_ids ) )
+      exp = |a{ cl_abap_char_utilities=>newline }b*{ cl_abap_char_utilities=>newline }| ).
   ENDMETHOD.
 
 ENDCLASS.
