@@ -1,0 +1,309 @@
+"! Select locally changed files, commit them and push. The credentials are
+"! used for the push only: the token is cleared before the state is saved
+CLASS zcl_ag2ui5_app_stage DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    INTERFACES z2ui5_if_app.
+
+    TYPES:
+      BEGIN OF ty_row,
+        path     TYPE string,
+        filename TYPE string,
+        obj_type TYPE string,
+        obj_name TYPE string,
+        lstate   TYPE string,
+        action   TYPE string,
+        "! What the commit does with the file, for the table
+        change   TYPE string,
+        selected TYPE abap_bool,
+      END OF ty_row,
+      ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
+
+    DATA mt_rows   TYPE ty_rows.
+    DATA ms_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
+    DATA mv_user   TYPE string.
+    "! Bound to a password field; cleared in the PUSH handler, so it is never
+    "! part of the state abap2UI5 saves
+    DATA mv_token  TYPE string.
+
+    CLASS-METHODS create
+      IMPORTING
+        iv_key        TYPE string
+        iv_title      TYPE string
+      RETURNING
+        VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_stage.
+
+  PROTECTED SECTION.
+    DATA client TYPE REF TO z2ui5_if_client.
+    DATA mv_key TYPE string.
+    DATA mv_title TYPE string.
+    "! Set only by unit tests; the real service otherwise
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+
+    METHODS view_display.
+    METHODS on_event.
+    METHODS load_stage.
+    METHODS push.
+    METHODS select_all
+      IMPORTING
+        iv_selected TYPE abap_bool.
+
+    METHODS service
+      RETURNING
+        VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
+
+  PRIVATE SECTION.
+ENDCLASS.
+
+
+
+CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
+
+  METHOD create.
+
+    ro_app = NEW #( ).
+    ro_app->mv_key   = iv_key.
+    ro_app->mv_title = iv_title.
+
+  ENDMETHOD.
+
+  METHOD z2ui5_if_app~main.
+
+    me->client = client.
+    IF client->check_on_init( ).
+      load_stage( ).
+      view_display( ).
+    ELSEIF client->check_on_navigated( ).
+      view_display( ).
+    ELSEIF client->check_on_event( ).
+      on_event( ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD view_display.
+
+    DATA(view) = z2ui5_cl_ui5_view_builder=>factory(
+        )->ele( n = `View` ns = `mvc`
+            )->a( n = `xmlns`        v = `sap.m`
+            )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
+            )->a( n = `xmlns:form`   v = `sap.ui.layout.form`
+            )->a( n = `displayBlock` v = `true`
+            )->a( n = `height`       v = `100%` ).
+
+    DATA(page) = view->ele( `Page`
+        )->a( n = `title`          t = |Stage - { mv_title }|
+        )->a( n = `showNavButton`  v = `true`
+        )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
+
+    DATA(header_content) = page->ele( `headerContent` ).
+    header_content->tag( `Button`
+        )->a( n = `text`  v = `Select all`
+        )->a( n = `press` v = client->_event( `ALL` ) ).
+    header_content->tag( `Button`
+        )->a( n = `text`  v = `Select none`
+        )->a( n = `press` v = client->_event( `NONE` ) ).
+
+    DATA(content) = page->ele( `content` ).
+
+    DATA(table) = content->ele( `Table`
+        )->a( n = `items`      v = client->_bind( mt_rows )
+        )->a( n = `noDataText` v = `No local changes to commit` ).
+
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `5rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Commit` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `5rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Type` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Object` ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `File` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Change` ).
+
+    DATA(cells) = table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->a( n = `type`  v = `Navigation`
+            )->a( n = `press` v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
+            )->ele( `cells` ).
+    cells->tag( `CheckBox`
+        )->a( n = `selected` v = `{SELECTED}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{OBJ_TYPE}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{OBJ_NAME}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{FILENAME}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{CHANGE}` ).
+
+    DATA(form) = content->ele( n = `SimpleForm` ns = `form`
+        )->a( n = `editable` v = `true`
+        )->a( n = `layout`   v = `ResponsiveGridLayout`
+        )->a( n = `title`    v = `Commit`
+        )->ele( n = `content` ns = `form` ).
+    form->tag( `Label`
+        )->a( n = `text`     v = `Title`
+        )->a( n = `required` v = `true` ).
+    form->tag( `Input`
+        )->a( n = `value`     v = client->_bind( ms_commit-title )
+        )->a( n = `maxLength` v = `72` ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Description` ).
+    form->tag( `TextArea`
+        )->a( n = `value` v = client->_bind( ms_commit-body )
+        )->a( n = `rows`  v = `4` ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Committer` ).
+    form->tag( `Input`
+        )->a( n = `value`       v = client->_bind( ms_commit-name )
+        )->a( n = `placeholder` v = `Name` ).
+    form->tag( `Input`
+        )->a( n = `value`       v = client->_bind( ms_commit-email )
+        )->a( n = `placeholder` v = `E-mail` ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Git user` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( mv_user ) ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Token or password` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( mv_token )
+        )->a( n = `type`  v = `Password` ).
+    form->tag( `Label` ).
+    form->tag( `Button`
+        )->a( n = `text`  v = `Commit & push`
+        )->a( n = `type`  v = `Emphasized`
+        )->a( n = `icon`  v = `sap-icon://upload`
+        )->a( n = `press` v = client->_event( `PUSH` ) ).
+
+    client->view_display( view->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD on_event.
+
+    CASE client->get_event( ).
+      WHEN `BACK`.
+        client->nav_app_leave( ).
+      WHEN `ALL`.
+        select_all( abap_true ).
+      WHEN `NONE`.
+        select_all( abap_false ).
+      WHEN `DIFF`.
+        READ TABLE mt_rows INTO DATA(ls_row)
+          WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        IF sy-subrc = 0.
+          client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
+                                                             iv_path     = ls_row-path
+                                                             iv_filename = ls_row-filename
+                                                             iv_obj_type = ls_row-obj_type
+                                                             iv_obj_name = ls_row-obj_name ) ).
+        ENDIF.
+      WHEN `PUSH`.
+        push( ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD load_stage.
+
+    TRY.
+        DATA(ls_stage) = service( )->get_stage( mv_key ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    CLEAR mt_rows.
+    LOOP AT ls_stage-items INTO DATA(ls_item).
+      DATA(ls_row) = CORRESPONDING ty_row( ls_item ).
+      ls_row-change = SWITCH #( ls_item-lstate
+                                WHEN `A` THEN `add`
+                                WHEN `D` THEN `delete`
+                                ELSE `modify` ).
+      INSERT ls_row INTO TABLE mt_rows.
+    ENDLOOP.
+    IF ms_commit-name IS INITIAL.
+      ms_commit-name  = ls_stage-name.
+      ms_commit-email = ls_stage-email.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD push.
+
+    DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+
+    " the token must not outlive this round trip - abap2UI5 saves the app
+    " state after main( ), so it is taken out of the attribute right away
+    DATA(lv_token) = mv_token.
+    CLEAR mv_token.
+
+    IF NOT line_exists( mt_rows[ selected = abap_true ] ).
+      client->message_toast_display( `Select at least one file` ).
+      RETURN.
+    ENDIF.
+    IF ms_commit-title IS INITIAL.
+      client->message_toast_display( `Enter a commit title` ).
+      RETURN.
+    ENDIF.
+
+    LOOP AT mt_rows INTO DATA(ls_row).
+      INSERT CORRESPONDING #( ls_row ) INTO TABLE lt_items.
+    ENDLOOP.
+
+    TRY.
+        DATA(ls_result) = service( )->commit_push( iv_key    = mv_key
+                                                   it_items  = lt_items
+                                                   is_commit = ms_commit
+                                                   iv_user   = mv_user
+                                                   iv_token  = lv_token ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        CLEAR lv_token.
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+    CLEAR lv_token.
+
+    CASE ls_result-outcome.
+      WHEN zif_ag2ui5_repo_service=>c_outcome-pushed.
+        CLEAR: ms_commit-title, ms_commit-body.
+        client->message_toast_display( |Pushed { ls_result-commit }| ).
+        load_stage( ).
+      WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
+        load_stage( ).
+        client->message_box_display( text = `The local changes changed since the page was loaded - nothing was pushed. Check the selection and push again.`
+                                     type = `error` ).
+    ENDCASE.
+
+  ENDMETHOD.
+
+  METHOD select_all.
+
+    LOOP AT mt_rows ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-selected = iv_selected.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD service.
+
+    ri_service = COND #( WHEN mi_service IS BOUND THEN mi_service ELSE NEW zcl_ag2ui5_repo_service( ) ).
+
+  ENDMETHOD.
+
+ENDCLASS.

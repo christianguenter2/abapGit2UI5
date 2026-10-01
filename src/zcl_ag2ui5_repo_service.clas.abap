@@ -680,7 +680,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                 io_dot      = li_repo->zif_abapgit_repo~get_dot_abapgit( )
                 iv_devclass = li_repo->zif_abapgit_repo~get_package( )
       IMPORTING es_item     = DATA(ls_item) ).
-    DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( ls_item ) ).
+    DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( is_item = ls_item ) ).
 
     DATA(lv_found) = abap_false.
     LOOP AT li_repo->zif_abapgit_repo~get_files_local_filtered( li_filter ) INTO DATA(ls_local)
@@ -815,18 +815,139 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD stage_candidates.
+
+    LOOP AT it_results INTO DATA(ls_result)
+        WHERE lstate = zif_abapgit_definitions=>c_state-added
+           OR lstate = zif_abapgit_definitions=>c_state-modified
+           OR lstate = zif_abapgit_definitions=>c_state-deleted.
+      INSERT VALUE #( path     = ls_result-path
+                      filename = ls_result-filename
+                      obj_type = ls_result-obj_type
+                      obj_name = ls_result-obj_name
+                      lstate   = ls_result-lstate
+                      action   = COND #( WHEN ls_result-lstate = zif_abapgit_definitions=>c_state-deleted
+                                         THEN zif_ag2ui5_repo_service=>c_stage_action-rm
+                                         ELSE zif_ag2ui5_repo_service=>c_stage_action-add ) )
+        INTO TABLE rt_items.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD check_selection.
+
+    LOOP AT it_selected INTO DATA(ls_selected) WHERE selected = abap_true.
+      READ TABLE it_fresh INTO DATA(ls_fresh)
+        WITH KEY path = ls_selected-path filename = ls_selected-filename.
+      IF sy-subrc <> 0.
+        zcx_abapgit_exception=>raise( |{ ls_selected-filename } is no longer changed locally| ).
+      ENDIF.
+      IF ls_fresh-action <> ls_selected-action.
+        zcx_abapgit_exception=>raise( |{ ls_selected-filename } changed again since the page was loaded| ).
+      ENDIF.
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD commit_message.
+
+    rv_text = COND #( WHEN iv_body IS INITIAL
+                      THEN iv_title
+                      ELSE |{ iv_title }{ cl_abap_char_utilities=>newline }{ cl_abap_char_utilities=>newline }{ iv_body }| ).
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~get_stage.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+
+    rs_stage-items = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+
+    " the committer abapGit remembers for this repository, else the user's default
+    DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
+    rs_stage-name  = li_user->get_repo_git_user_name( li_repo->get_url( ) ).
+    rs_stage-email = li_user->get_repo_git_user_email( li_repo->get_url( ) ).
+    IF rs_stage-name IS INITIAL.
+      rs_stage-name = li_user->get_default_git_user_name( ).
+    ENDIF.
+    IF rs_stage-email IS INITIAL.
+      rs_stage-email = li_user->get_default_git_user_email( ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~commit_push.
+
+    DATA lt_items TYPE zif_abapgit_definitions=>ty_items_tt.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+
+    " check again - the system or the remote may have changed since the page loaded
+    TRY.
+        check_selection( it_fresh    = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) )
+                         it_selected = it_items ).
+      CATCH zcx_abapgit_exception.
+        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
+        RETURN.
+    ENDTRY.
+
+    " read only the selected objects' files
+    LOOP AT it_items INTO DATA(ls_item) WHERE selected = abap_true AND obj_type IS NOT INITIAL.
+      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_items.
+    ENDLOOP.
+    DATA(lt_local) = li_repo->zif_abapgit_repo~get_files_local_filtered(
+      NEW zcl_ag2ui5_object_filter( it_items = lt_items ) ).
+
+    DATA(lo_stage) = NEW zcl_abapgit_stage( ).
+    LOOP AT it_items INTO ls_item WHERE selected = abap_true.
+      IF ls_item-action = zif_ag2ui5_repo_service=>c_stage_action-rm.
+        lo_stage->rm( iv_path = CONV #( ls_item-path ) iv_filename = CONV #( ls_item-filename ) ).
+      ELSE.
+        READ TABLE lt_local INTO DATA(ls_local)
+          WITH KEY file-path = ls_item-path file-filename = ls_item-filename.
+        IF sy-subrc <> 0.
+          zcx_abapgit_exception=>raise( |File not found: { ls_item-path }{ ls_item-filename }| ).
+        ENDIF.
+        lo_stage->add( iv_path     = ls_local-file-path
+                       iv_filename = ls_local-file-filename
+                       iv_data     = ls_local-file-data ).
+      ENDIF.
+    ENDLOOP.
+
+    DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
+    li_user->set_repo_git_user_name( iv_url = li_repo->get_url( ) iv_username = is_commit-name ).
+    li_user->set_repo_git_user_email( iv_url = li_repo->get_url( ) iv_email = is_commit-email ).
+
+    DATA(ls_comment) = VALUE zif_abapgit_git_definitions=>ty_comment(
+      committer = VALUE #( name = is_commit-name email = is_commit-email )
+      author    = VALUE #( name = is_commit-name email = is_commit-email )
+      comment   = commit_message( iv_title = is_commit-title iv_body = is_commit-body ) ).
+
+    " the credentials live only for this call
+    TRY.
+        IF iv_token IS NOT INITIAL.
+          zcl_abapgit_login_manager=>set_basic( iv_uri      = li_repo->get_url( )
+                                                iv_username = iv_user
+                                                iv_password = iv_token ).
+        ENDIF.
+        li_repo->push( is_comment = ls_comment
+                       io_stage   = lo_stage ).
+        zcl_abapgit_login_manager=>clear( ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        zcl_abapgit_login_manager=>clear( ).
+        RAISE EXCEPTION lx_error.
+    ENDTRY.
+
+    rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
+    rs_result-commit  = substring( val = li_repo->get_current_remote( ) len = 7 ).
+
   ENDMETHOD.
 
   METHOD filter_status.

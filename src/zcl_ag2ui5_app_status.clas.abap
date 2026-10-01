@@ -47,6 +47,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
+    "! Stage is offered only when something changed locally
+    DATA mv_can_stage    TYPE abap_bool.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
     "! Filled when the package needs a request: the user's modifiable ones
@@ -163,6 +165,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `icon`    v = `sap-icon://refresh`
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
+    header_content->tag( `Button`
+        )->a( n = `text`    v = `Stage`
+        )->a( n = `icon`    v = `sap-icon://upload`
+        )->a( n = `enabled` v = client->_bind( mv_can_stage )
+        )->a( n = `press`   v = client->_event( `STAGE` ) ).
     header_content->tag( `Button`
         )->a( n = `text`  v = `Pull`
         )->a( n = `icon`  v = `sap-icon://download`
@@ -408,6 +415,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
+      WHEN `STAGE`.
+        client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
       WHEN `DIFF`.
         READ TABLE mt_rows INTO DATA(ls_row)
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
@@ -441,6 +450,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDTRY.
 
     mv_no_data = `Local and remote match`.
+    mv_can_stage = xsdbool( line_exists( ls_status-rows[ lstate = `A` ] )
+                         OR line_exists( ls_status-rows[ lstate = `M` ] )
+                         OR line_exists( ls_status-rows[ lstate = `D` ] ) ).
     ms_head = CORRESPONDING #( ls_status ).
     ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
                                     THEN substring( val = ls_status-remote_commit len = 7 )
