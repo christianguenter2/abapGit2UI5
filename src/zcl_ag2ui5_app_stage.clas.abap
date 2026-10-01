@@ -101,9 +101,49 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD take_patch.
+
+    IF is_patch-applied = abap_false.
+      RETURN.
+    ENDIF.
+    READ TABLE mt_rows ASSIGNING FIELD-SYMBOL(<ls_row>)
+      WITH KEY path = is_patch-path filename = is_patch-filename.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    DELETE mt_patches WHERE path = is_patch-path AND filename = is_patch-filename.
+    " every line picked is the whole file, none picked is no patch
+    IF is_patch-ids IS NOT INITIAL AND lines( is_patch-ids ) < is_patch-total.
+      INSERT VALUE #( path        = is_patch-path
+                      filename    = is_patch-filename
+                      ids         = is_patch-ids
+                      fingerprint = is_patch-fingerprint ) INTO TABLE mt_patches.
+      <ls_row>-patched  = abap_true.
+      <ls_row>-selected = abap_true.
+      <ls_row>-change   = change_text( is_row    = <ls_row>
+                                       iv_picked = lines( is_patch-ids )
+                                       iv_total  = is_patch-total ).
+    ELSE.
+      <ls_row>-patched  = abap_false.
+      <ls_row>-selected = xsdbool( is_patch-ids IS NOT INITIAL OR <ls_row>-selected = abap_true ).
+      <ls_row>-change   = change_text( <ls_row> ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD change_text.
+
+    rv_text = SWITCH #( is_row-lstate
+                        WHEN `A` THEN `add`
+                        WHEN `D` THEN `delete`
+                        ELSE `modify` ).
+    IF iv_total > 0.
+      rv_text = |{ rv_text } - { iv_picked } of { iv_total } lines|.
+    ENDIF.
+    IF is_row-rstate IS NOT INITIAL.
+      rv_text = |{ rv_text } - changed in Git too, pull first|.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD z2ui5_if_app~main.
@@ -114,6 +154,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       view_display( ).
     ELSEIF client->check_on_navigated( ).
       CLEAR mv_token.
+      " back from the diff page: in patch mode it hands the picked lines back
+      TRY.
+          take_patch( CAST zcl_ag2ui5_app_diff( client->get_app_prev( ) )->get_patch( ) ).
+        CATCH cx_sy_move_cast_error ##NO_HANDLER.
+      ENDTRY.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
@@ -170,6 +215,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     columns->ele( `Column`
         )->tag( `Text`
             )->a( n = `text` v = `Change` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `9rem` ).
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
@@ -186,6 +233,12 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `text` v = `{FILENAME}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{CHANGE}` ).
+    " a button press inside the row does not fire the row's press
+    cells->tag( `Button`
+        )->a( n = `text`  v = `Pick lines`
+        )->a( n = `icon`  v = `sap-icon://multi-select`
+        )->a( n = `type`  v = `Transparent`
+        )->a( n = `press` v = client->_event( val = `PATCH` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
 
     DATA(form) = content->ele( n = `SimpleForm` ns = `form`
         )->a( n = `editable` v = `true`
@@ -237,6 +290,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     " a typed token arrives with whatever button is pressed next, and abap2UI5
     " saves the app state after every event (into its draft table) - so it is
     " taken out of the attribute before anything else, for every event
+    DATA ls_row TYPE ty_row.
+
     DATA(lv_token) = mv_token.
     CLEAR mv_token.
 
@@ -248,7 +303,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       WHEN `NONE`.
         select_all( abap_false ).
       WHEN `DIFF`.
-        READ TABLE mt_rows INTO DATA(ls_row)
+        READ TABLE mt_rows INTO ls_row
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
         IF sy-subrc = 0.
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
@@ -256,6 +311,19 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
                                                              iv_obj_name = ls_row-obj_name ) ).
+        ENDIF.
+      WHEN `PATCH`.
+        READ TABLE mt_rows INTO ls_row
+          WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        IF sy-subrc = 0.
+          client->nav_app_call( zcl_ag2ui5_app_diff=>create(
+            iv_key      = mv_key
+            iv_path     = ls_row-path
+            iv_filename = ls_row-filename
+            iv_obj_type = ls_row-obj_type
+            iv_obj_name = ls_row-obj_name
+            iv_patch    = abap_true
+            it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
       WHEN `PUSH`.
         push( lv_token ).
@@ -272,16 +340,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
-    CLEAR mt_rows.
+    " after a reload the fingerprints are stale anyway
+    CLEAR: mt_rows, mt_patches.
     LOOP AT ls_stage-items INTO DATA(ls_item).
       DATA(ls_row) = CORRESPONDING ty_row( ls_item ).
-      ls_row-change = SWITCH #( ls_item-lstate
-                                WHEN `A` THEN `add`
-                                WHEN `D` THEN `delete`
-                                ELSE `modify` ).
-      IF ls_item-rstate IS NOT INITIAL.
-        ls_row-change = |{ ls_row-change } - changed in Git too, pull first|.
-      ENDIF.
+      ls_row-change = change_text( ls_row ).
       INSERT ls_row INTO TABLE mt_rows.
     ENDLOOP.
     IF ms_commit-name IS INITIAL.
@@ -311,7 +374,14 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     ENDIF.
 
     LOOP AT mt_rows INTO DATA(ls_row).
-      INSERT CORRESPONDING #( ls_row ) INTO TABLE lt_items.
+      DATA(ls_item) = CORRESPONDING zif_ag2ui5_repo_service=>ty_stage_item( ls_row ).
+      READ TABLE mt_patches INTO DATA(ls_patch)
+        WITH KEY path = ls_row-path filename = ls_row-filename.
+      IF sy-subrc = 0.
+        ls_item-patch_ids   = ls_patch-ids.
+        ls_item-fingerprint = ls_patch-fingerprint.
+      ENDIF.
+      INSERT ls_item INTO TABLE lt_items.
     ENDLOOP.
 
     TRY.
