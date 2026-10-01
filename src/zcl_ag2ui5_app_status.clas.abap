@@ -20,6 +20,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       BEGIN OF ty_row,
         obj_type TYPE string,
         obj_name TYPE string,
+        path     TYPE string,
         filename TYPE string,
         local    TYPE string,
         remote   TYPE string,
@@ -210,6 +211,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
+            )->a( n = `type`  v = `Navigation`
+            )->a( n = `press` v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
             )->ele( `cells` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
@@ -402,6 +405,16 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
+      WHEN `DIFF`.
+        READ TABLE mt_rows INTO DATA(ls_row)
+          WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        IF sy-subrc = 0.
+          client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
+                                                             iv_path     = ls_row-path
+                                                             iv_filename = ls_row-filename
+                                                             iv_obj_type = ls_row-obj_type
+                                                             iv_obj_name = ls_row-obj_name ) ).
+        ENDIF.
       WHEN `PULL`.
         preview_pull( ).
       WHEN `PULL_SELECTED`.
@@ -431,6 +444,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     LOOP AT ls_status-rows INTO DATA(ls_status_row).
       INSERT VALUE #( obj_type = ls_status_row-obj_type
                       obj_name = ls_status_row-obj_name
+                      path     = ls_status_row-path
                       filename = ls_status_row-filename
                       local    = state_text( ls_status_row-lstate )
                       remote   = state_text( ls_status_row-rstate )
