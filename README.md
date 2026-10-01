@@ -10,14 +10,16 @@ This is a proof of concept. It supports three things:
 - **Repository list:** all abapGit repositories of the system, with a search.
 - **Status:** the files that differ between the system and the remote, or that
   are inactive.
+- **Diff:** pressing a file in the status list shows its line diff, the system's
+  version against Git's, changes with context or the whole file.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed.
 
-Stage, commit, push and the diff view are not part of it yet.
+Stage, commit, push and a side-by-side diff are not part of it yet.
 
-| Repositories | Status | Pull |
-|---|---|---|
-| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Decision dialog](docs/screenshots/pull-dialog.png) |
+| Repositories | Status | Diff | Pull |
+|---|---|---|---|
+| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Diff of one file](docs/screenshots/diff.png) | ![Decision dialog](docs/screenshots/pull-dialog.png) |
 
 The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
 a real system.

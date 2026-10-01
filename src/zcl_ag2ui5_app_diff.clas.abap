@@ -137,11 +137,11 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
-        )->a( n = `width` v = `4rem`
+        )->a( n = `width` v = `5rem`
         )->tag( `Text`
             )->a( n = `text` v = `Remote` ).
     columns->ele( `Column`
-        )->a( n = `width` v = `4rem`
+        )->a( n = `width` v = `5rem`
         )->tag( `Text`
             )->a( n = `text` v = `Local` ).
     columns->ele( `Column`

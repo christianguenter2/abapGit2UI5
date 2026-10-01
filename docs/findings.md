@@ -159,3 +159,20 @@ change to `ZAGT_TEST_DTEL` appears under "Overwrite", and pulling it on
 `A4HK900148` restores the remote text.
 
 Creating a request from the dialog is still not supported.
+
+## Slice 4: inline diff view (2026-10-01)
+
+See `docs/superpowers/specs/2026-10-01-diff-view-design.md`.
+
+- `get_diff` on A4H25, after a local comment was added to
+  `ZIF_ABAPGIT_UNIT_TEST`:
+  - The `.abap` file gives 9 lines, and the comment is the only `LOCAL` line
+    (local line 8).
+  - The `.xml` file gives no difference.
+- ABAP Unit is 51/51. `compact` and `map_diff` are fully unit-tested.
+- The browser test was not possible: overnight the SAP session in Chrome
+  expired, and Chrome waits for a login that the agent must not enter. The
+  page was checked with both linters and with a headless render that uses the
+  real diff result (`docs/screenshots/diff.png`).
+- Open point: the code column is not in a monospace font yet. That is planned
+  together with side by side.
