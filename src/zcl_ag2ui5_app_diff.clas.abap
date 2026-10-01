@@ -505,9 +505,16 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     CLEAR mt_rows.
     LOOP AT lt_lines INTO DATA(ls_line).
+      " the background follows the marker: green +, red -, grey for a gap
+      DATA(lv_tint) = COND string( WHEN ls_line-kind = lv_new_kind THEN `ADDED`
+                                   WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-local
+                                     OR ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-remote THEN `REMOVED`
+                                   WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-gap THEN `GAP` ).
       INSERT VALUE #( remote_num = ls_line-remote_num
                       local_num  = ls_line-local_num
-                      code_html  = zcl_ag2ui5_repo_service=>code_html( ls_line-text )
+                      code_html  = zcl_ag2ui5_repo_service=>tinted_html(
+                                     iv_html = zcl_ag2ui5_repo_service=>code_html( ls_line-text )
+                                     iv_tint = lv_tint )
                       marker     = COND #( WHEN ls_line-kind = lv_new_kind THEN `+`
                                            WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-local
                                              OR ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-remote THEN `-` )
@@ -529,11 +536,18 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                                                       iv_remote_is_new = mv_remote_is_new ) INTO DATA(ls_sbs).
       INSERT VALUE #( old_num    = ls_sbs-old_num
                       old_html   = COND #( WHEN ls_sbs-gap = abap_true
-                                           THEN |<em>{ escape( val = ls_sbs-old_text format = cl_abap_format=>e_xml_text ) }</em>|
-                                           ELSE zcl_ag2ui5_repo_service=>code_html( ls_sbs-old_text ) )
+                                           THEN zcl_ag2ui5_repo_service=>tinted_html(
+                                                  iv_html = |<em>{ escape( val = ls_sbs-old_text format = cl_abap_format=>e_xml_text ) }</em>|
+                                                  iv_tint = `GAP` )
+                                           ELSE zcl_ag2ui5_repo_service=>tinted_html(
+                                                  iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-old_text )
+                                                  iv_tint = COND #( WHEN ls_sbs-old_changed = abap_true THEN `REMOVED` ) ) )
                       old_marker = COND #( WHEN ls_sbs-old_changed = abap_true THEN `-` )
                       new_num    = ls_sbs-new_num
-                      new_html   = COND #( WHEN ls_sbs-gap = abap_false THEN zcl_ag2ui5_repo_service=>code_html( ls_sbs-new_text ) )
+                      new_html   = COND #( WHEN ls_sbs-gap = abap_false
+                                           THEN zcl_ag2ui5_repo_service=>tinted_html(
+                                                  iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-new_text )
+                                                  iv_tint = COND #( WHEN ls_sbs-new_changed = abap_true THEN `ADDED` ) ) )
                       new_marker = COND #( WHEN ls_sbs-new_changed = abap_true THEN `+` )
                       highlight  = COND #( WHEN ls_sbs-gap = abap_true THEN `Information`
                                            WHEN ls_sbs-old_changed = abap_true AND ls_sbs-new_changed = abap_true THEN `Warning`

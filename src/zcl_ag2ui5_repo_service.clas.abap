@@ -895,6 +895,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD tinted_html.
+
+    " the colours of GitHub's diff; sap.m.FormattedText keeps this style
+    DATA(lv_color) = SWITCH string( iv_tint
+                                    WHEN `ADDED`   THEN `#e6ffec`
+                                    WHEN `REMOVED` THEN `#ffebe9`
+                                    WHEN `GAP`     THEN `#f6f8fa` ).
+    rv_html = COND #( WHEN lv_color IS INITIAL THEN iv_html
+                      ELSE |<span style="display:block;min-height:1em;background-color:{ lv_color }">{ iv_html }</span>| ).
+
   ENDMETHOD.
 
   METHOD code_html.
