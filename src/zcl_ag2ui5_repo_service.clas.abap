@@ -993,12 +993,37 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD branch_name.
+
+    " as abapGit's normalize_branch_name and complete_heads_branch_name
+    rv_branch = condense( val = iv_name del = ` ` from = `` ).
+    rv_branch = replace( val = rv_branch sub = ` ` with = `-` occ = 0 ).
+    IF rv_branch NP `refs/heads/*`.
+      rv_branch = |refs/heads/{ rv_branch }|.
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD assert_branch_name.
+
+    DATA(lv_short) = COND string( WHEN iv_branch CP `refs/heads/*` THEN substring( val = iv_branch off = 11 ) ).
+    IF lv_short IS INITIAL.
+      zcx_abapgit_exception=>raise( `Enter a name for the new branch` ).
+    ENDIF.
+    " Git's rules for a ref name (git check-ref-format)
+    FIND REGEX `\.\.|[~^:?*\[\\]|[[:cntrl:]]|^[/.]|[/.]$|//|\.lock$` IN lv_short.
+    IF sy-subrc = 0.
+      zcx_abapgit_exception=>raise( |{ lv_short } is no valid branch name: no .., ~ ^ : ? * [ \\, | &&
+                                    |control characters or //, and it may not start or end with / or . or end with .lock| ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD assert_new_branch.
+
+    IF line_exists( it_branches[ name = iv_branch ] ).
+      zcx_abapgit_exception=>raise( |Branch { substring( val = iv_branch off = 11 ) } already exists| ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.
