@@ -1,5 +1,6 @@
 CLASS ltcl_push DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push.
+CLASS ltcl_patch DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch.
 
 "! abap2UI5 client for one event round trip
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -7,6 +8,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
     DATA mv_event TYPE string.
     DATA mv_message TYPE string.
+    DATA mv_called TYPE REF TO z2ui5_if_app.
 ENDCLASS.
 
 
@@ -39,7 +41,8 @@ CLASS ltd_client IMPLEMENTATION.
     result = SWITCH #( v WHEN 1 THEN `/src/` ELSE `zcl_a.clas.abap` ).
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~nav_app_call ##NEEDED.
+  METHOD z2ui5_if_client~nav_app_call.
+    mv_called = app.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave ##NEEDED.
@@ -53,12 +56,14 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
     DATA mv_received_token TYPE string.
     DATA mv_fail TYPE abap_bool.
+    DATA mt_received_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 ENDCLASS.
 
 
 CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~commit_push.
     mv_received_token = iv_token.
+    mt_received_items = it_items.
     IF mv_fail = abap_true.
       zcx_abapgit_exception=>raise( `HTTP 401 Unauthorized` ).
     ENDIF.
@@ -152,7 +157,7 @@ CLASS ltcl_push IMPLEMENTATION.
   METHOD token_cleared_on_other_events.
     " abap2UI5 saves the draft after every event, and a typed token arrives
     " with whatever button is pressed next
-    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `BACK` ) ) INTO DATA(lv_event).
+    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `PATCH` ) ( `BACK` ) ) INTO DATA(lv_event).
       mo_app->mv_token = `secret-token`.
       mo_client->mv_event = lv_event.
 
@@ -161,6 +166,114 @@ CLASS ltcl_push IMPLEMENTATION.
       cl_abap_unit_assert=>assert_initial( act = mo_app->mv_token
                                            msg = |Token kept after { lv_event }| ).
     ENDLOOP.
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_patch DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_stage.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_service.
+
+    METHODS setup.
+    METHODS patch
+      IMPORTING
+        it_ids          TYPE string_table
+        iv_total        TYPE i DEFAULT 7
+      RETURNING
+        VALUE(rs_patch) TYPE zcl_ag2ui5_app_diff=>ty_patch.
+
+    METHODS some_lines_select_row FOR TESTING.
+    METHODS all_lines_mean_whole_file FOR TESTING.
+    METHODS no_lines_reset_row FOR TESTING.
+    METHODS back_without_apply_keeps_row FOR TESTING.
+    METHODS push_sends_patch FOR TESTING.
+    METHODS pick_opens_patch_mode FOR TESTING.
+ENDCLASS.
+
+
+CLASS ltcl_patch IMPLEMENTATION.
+
+  METHOD setup.
+    mo_client  = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app = zcl_ag2ui5_app_stage=>create( iv_key = `000000000001` iv_title = `test` ).
+    mo_app->client     = mo_client.
+    mo_app->mi_service = mo_service.
+    mo_app->mt_rows = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` action = `ADD` lstate = `M`
+                                 change = `modify` ) ).
+    mo_app->ms_commit = VALUE #( title = `Test` name = `Someone` email = `someone@example.com` ).
+  ENDMETHOD.
+
+  METHOD patch.
+    rs_patch = VALUE #( applied = abap_true path = `/src/` filename = `zcl_a.clas.abap`
+                        ids = it_ids total = iv_total fingerprint = `fp` ).
+  ENDMETHOD.
+
+  METHOD some_lines_select_row.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ( `N5` ) ( `O9` ) ) ) ).
+
+    DATA(ls_row) = mo_app->mt_rows[ 1 ].
+    cl_abap_unit_assert=>assert_true( ls_row-selected ).
+    cl_abap_unit_assert=>assert_true( ls_row-patched ).
+    cl_abap_unit_assert=>assert_equals( act = ls_row-change exp = `modify - 3 of 7 lines` ).
+  ENDMETHOD.
+
+  METHOD all_lines_mean_whole_file.
+    mo_app->take_patch( patch( it_ids = VALUE #( ( `N2` ) ( `O3` ) ) iv_total = 2 ) ).
+
+    DATA(ls_row) = mo_app->mt_rows[ 1 ].
+    cl_abap_unit_assert=>assert_true( ls_row-selected ).
+    cl_abap_unit_assert=>assert_false( ls_row-patched ).
+    cl_abap_unit_assert=>assert_equals( act = ls_row-change exp = `modify` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_patches ).
+  ENDMETHOD.
+
+  METHOD no_lines_reset_row.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_app->take_patch( patch( VALUE #( ) ) ).
+
+    DATA(ls_row) = mo_app->mt_rows[ 1 ].
+    cl_abap_unit_assert=>assert_false( ls_row-patched ).
+    cl_abap_unit_assert=>assert_equals( act = ls_row-change exp = `modify` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_patches ).
+  ENDMETHOD.
+
+  METHOD back_without_apply_keeps_row.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    DATA(ls_back) = patch( VALUE #( ( `N2` ) ( `N5` ) ) ).
+    ls_back-applied = abap_false.
+
+    mo_app->take_patch( ls_back ).
+
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-change exp = `modify - 1 of 7 lines` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ 1 ]-ids exp = VALUE string_table( ( `N2` ) ) ).
+  ENDMETHOD.
+
+  METHOD push_sends_patch.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_client->mv_event = `PUSH`.
+
+    mo_app->z2ui5_if_app~main( mo_client ).
+
+    DATA(ls_item) = mo_service->mt_received_items[ 1 ].
+    cl_abap_unit_assert=>assert_equals( act = ls_item-patch_ids exp = VALUE string_table( ( `N2` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = ls_item-fingerprint exp = `fp` ).
+  ENDMETHOD.
+
+  METHOD pick_opens_patch_mode.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_client->mv_event = `PATCH`.
+
+    mo_app->z2ui5_if_app~main( mo_client ).
+
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_char_cp( act = lo_diff->ms_head-title exp = `Pick lines - *` ).
   ENDMETHOD.
 
 ENDCLASS.

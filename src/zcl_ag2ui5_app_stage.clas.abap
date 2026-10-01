@@ -21,6 +21,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         "! What the commit does with the file, for the table
         change   TYPE string,
         selected TYPE abap_bool,
+        "! Only some lines are committed
+        patched  TYPE abap_bool,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
@@ -44,6 +46,30 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     DATA mv_title TYPE string.
     "! Set only by unit tests; the real service otherwise
     DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+
+    TYPES:
+      BEGIN OF ty_patch,
+        path        TYPE string,
+        filename    TYPE string,
+        ids         TYPE string_table,
+        fingerprint TYPE string,
+      END OF ty_patch,
+      ty_patches TYPE STANDARD TABLE OF ty_patch WITH EMPTY KEY.
+    "! The picked lines per file; a file without an entry is committed whole
+    DATA mt_patches TYPE ty_patches.
+
+    "! Takes the diff page's selection over into its row
+    METHODS take_patch
+      IMPORTING
+        is_patch TYPE zcl_ag2ui5_app_diff=>ty_patch.
+    "! The row's Change text: the action, how many lines, Git's change
+    METHODS change_text
+      IMPORTING
+        is_row         TYPE ty_row
+        iv_picked      TYPE i OPTIONAL
+        iv_total       TYPE i OPTIONAL
+      RETURNING
+        VALUE(rv_text) TYPE string.
 
     METHODS view_display.
     METHODS on_event.
@@ -72,6 +98,12 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     ro_app->mv_key   = iv_key.
     ro_app->mv_title = iv_title.
 
+  ENDMETHOD.
+
+  METHOD take_patch.
+  ENDMETHOD.
+
+  METHOD change_text.
   ENDMETHOD.
 
   METHOD z2ui5_if_app~main.
