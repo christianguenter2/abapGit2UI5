@@ -96,6 +96,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     CONSTANTS c_new_branch TYPE string VALUE `NEW`.
     "! The branch the open delete confirmation is about, set on the server
     DATA mv_delete_branch TYPE string.
+    "! The commit the confirmation showed; the service refuses if it moved
+    DATA mv_delete_sha1 TYPE string.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
     "! Every file of the last status; sorting and the switch start from here
@@ -580,7 +582,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     TRY.
         DATA(lv_sha1) = service( )->delete_branch( iv_key    = mv_key
-                                                   iv_branch = mv_delete_branch ).
+                                                   iv_branch = mv_delete_branch
+                                                   iv_sha1   = mv_delete_sha1 ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
@@ -706,6 +709,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         READ TABLE mt_branches INTO DATA(ls_delete) WITH KEY name = mv_branch.
         IF sy-subrc = 0 AND mv_can_delete = abap_true.
           mv_delete_branch = mv_branch.
+          mv_delete_sha1   = ls_delete-sha1.
           client->message_box_display(
             text             = |Delete branch { ls_delete-text } (at {
                                  substring( val = ls_delete-sha1 len = nmin( val1 = 7 val2 = strlen( ls_delete-sha1 ) ) )
@@ -719,7 +723,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         IF client->get_event_arg( ) = `DELETE`.
           delete_branch( ).
         ENDIF.
-        CLEAR mv_delete_branch.
+        CLEAR: mv_delete_branch, mv_delete_sha1.
       WHEN `SWITCH_BRANCH`.
         switch_branch( ).
       WHEN `PULL`.

@@ -364,11 +364,13 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       zcx_abapgit_exception.
 
   "! Deletes a branch on the remote; not the default one, not the one the
-  "! repository follows. Returns the commit it pointed to
+  "! repository follows, and only while it still points to iv_sha1, the
+  "! commit the user confirmed. Returns that commit
   METHODS delete_branch
     IMPORTING
       iv_key         TYPE string
       iv_branch      TYPE string
+      iv_sha1        TYPE string
     RETURNING
       VALUE(rv_sha1) TYPE string
     RAISING

@@ -1050,6 +1050,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     IF ls_branch-current = abap_true.
       zcx_abapgit_exception=>raise( |{ ls_branch-display } is the branch this repository follows - switch first| ).
     ENDIF.
+    " the user confirmed this commit; somebody pushed since
+    IF iv_sha1 IS NOT INITIAL AND iv_sha1 <> ls_branch-sha1.
+      zcx_abapgit_exception=>raise( |{ ls_branch-display } has moved to { substring( val = ls_branch-sha1 len = 7 ) } | &&
+                                    |since the list was loaded - nothing was deleted. Open the list again.| ).
+    ENDIF.
 
   ENDMETHOD.
 
@@ -1116,6 +1121,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     " the name comes from the browser; the commit comes from a fresh list
     DATA(lt_branches) = zif_ag2ui5_repo_service~list_branches( iv_key ).
     assert_deletable( iv_branch   = iv_branch
+                      iv_sha1     = iv_sha1
                       it_branches = lt_branches ).
     DATA(ls_branch) = lt_branches[ name = iv_branch ].
 
