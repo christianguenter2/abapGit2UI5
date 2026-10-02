@@ -12,8 +12,8 @@ abapGit with the fix.
 **Next, in this order (agreed with Chris):**
 1. abap2UI5: control characters blank the page (`escape_string`, below).
    The fix is in AJSON: PR sbcgua/ajson#228, opened by Chris on 2026-10-02.
-2. abapGit 1 (a table with data deleted despite "No"): prepare a fixture
-   table on A4H25; Chris reproduces it in SAP GUI.
+2. abapGit 1 (a table with data deleted despite "No"): reproduced by Chris
+   in SAP GUI on 2026-10-02; fix prepared (see below).
 3. abapGit 2 (the self-update guard): discuss with the maintainers first.
 
 ## abapGit: likely bugs
@@ -22,9 +22,23 @@ abapGit with the fix.
    `zcl_abapgit_services_repo=>delete_unnecessary_objects` looks only at the
    `overwrite` decision. A table with Y in `overwrite` and N in
    `delete_tabl_with_data` (the "delete anyway?" popup) is deleted anyway.
-   - Repro idea: a repository whose remote drops a table that has rows
-     locally. In the overwrite popup choose Y, in the table-data popup choose
-     N, then check whether the table is gone.
+   - **Reproduced (2026-10-02):** fixture table `ZAG2UI5_DEL_TABL` (local
+     only, one row) in `$AG2UI5_TEST`. Chris pulled in SAP GUI with Yes in
+     the overwrite step and No in "Delete table that contains data"; the
+     table was gone. Both pull paths (popups and the HTML pull page) end in
+     `real_deserialize` and so in `delete_unnecessary_objects`.
+   - **Fix prepared (2026-10-02):** worktree
+     `/home/chris/Projects/GIT/abapGit-tabl-data`, branch
+     `fix/tabl-data-delete` on `upstream/main` `7b5f9cf2`. The selection moved
+     into `get_objects_to_delete`, which skips a table whose table-data
+     decision is No; `checks_adjust` already drops it from the
+     deserialization. New test include for `ZCL_ABAPGIT_SERVICES_REPO` with
+     `ltcl_objects_to_delete` (5 tests, `table_with_data_declined` failed
+     first). `npm run unit` green, abaplint clean.
+   - The background pull sets only the overwrite decisions; its table-data
+     decisions stay initial, so it still deletes such tables, as before.
+   - abapGit2UI5 is not affected: one decision per object is applied to all
+     check tables (`apply_decisions`).
 2. **The self-update guard only covers SAP GUI.**
    - `check_self_update` fires only for `sy-cprog = 'ZABAPGIT'`.
    - `zcl_abapgit_url=>is_abapgit_repo` matches only github.com URLs ending
