@@ -263,6 +263,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     content->tag( n = `HTML` ns = `core`
         )->a( n = `content` v = `<style>` &&
                                 `tr[data-change="Indication03"] > td \{ background-color: #fff8d6 \}` &&
+                                " Horizon has no yellow highlight: the bar is coloured here too
+                                `tr[data-change="Indication03"] .sapMLIBHighlight \{ background-color: #e9c000 \}` &&
                                 `</style>` ).
 
     DATA(attributes) = content->ele( `ObjectHeader`
