@@ -468,6 +468,13 @@ them.
       name the branch.
     - The name field has no `labelFor`, and Enter does not create.
 
+## Search field focus (2026-10-02)
+
+A small change, approved in chat: the repository list puts the focus into
+the search field when it is shown, at the start and on the way back from a
+repository (`follow_up_action( cs_event-set_focus )`, the cursor behind the
+text). Checked in the browser both ways.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
