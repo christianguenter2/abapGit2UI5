@@ -11,7 +11,7 @@ abapGit with the fix.
 
 **Next, in this order (agreed with Chris):**
 1. abap2UI5: control characters blank the page (`escape_string`, below).
-   The fix is in AJSON, prepared on 2026-10-02 (see below).
+   The fix is in AJSON: PR sbcgua/ajson#228, opened by Chris on 2026-10-02.
 2. abapGit 1 (a table with data deleted despite "No"): prepare a fixture
    table on A4H25; Chris reproduces it in SAP GUI.
 3. abapGit 2 (the self-update guard): discuss with the maintainers first.
@@ -139,7 +139,7 @@ abapGit with the fix.
     built once in `class_constructor`. New test
     `ltcl_serializer_test->escape_control_chars`; transpiled tests green,
     abaplint clean, the same logic checked on the A4H25 kernel (NUL included).
-    Possibly related: AJSON issue #82. After the merge, abap2UI5 has to
+    PR sbcgua/ajson#228 (open). Possibly related: AJSON issue #82. After the merge, abap2UI5 has to
     refresh `ajson_mirror`.
 - **Secrets in the draft table:** bound input fields are written as plain-text
   XML into `Z2UI5_T_01` after every event, including password fields. The
