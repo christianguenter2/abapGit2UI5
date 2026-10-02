@@ -1,5 +1,6 @@
 CLASS ltcl_patch DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch.
+CLASS ltcl_columns DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns.
 
 "! abap2UI5 client for one event with its arguments
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -188,6 +189,70 @@ CLASS ltcl_patch IMPLEMENTATION.
     fire( `APPLY` ).
 
     cl_abap_unit_assert=>assert_initial( mo_app->get_patch( )-ids ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+"! Side by side as in abapGit: the system left, Git right, in both directions
+CLASS ltcl_columns DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS app
+      IMPORTING
+        iv_remote_is_new TYPE abap_bool
+      RETURNING
+        VALUE(ro_app)    TYPE REF TO zcl_ag2ui5_app_diff.
+
+    METHODS push_system_left FOR TESTING.
+    METHODS pull_system_left FOR TESTING.
+ENDCLASS.
+
+
+CLASS ltcl_columns IMPLEMENTATION.
+
+  METHOD app.
+    " one line changed: the system has "local", Git has "remote"
+    ro_app = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/` iv_filename = `zcl_a.clas.abap`
+                                          iv_obj_type = `CLAS` iv_obj_name = `ZCL_A`
+                                          iv_remote_is_new = iv_remote_is_new ).
+    ro_app->mt_all = VALUE #(
+      ( local_num = `1` remote_num = `1` text = `same`   kind = `SAME` )
+      (                 remote_num = `2` text = `remote` kind = `REMOTE` )
+      ( local_num = `2`                  text = `local`  kind = `LOCAL` ) ).
+    ro_app->rows_build( ).
+  ENDMETHOD.
+
+  METHOD push_system_left.
+    DATA(lo_app) = app( abap_false ).
+    cl_abap_unit_assert=>assert_equals( exp = `System (new)` act = lo_app->ms_head-system_label ).
+    cl_abap_unit_assert=>assert_equals( exp = `Git (old)`    act = lo_app->ms_head-git_label ).
+    READ TABLE lo_app->mt_sbs INTO DATA(ls_row) INDEX 2.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*local*`  act = ls_row-system_html ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*remote*` act = ls_row-git_html ).
+    cl_abap_unit_assert=>assert_equals( exp = `+`       act = ls_row-system_marker ).
+    cl_abap_unit_assert=>assert_equals( exp = `Success` act = ls_row-system_state ).
+    cl_abap_unit_assert=>assert_equals( exp = `-`       act = ls_row-git_marker ).
+    cl_abap_unit_assert=>assert_equals( exp = `Error`   act = ls_row-git_state ).
+    cl_abap_unit_assert=>assert_equals( exp = `2`       act = ls_row-system_num ).
+  ENDMETHOD.
+
+  METHOD pull_system_left.
+    DATA(lo_app) = app( abap_true ).
+    cl_abap_unit_assert=>assert_equals( exp = `System (old)` act = lo_app->ms_head-system_label ).
+    cl_abap_unit_assert=>assert_equals( exp = `Git (new)`    act = lo_app->ms_head-git_label ).
+    READ TABLE lo_app->mt_sbs INTO DATA(ls_row) INDEX 2.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*local*`  act = ls_row-system_html ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*remote*` act = ls_row-git_html ).
+    cl_abap_unit_assert=>assert_equals( exp = `-`       act = ls_row-system_marker ).
+    cl_abap_unit_assert=>assert_equals( exp = `Error`   act = ls_row-system_state ).
+    cl_abap_unit_assert=>assert_equals( exp = `+`       act = ls_row-git_marker ).
+    cl_abap_unit_assert=>assert_equals( exp = `Success` act = ls_row-git_state ).
+    cl_abap_unit_assert=>assert_equals( exp = `2`       act = ls_row-git_num ).
   ENDMETHOD.
 
 ENDCLASS.
