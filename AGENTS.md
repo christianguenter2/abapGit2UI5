@@ -29,6 +29,8 @@ present. It is Git-ignored.
   - `assert_branch` for a branch to switch to, against a fresh branch list
   - `assert_branch_name` / `assert_new_branch` for a new branch, after
     `branch_name` normalized it
+  - `assert_deletable` for a branch to delete, against a fresh branch list;
+    the commit sent to the remote comes from that list
   - `apply_patch` and the fingerprint for picked lines: the diff is computed
     again, and a different fingerprint gives `changed`
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
@@ -48,7 +50,7 @@ present. It is Git-ignored.
 | Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `tinted_html`, `counts_text`, `visible` |
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
-| Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch` |
+| Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every
 row of abapGit's four check tables needs a decision, or abapGit's

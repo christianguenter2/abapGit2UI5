@@ -22,10 +22,12 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   message, then push with a Git user and token. The credentials are used for
   that one push only and never stored. "Pick lines" commits only some changes
   of a file: both halves of a changed line go together, as in abapGit.
-- **Switch branch:** on the status page, pick another branch of the remote.
-  Only the branch the repository follows changes; the status then shows what
-  a pull would bring. "New branch..." creates a branch at the current head
-  and follows it; abapGit's exit supplies the credentials.
+- **Branches:** on the status page, switch to another branch of the remote
+  (only the branch the repository follows changes; the status then shows what
+  a pull would bring), create a branch at the current head ("New branch..."),
+  or delete one after a confirmation. The default branch and the one the
+  repository follows cannot be deleted. abapGit's exit supplies the
+  credentials.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport

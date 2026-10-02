@@ -475,6 +475,29 @@ the search field when it is shown, at the start and on the way back from a
 repository (`follow_up_action( cs_event-set_focus )`, the cursor behind the
 text). Checked in the browser both ways.
 
+## Slice 11: delete a branch (2026-10-02)
+
+See `docs/superpowers/specs/2026-10-02-delete-branch-design.md`. The header
+button and the dialog are now called "Branches".
+
+- ABAP Unit: service 111/111 (5 new: the branch's commit, `assert_deletable`
+  refuses the default, the current and an unknown branch), diff app 9/9,
+  stage app 12/12.
+- Smoke test on `$UMLAUT`, deleting nothing: `main` (default, and current
+  at the time) and a branch that does not exist are refused.
+- Browser on `$UMLAUT`:
+  - "Delete" is hidden for `main` and for the current branch, shown for
+    `Test`, `test` and `feature/test1234` (not deleted).
+  - `delete-me` was created, the repository switched back to `main`.
+  - Delete, then Cancel in the confirmation ("Delete branch delete-me (at
+    463690e) on GitHub? abapGit cannot undo this."): nothing sent, the
+    branch still on GitHub.
+  - Delete, then DELETE: the toast "Deleted delete-me (was at 463690e)", the
+    list without it, `main` picked again. On GitHub `delete-me` is gone and
+    the other four branches are unchanged.
+- The footer has three buttons, so the dialog uses the `buttons` aggregation
+  instead of `beginButton`/`endButton`.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
