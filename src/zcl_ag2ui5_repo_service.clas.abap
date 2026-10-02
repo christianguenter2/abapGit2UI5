@@ -1065,8 +1065,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~create_branch.
 
-    " list_branches checks the authorization and installs the silent
-    " progress; the name comes from the browser
+    assert_authorized( ).
+    silence_progress( ).
+
+    " the name comes from the browser
     rv_branch = branch_name( iv_name ).
     assert_branch_name( rv_branch ).
     assert_new_branch( iv_branch   = rv_branch
