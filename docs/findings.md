@@ -439,6 +439,34 @@ them.
   `popup_model_update( )` is not needed: abap2UI5 sends a changed model by
   itself (abap2ui5lint `obsolete-model-update`).
 - The SAP session expired overnight; Chris logged in again.
+- **Real creation (with Chris's OK, 2026-10-02):** on `$UMLAUT`, which
+  followed `test` at `3522d6f`:
+  - `test/create-branch` was refused by GitHub: "cannot lock ref …
+    'refs/heads/test' exists". A ref cannot be a branch and a folder at the
+    same time. The message box showed it; nothing was switched.
+  - `create-branch-test` was created: the toast "Created and following
+    create-branch-test", the header, GitHub at `3522d6f`, and a fresh session
+    lists it as current (so the COMMIT works).
+  - Afterwards `$UMLAUT` was switched back to `test`. The branch
+    `create-branch-test` is still on GitHub.
+- Review (a fresh reviewer): no critical findings.
+  - The authorization check now runs at the top of `create_branch`, not only
+    inside `list_branches` (the spec's step 1).
+  - Not changed: after abapGit's "checkout PR" (a switched origin), the
+    branch is created on the fork, and switching the origin back forgets it.
+    abapGit's own `create_branch` does the same.
+  - Open, minor:
+    - Git's rules for path components (`a/.b`, `a.lock/b`), `@{`, `@` and
+      `HEAD` are not checked; the remote refuses most of them.
+    - A name with non-ASCII characters gives a cryptic Git protocol error
+      (abapGit's `pkt_string` counts characters, not bytes).
+    - A name that collides with an existing branch as a folder (`test` and
+      `test/x`) could be refused before the push.
+    - `REFS/HEADS/x` counts as a full name (`CP` ignores case).
+    - "Starts from" comes from the last status load.
+    - If the ref is created but following it fails, the message does not
+      name the branch.
+    - The name field has no `labelFor`, and Enter does not create.
 
 ## Open points (as of 2026-10-01)
 
