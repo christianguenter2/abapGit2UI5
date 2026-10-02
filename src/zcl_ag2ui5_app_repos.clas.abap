@@ -50,6 +50,11 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
       " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
       view_display( ).
+      " start typing right away: the cursor behind what is in the field,
+      " scheduled for after the response, when the view is rendered
+      DATA(lv_end) = |{ strlen( mv_search ) }|.
+      client->follow_up_action( val   = client->cs_event-set_focus
+                                t_arg = VALUE #( ( `search` ) ( lv_end ) ( lv_end ) ) ).
     ELSEIF client->check_on_event( ).
       on_event( ).
     ENDIF.
@@ -77,6 +82,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     page->ele( `subHeader`
         )->ele( `Toolbar`
             )->tag( `SearchField`
+                )->a( n = `id`          v = `search`
                 )->a( n = `value`       v = client->_bind( mv_search )
                 )->a( n = `placeholder` v = `Search name, package or URL`
                 )->a( n = `search`      v = client->_event( `SEARCH` ) ).
