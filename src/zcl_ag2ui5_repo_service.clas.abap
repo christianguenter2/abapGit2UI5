@@ -987,7 +987,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       display = ls_branch-display_name
                       default = xsdbool( ls_branch-name = iv_head_symref
                                          OR ( iv_head_symref IS INITIAL AND ls_branch-is_head = abap_true ) )
-                      current = xsdbool( ls_branch-name = iv_current ) ) INTO TABLE rt_branches.
+                      current = xsdbool( ls_branch-name = iv_current )
+                      sha1    = ls_branch-sha1 ) INTO TABLE rt_branches.
     ENDLOOP.
     SORT rt_branches BY default DESCENDING display ASCENDING.
 
@@ -1036,6 +1037,18 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD assert_deletable.
+
+    READ TABLE it_branches INTO DATA(ls_branch) WITH KEY name = iv_branch.
+    IF sy-subrc <> 0.
+      zcx_abapgit_exception=>raise( |Branch { iv_branch } is not on the remote| ).
+    ENDIF.
+    IF ls_branch-default = abap_true.
+      zcx_abapgit_exception=>raise( |{ ls_branch-display } is the default branch and cannot be deleted| ).
+    ENDIF.
+    IF ls_branch-current = abap_true.
+      zcx_abapgit_exception=>raise( |{ ls_branch-display } is the branch this repository follows - switch first| ).
+    ENDIF.
+
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.
