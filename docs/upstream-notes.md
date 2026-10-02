@@ -61,6 +61,15 @@ is filed yet. The "likely bugs" are from reading code and code reviews; only
       was `a\nb<FF>\nc\n`.
     - abapGit2UI5 strips the marker in `apply_patch`; the fix belongs in
       `calculate_patch`.
+    - **Fix prepared (2026-10-02):** branch `fix/patch-form-feed` in the
+      worktree `/home/chris/Projects/GIT/abapGit-patch-ff`, on top of
+      `upstream/main` `511cdbef`, commit `dbe89bfc`. `without_marker` in
+      `zcl_abapgit_git_add_patch` removes the marker from every line taken
+      over; two new tests in `ltcl_calculate_patch` (a row-level one and an
+      end-to-end one with abapGit's real diff; the end-to-end one gave
+      `a\nb\f\nc\n` without the fix). `npm run unit`: 998 tests green,
+      abaplint clean. Not pushed yet. Once it is in abapGit and installed on
+      A4H25, abapGit2UI5's own removal in `apply_patch` can go.
 12. **Non-ASCII branch names break the push protocol** (from reading the
     code). `zcl_abapgit_git_utils=>pkt_string` computes the pkt-line length
     with `strlen` (characters), but the line is sent as UTF-8. A branch
