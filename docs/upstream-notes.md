@@ -5,8 +5,9 @@ is filed yet. The "likely bugs" are from reading code and code reviews; only
 11 is reproduced so far.
 
 **Status (2026-10-02):** 11 (the form feed in a partial push) is fixed in
-PR from `christianguenter2/abapGit` branch `fix/patch-form-feed`, opened by
-Chris.
+abapGit PR #7922, merged on 2026-10-02. The worktree and the branch are
+removed. abapGit2UI5's own removal in `apply_patch` stays until A4H25 runs an
+abapGit with the fix.
 
 **Next, in this order (agreed with Chris):**
 1. abap2UI5: control characters blank the page (`escape_string`, below).
@@ -73,8 +74,8 @@ Chris.
       over; two new tests in `ltcl_calculate_patch` (a row-level one and an
       end-to-end one with abapGit's real diff; the end-to-end one gave
       `a\nb\f\nc\n` without the fix). `npm run unit`: 998 tests green,
-      abaplint clean. Not pushed yet. Once it is in abapGit and installed on
-      A4H25, abapGit2UI5's own removal in `apply_patch` can go.
+      abaplint clean. Merged as PR #7922 (2026-10-02). Once A4H25 runs an
+      abapGit with it, abapGit2UI5's own removal in `apply_patch` can go.
 12. **Non-ASCII branch names break the push protocol** (from reading the
     code). `zcl_abapgit_git_utils=>pkt_string` computes the pkt-line length
     with `strlen` (characters), but the line is sent as UTF-8. A branch
