@@ -720,21 +720,23 @@ CLASS ltcl_status_rows IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD highlight_per_side.
+    " every change is yellow, whichever side changed; the Local and Remote
+    " columns tell the sides apart
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `` iv_inactive = abap_false )
       exp = `None` ).
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `M` iv_rstate = `` iv_inactive = abap_false )
-      exp = `Warning` ).
+      exp = `Indication03` ).
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `` iv_inactive = abap_true )
-      exp = `Warning` ).
+      exp = `Indication03` ).
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `` iv_rstate = `D` iv_inactive = abap_false )
-      exp = `Information` ).
+      exp = `Indication03` ).
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = `M` iv_rstate = `M` iv_inactive = abap_false )
-      exp = `Error` ).
+      exp = `Indication03` ).
   ENDMETHOD.
 
 ENDCLASS.
