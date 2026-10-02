@@ -11,7 +11,8 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 - **Repository list:** all abapGit repositories of the system, with a search.
 - **Status:** every file of the repository. A coloured bar marks the changed
   ones: orange for a change in the system (or an inactive object), blue for a
-  change in Git only, red for both. "Changes only" hides the rest. Sort by
+  change in Git only, red for both, and the changed rows get a light
+  background in the same colour. "Changes only" hides the rest. Sort by
   object, file or type; "Changes on top" (on by default) lists the changed
   files first.
 - **Diff:** pressing a file in the status list shows its line diff, inline or

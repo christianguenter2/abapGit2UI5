@@ -521,6 +521,16 @@ link in the list does not open the repository. Checked in the browser: 22
 links in the list, the header link of `$UMLAUT`. The URL comes from abapGit's
 repository settings; UI5 checks every `href` against its URL allowlist.
 
+## Status row colours (2026-10-02)
+
+A small change, approved in chat: a changed status row gets a light
+background in the colour of its bar (orange `#fff4e5` system, blue `#e8f1ff`
+Git only, red `#ffebe9` both). A row's class cannot be bound, so each row
+writes its highlight as `data-change` (`CustomData`, `writeToDom`), and a
+`<style>` block in the view (`core:HTML`, braces escaped as the linter asks)
+colours the cells. Checked in the browser on `$ABAPGIT2UI5`: 21 rows, the
+blue and the red one coloured, 19 transparent.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
