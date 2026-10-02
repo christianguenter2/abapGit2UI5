@@ -107,6 +107,7 @@ abapGit with the fix.
       green, abaplint clean. Parsing the branch list is not affected (fixed
       offsets, split at newlines). Not verified end to end: that needs the
       fix in the running `$ABAPGIT`.
+    - **PR abapGit/abapGit#7924** opened by Chris on 2026-10-02.
 13. **`create_branch` ASSERTs instead of raising.**
     `zif_abapgit_repo_online~create_branch` has
     `ASSERT iv_name CP 'refs/heads/*'`. A headless caller without the prefix
