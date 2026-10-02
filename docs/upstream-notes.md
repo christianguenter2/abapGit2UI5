@@ -13,7 +13,7 @@ abapGit with the fix.
 1. abap2UI5: control characters blank the page (`escape_string`, below).
    The fix is in AJSON: PR sbcgua/ajson#228, opened by Chris on 2026-10-02.
 2. abapGit 1 (a table with data deleted despite "No"): reproduced by Chris
-   in SAP GUI on 2026-10-02; fix prepared (see below).
+   in SAP GUI on 2026-10-02; fix in PR abapGit/abapGit#7923 (open).
 3. abapGit 2 (the self-update guard): discuss with the maintainers first.
 
 ## abapGit: likely bugs
@@ -35,6 +35,8 @@ abapGit with the fix.
      deserialization. New test include for `ZCL_ABAPGIT_SERVICES_REPO` with
      `ltcl_objects_to_delete` (5 tests, `table_with_data_declined` failed
      first). `npm run unit` green, abaplint clean.
+   - **PR #7923** opened by Chris on 2026-10-02. It asks the maintainers
+     whether the background pull should skip such tables too.
    - The background pull sets only the overwrite decisions; its table-data
      decisions stay initial, so it still deletes such tables, as before.
    - abapGit2UI5 is not affected: one decision per object is applied to all
