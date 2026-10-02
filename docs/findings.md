@@ -497,6 +497,21 @@ button and the dialog are now called "Branches".
     the other four branches are unchanged.
 - The footer has three buttons, so the dialog uses the `buttons` aggregation
   instead of `beginButton`/`endButton`.
+- Chris tested deleting himself and deleted some branches of `$UMLAUT`
+  (2026-10-02).
+- Review (a fresh reviewer): one important finding, fixed with a test that
+  failed first. The spec said the commit the browser saw is never used, so a
+  branch that somebody pushed to after the confirmation was deleted at the
+  newer commit. Now the confirmed commit is passed and must equal the fresh
+  one, as abapGit sends the listed commit. A forged value can only make the
+  delete fail. On `$UMLAUT`: `moved-test` created, a wrong commit refused
+  ("has moved to … - nothing was deleted"), the right one deleted.
+  ABAP Unit: service 113/113.
+- Open, minor: the success toast cuts the commit without a length guard; a
+  refused delete does not reload the list, and "not on the remote" shows the
+  full `refs/heads/` name; `BRANCH_DELETE` does not recompute the button
+  state on the server (the service refuses anyway); no app tests for the
+  confirmation (the status app has no test include).
 
 ## Open points (as of 2026-10-01)
 
