@@ -1,8 +1,8 @@
 # Notes for upstream (abapGit, abap2UI5, abapgit-agent)
 
-Collected while building abapGit2UI5 (2026-09-30 to 2026-10-01). Nothing here
-is filed yet. The "likely bugs" are from reading code and code reviews; none
-is reproduced yet.
+Collected while building abapGit2UI5 (2026-09-30 to 2026-10-02). Nothing here
+is filed yet. The "likely bugs" are from reading code and code reviews; only
+11 is reproduced so far.
 
 **Next step (agreed with Chris):**
 1. Reproduce 1 and 3 on A4H25 with the fixture packages (see
@@ -49,6 +49,31 @@ is reproduced yet.
 6. **The NSPC rule in `popup_decisions` reads only the first NSPC row.** An
    edge case, but inconsistent.
 
+11. **A partial push writes a form feed into Git (reproduced).** When only
+    one side of a file ends in a newline, `zcl_abapgit_diff_std` marks the
+    other side's last line with a form feed (see 10).
+    `zcl_abapgit_git_add_patch` builds the staged file from those texts, so
+    an unpicked changed last line carries the form feed into the commit.
+    abapGit's own patch page is affected.
+    - Repro: abapGit2UI5's unit test `patch_content_mixed_newline`
+      (`ZCL_AG2UI5_REPO_SERVICE`, class `ltcl_patch`): Git `a\nb`, system
+      `a\nb\nc\n`, pick only `c`. Before abapGit2UI5's workaround the result
+      was `a\nb<FF>\nc\n`.
+    - abapGit2UI5 strips the marker in `apply_patch`; the fix belongs in
+      `calculate_patch`.
+12. **Non-ASCII branch names break the push protocol** (from reading the
+    code). `zcl_abapgit_git_utils=>pkt_string` computes the pkt-line length
+    with `strlen` (characters), but the line is sent as UTF-8. A branch
+    `Änderung` gets a length that is too short, and Git answers with a
+    protocol error. Names over about 150 characters hit "PKT, todo".
+13. **`create_branch` ASSERTs instead of raising.**
+    `zif_abapgit_repo_online~create_branch` has
+    `ASSERT iv_name CP 'refs/heads/*'`. A headless caller without the prefix
+    gets a short dump instead of an exception.
+14. **`complete_heads_branch_name` ignores case.** It uses `CP`, so
+    `REFS/HEADS/x` counts as complete and is pushed outside `refs/heads/`;
+    the remote refuses it with an unclear message. Minor.
+
 ## abapGit: API proposals (for headless callers and other frontends)
 
 7. **Popups cannot be replaced outside tests.** `ZCL_ABAPGIT_UI_INJECTOR` is
@@ -76,7 +101,10 @@ is reproduced yet.
 - `rejectUnauthorized: false` is hard-coded in the npm CLI's HTTP clients, so
   the TLS certificate is not verified, and there is no setting to change it.
 - It reports `SYSTEM_EDIT`/`LOCAL_EDIT` conflicts for objects it imported
-  itself, and after MCP/ADT edits whose content equals Git.
+  itself, and after MCP/ADT edits whose content equals Git. The mark stays
+  even right after its own import in `ignore` mode, and by 2026-10-02 it hit
+  the service class and the interface too, so every deploy of abapGit2UI5
+  goes over ADT.
 - An aborted pull reports `FAILED_COUNT: 0`. Only `MESSAGE` and
   `CONFLICT_COUNT` show the abort.
 - `ZCL_ABGAGT_SYNTAX_CHK_CLAS` appends `locals_imp` after the whole main
@@ -95,3 +123,12 @@ is reproduced yet.
   that is applied but never stored.
 - **The linter's `--screenshot` has limits:** it does not follow values
   passed into helper methods, and it renders every branch of an `IF`.
+- **A linter rule for boolean event arguments:** comparing
+  `get_event_arg( )` with `` `true` `` / `` `false` `` is always wrong
+  (booleans arrive as `X` / space, as the guide says). It cost abapGit2UI5 a
+  bug that unit tests with a client double missed, because they sent `true`
+  too.
+- **Row styling from data:** there is no way to give a table row a CSS class
+  from a binding. abapGit2UI5 uses `CustomData` with `writeToDom` plus a
+  `<style>` block through `core:HTML` (the status page). A recipe in the guide,
+  or a bindable class helper, would save every app the search.
