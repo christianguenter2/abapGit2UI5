@@ -258,6 +258,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(content) = page->ele( `content` ).
 
+    " a changed row gets a light background in the colour of its bar; the
+    " row writes its highlight as data-change, see the CustomData below
+    content->tag( n = `HTML` ns = `core`
+        )->a( n = `content` v = `<style>` &&
+                                `tr[data-change="Warning"] > td \{ background-color: #fff4e5 \}` &&
+                                `tr[data-change="Information"] > td \{ background-color: #e8f1ff \}` &&
+                                `tr[data-change="Error"] > td \{ background-color: #ffebe9 \}` &&
+                                `</style>` ).
+
     DATA(attributes) = content->ele( `ObjectHeader`
         )->a( n = `title` v = client->_bind( ms_head-package )
         )->ele( `attributes` ).
@@ -306,12 +315,18 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Inactive` ).
 
-    DATA(cells) = table->ele( `items`
+    DATA(item) = table->ele( `items`
         )->ele( `ColumnListItem`
             )->a( n = `type`      v = `Navigation`
             )->a( n = `highlight` v = `{HIGHLIGHT}`
-            )->a( n = `press`     v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
-            )->ele( `cells` ).
+            )->a( n = `press`     v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
+    " data-change="<highlight>" on the row, for the style block above
+    item->ele( `customData`
+        )->tag( n = `CustomData` ns = `core`
+            )->a( n = `key`        v = `change`
+            )->a( n = `value`      v = `{HIGHLIGHT}`
+            )->a( n = `writeToDom` v = `true` ).
+    DATA(cells) = item->ele( `cells` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
     cells->tag( `Text`
