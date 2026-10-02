@@ -124,8 +124,11 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `title` v = `{NAME}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{PACKAGE}` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{URL}` ).
+    " a link opens in a new tab; a click on it does not open the repository
+    cells->tag( `Link`
+        )->a( n = `text`   v = `{URL}`
+        )->a( n = `href`   v = `{URL}`
+        )->a( n = `target` v = `_blank` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{BRANCH}` ).
     cells->tag( `Text`

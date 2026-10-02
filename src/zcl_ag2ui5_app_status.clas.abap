@@ -261,9 +261,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     DATA(attributes) = content->ele( `ObjectHeader`
         )->a( n = `title` v = client->_bind( ms_head-package )
         )->ele( `attributes` ).
-    attributes->tag( `ObjectAttribute`
+    attributes->ele( `ObjectAttribute`
         )->a( n = `title` v = `URL`
-        )->a( n = `text`  v = client->_bind( ms_head-url ) ).
+        )->ele( `customContent`
+            )->tag( `Link`
+                )->a( n = `text`   v = client->_bind( ms_head-url )
+                )->a( n = `href`   v = client->_bind( ms_head-url )
+                )->a( n = `target` v = `_blank` ).
     attributes->tag( `ObjectAttribute`
         )->a( n = `title` v = `Branch`
         )->a( n = `text`  v = client->_bind( ms_head-branch ) ).
