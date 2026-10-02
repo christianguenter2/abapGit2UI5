@@ -513,6 +513,14 @@ button and the dialog are now called "Branches".
   state on the server (the service refuses anyway); no app tests for the
   confirmation (the status app has no test include).
 
+## Repository URLs as links (2026-10-02)
+
+A small change, approved in chat: the URL in the repository list and in the
+status header is an `sap.m.Link` (`href`, `target = _blank`). A click on the
+link in the list does not open the repository. Checked in the browser: 22
+links in the list, the header link of `$UMLAUT`. The URL comes from abapGit's
+repository settings; UI5 checks every `href` against its URL allowlist.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
