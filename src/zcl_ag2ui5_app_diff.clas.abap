@@ -13,9 +13,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         file      TYPE string,
         counts    TYPE string,
         direction TYPE string,
-        "! Side-by-side column titles: which side is old and which new
-        old_label TYPE string,
-        new_label TYPE string,
+        "! Side-by-side column titles, system left and Git right as in abapGit:
+        "! which side is old and which new
+        system_label TYPE string,
+        git_label    TYPE string,
       END OF ty_head.
 
     TYPES:
@@ -36,14 +37,16 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
 
     TYPES:
       BEGIN OF ty_sbs_row,
-        old_num        TYPE string,
-        old_html       TYPE string,
+        system_num    TYPE string,
+        system_html   TYPE string,
         "! ObjectStatus marker per side: - (Error) old, + (Success) new
-        old_marker     TYPE string,
-        new_num        TYPE string,
-        new_html       TYPE string,
-        new_marker     TYPE string,
-        highlight      TYPE string,
+        system_marker TYPE string,
+        system_state  TYPE string,
+        git_num       TYPE string,
+        git_html      TYPE string,
+        git_marker    TYPE string,
+        git_state     TYPE string,
+        highlight     TYPE string,
       END OF ty_sbs_row,
       ty_sbs_rows TYPE STANDARD TABLE OF ty_sbs_row WITH EMPTY KEY.
 
@@ -154,8 +157,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     IF iv_patch = abap_true.
       ro_app->ms_head-title = |Pick lines - { ro_app->ms_head-title }|.
     ENDIF.
-    ro_app->ms_head-old_label = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `System (old)` ELSE `Git (old)` ).
-    ro_app->ms_head-new_label = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `Git (new)` ELSE `System (new)` ).
+    ro_app->ms_head-system_label = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `System (old)` ELSE `System (new)` ).
+    ro_app->ms_head-git_label    = COND #( WHEN ro_app->mv_remote_is_new = abap_true THEN `Git (new)` ELSE `Git (old)` ).
     ro_app->ms_head-direction = COND #( WHEN ro_app->mv_remote_is_new = abap_true
                                         THEN `Changes in Git, compared with this system`
                                         ELSE `Changes in this system, compared with Git` ).
@@ -382,12 +385,12 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `growingScrollToLoad` v = `true`
         )->a( n = `class`               v = `sapUiSmallMarginTop` ).
 
-    " on narrow screens the new side pops in below the old one
+    " on narrow screens Git pops in below the system
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
         )->a( n = `width` v = `4rem`
         )->tag( `Text`
-            )->a( n = `text` v = client->_bind( ms_head-old_label ) ).
+            )->a( n = `text` v = client->_bind( ms_head-system_label ) ).
     columns->ele( `Column`
         )->a( n = `width` v = `2rem` ).
     columns->ele( `Column`
@@ -398,7 +401,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
-            )->a( n = `text` v = client->_bind( ms_head-new_label ) ).
+            )->a( n = `text` v = client->_bind( ms_head-git_label ) ).
     columns->ele( `Column`
         )->a( n = `width`          v = `2rem`
         )->a( n = `minScreenWidth` v = `Tablet`
@@ -414,19 +417,19 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
             )->a( n = `highlight` v = `{HIGHLIGHT}`
             )->ele( `cells` ).
     cells->tag( `Text`
-        )->a( n = `text` v = `{OLD_NUM}` ).
+        )->a( n = `text` v = `{SYSTEM_NUM}` ).
     cells->tag( `ObjectStatus`
-        )->a( n = `text`  v = `{OLD_MARKER}`
-        )->a( n = `state` v = `Error` ).
+        )->a( n = `text`  v = `{SYSTEM_MARKER}`
+        )->a( n = `state` v = `{SYSTEM_STATE}` ).
     cells->tag( `FormattedText`
-        )->a( n = `htmlText` v = `{OLD_HTML}` ).
+        )->a( n = `htmlText` v = `{SYSTEM_HTML}` ).
     cells->tag( `Text`
-        )->a( n = `text` v = `{NEW_NUM}` ).
+        )->a( n = `text` v = `{GIT_NUM}` ).
     cells->tag( `ObjectStatus`
-        )->a( n = `text`  v = `{NEW_MARKER}`
-        )->a( n = `state` v = `Success` ).
+        )->a( n = `text`  v = `{GIT_MARKER}`
+        )->a( n = `state` v = `{GIT_STATE}` ).
     cells->tag( `FormattedText`
-        )->a( n = `htmlText` v = `{NEW_HTML}` ).
+        )->a( n = `htmlText` v = `{GIT_HTML}` ).
 
   ENDMETHOD.
 
@@ -534,27 +537,46 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     CLEAR mt_sbs.
     LOOP AT zcl_ag2ui5_repo_service=>to_side_by_side( it_lines         = lt_lines
                                                       iv_remote_is_new = mv_remote_is_new ) INTO DATA(ls_sbs).
-      INSERT VALUE #( old_num    = ls_sbs-old_num
-                      old_html   = COND #( WHEN ls_sbs-gap = abap_true
-                                           THEN zcl_ag2ui5_repo_service=>tinted_html(
-                                                  iv_html = |<em>{ escape( val = ls_sbs-old_text format = cl_abap_format=>e_xml_text ) }</em>|
-                                                  iv_tint = `GAP` )
-                                           ELSE zcl_ag2ui5_repo_service=>tinted_html(
-                                                  iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-old_text )
-                                                  iv_tint = COND #( WHEN ls_sbs-old_changed = abap_true THEN `REMOVED` ) ) )
-                      old_marker = COND #( WHEN ls_sbs-old_changed = abap_true THEN `-` )
-                      new_num    = ls_sbs-new_num
-                      new_html   = COND #( WHEN ls_sbs-gap = abap_false
-                                           THEN zcl_ag2ui5_repo_service=>tinted_html(
-                                                  iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-new_text )
-                                                  iv_tint = COND #( WHEN ls_sbs-new_changed = abap_true THEN `ADDED` ) ) )
-                      new_marker = COND #( WHEN ls_sbs-new_changed = abap_true THEN `+` )
-                      highlight  = COND #( WHEN ls_sbs-gap = abap_true THEN `Information`
-                                           WHEN ls_sbs-old_changed = abap_true AND ls_sbs-new_changed = abap_true THEN `Warning`
-                                           WHEN ls_sbs-new_changed = abap_true THEN `Success`
-                                           WHEN ls_sbs-old_changed = abap_true THEN `Error`
-                                           ELSE `None` ) )
-        INTO TABLE mt_sbs.
+      " the old and the new side, then placed: the system left, Git right
+      DATA(lv_old_html) = COND string( WHEN ls_sbs-gap = abap_true
+                                       THEN zcl_ag2ui5_repo_service=>tinted_html(
+                                              iv_html = |<em>{ escape( val = ls_sbs-old_text format = cl_abap_format=>e_xml_text ) }</em>|
+                                              iv_tint = `GAP` )
+                                       ELSE zcl_ag2ui5_repo_service=>tinted_html(
+                                              iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-old_text )
+                                              iv_tint = COND #( WHEN ls_sbs-old_changed = abap_true THEN `REMOVED` ) ) ).
+      DATA(lv_new_html) = COND string( WHEN ls_sbs-gap = abap_false
+                                       THEN zcl_ag2ui5_repo_service=>tinted_html(
+                                              iv_html = zcl_ag2ui5_repo_service=>code_html( ls_sbs-new_text )
+                                              iv_tint = COND #( WHEN ls_sbs-new_changed = abap_true THEN `ADDED` ) ) ).
+      DATA(lv_old_marker) = COND string( WHEN ls_sbs-old_changed = abap_true THEN `-` ).
+      DATA(lv_new_marker) = COND string( WHEN ls_sbs-new_changed = abap_true THEN `+` ).
+      DATA(ls_row) = VALUE ty_sbs_row(
+        highlight = COND #( WHEN ls_sbs-gap = abap_true THEN `Information`
+                            WHEN ls_sbs-old_changed = abap_true AND ls_sbs-new_changed = abap_true THEN `Warning`
+                            WHEN ls_sbs-new_changed = abap_true THEN `Success`
+                            WHEN ls_sbs-old_changed = abap_true THEN `Error`
+                            ELSE `None` ) ).
+      IF mv_remote_is_new = abap_true.
+        ls_row-system_num    = ls_sbs-old_num.
+        ls_row-system_html   = lv_old_html.
+        ls_row-system_marker = lv_old_marker.
+        ls_row-system_state  = `Error`.
+        ls_row-git_num       = ls_sbs-new_num.
+        ls_row-git_html      = lv_new_html.
+        ls_row-git_marker    = lv_new_marker.
+        ls_row-git_state     = `Success`.
+      ELSE.
+        ls_row-system_num    = ls_sbs-new_num.
+        ls_row-system_html   = lv_new_html.
+        ls_row-system_marker = lv_new_marker.
+        ls_row-system_state  = `Success`.
+        ls_row-git_num       = ls_sbs-old_num.
+        ls_row-git_html      = lv_old_html.
+        ls_row-git_marker    = lv_old_marker.
+        ls_row-git_state     = `Error`.
+      ENDIF.
+      INSERT ls_row INTO TABLE mt_sbs.
     ENDLOOP.
 
   ENDMETHOD.

@@ -543,6 +543,17 @@ the same style block colours the bar `#e9c000`, through UI5's
 renames the class, the bar falls back to `#b95100`. Checked in the browser on
 `$ABAPGIT2UI5`: 4 changed rows with yellow bar and background, 17 white.
 
+## Side by side like abapGit (2026-10-02)
+
+- Side by side now keeps the system left and Git right in both directions,
+  as abapGit's split view does (LOCAL left, REMOTE right). Before, old was
+  left and new right, so the columns swapped between pull and push. The
+  colours and markers still follow the direction: the new side is green (+),
+  the old side red (-), and the titles say which is which ("System (new)" /
+  "Git (old)" on a push). The diff app maps `to_side_by_side`'s old/new
+  columns to system/Git; the service is unchanged.
+- ABAP Unit: diff app 11/11 (two new tests, one per direction, failed first).
+
 ## Open points (as of 2026-10-02)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete

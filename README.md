@@ -16,7 +16,8 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   default) lists the changed files first.
 - **Diff:** pressing a file in the status list shows its line diff, inline or
   side by side, with changes in context or the whole file. As in abapGit, the
-  side that changed is the "new" one, in green. Added lines have a light green
+  side that changed is the "new" one, in green. Side by side keeps the system
+  left and Git right in both directions, as abapGit does. Added lines have a light green
   background, removed ones light red, folded unchanged lines light grey.
 - **Stage, commit, push:** select the locally changed files, enter a commit
   message, then push with a Git user and token. The credentials are used for
