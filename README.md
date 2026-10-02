@@ -24,7 +24,8 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   of a file: both halves of a changed line go together, as in abapGit.
 - **Switch branch:** on the status page, pick another branch of the remote.
   Only the branch the repository follows changes; the status then shows what
-  a pull would bring.
+  a pull would bring. "New branch..." creates a branch at the current head
+  and follows it; abapGit's exit supplies the credentials.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport

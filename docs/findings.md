@@ -420,11 +420,30 @@ default), File (path, file) or Type (type, name), case ignored, and a
   the rest by object; with the toggle off they are mixed in; by file,
   `.abapgit.xml` and `package.devc.xml` come first.
 
+## Slice 10: create a branch (2026-10-02)
+
+See `docs/superpowers/specs/2026-10-01-create-branch-design.md`. In the
+"Switch branch" dialog, without credential fields: abapGit's exit supplies
+them.
+
+- ABAP Unit: service 106/106 (7 new: normalizing, Git's ref rules, an
+  existing name; a name that differs only in case counts as new), diff app
+  9/9, stage app 12/12.
+- Smoke test on `$UMLAUT`, creating nothing: `main` ("already exists"),
+  `a..b` (the rule message) and an empty name are refused.
+- Browser: "New branch..." is the last entry; picking it shows "Starts from:
+  refs/heads/test at 3522d6f" and the name, the button reads "Create";
+  picking a branch again turns it back. `main` and `a..b` give a message
+  box, the dialog stays open and keeps the name.
+- abaplint allows only 7-bit ASCII, so the entry reads "New branch...".
+  `popup_model_update( )` is not needed: abap2UI5 sends a changed model by
+  itself (abap2ui5lint `obsolete-model-update`).
+- The SAP session expired overnight; Chris logged in again.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
 
-- **Create a new branch** (needs credentials: it pushes a new ref).
 - **A per-object view** of the status, with a switch to the per-file view.
 
 1. **Ignore and `.gitignore`** on the staging page.
