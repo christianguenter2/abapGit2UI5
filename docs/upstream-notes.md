@@ -63,10 +63,20 @@ abapGit with the fix.
    A change that only appends lines may show "no differences" while the
    status says modified.
    - Repro idea: two blobs where B = A plus extra lines at the end.
+   - **Not reproduced (2026-10-02), dropped:** on A4H25 the FM found every
+     appended line itself (blank, whitespace-only, comment lines) in all four
+     modes (indentation and comments ignored or not), so the fallback never
+     ran. It only runs when the FM finds no difference, which did not happen
+     with differing line counts. Side observation: with "ignore comments", an
+     appended `* comment` line shows as unchanged, an appended `" comment` line
+     as inserted.
 5. **`zcl_abapgit_utils=>is_binary` counts tabs as non-printable.** Text files
    with a lot of tab indentation (JS, Makefile) can be classified as binary.
    abapGit's diff page skips the check only for `.xml`, `.abap` and `.po`.
    A small PR candidate.
+   - **Not a bug (2026-10-02), dropped:** on the A4H25 kernel, POSIX
+     `[:print:]` includes the tab (`[^[:print:]]` matches nothing in `\t`),
+     and a text with four tabs per line is not binary.
 6. **The NSPC rule in `popup_decisions` reads only the first NSPC row.** An
    edge case, but inconsistent.
 
@@ -112,9 +122,24 @@ abapGit with the fix.
     `zif_abapgit_repo_online~create_branch` has
     `ASSERT iv_name CP 'refs/heads/*'`. A headless caller without the prefix
     gets a short dump instead of an exception.
+    - **Fix prepared (2026-10-02):** worktree
+      `/home/chris/Projects/GIT/abapGit-small-fixes`, branch
+      `fix/create-branch-no-assert` on `upstream/main` `7b5f9cf2`: raises
+      "Branch name must start with refs/heads/: <name>". First test include
+      for `ZCL_ABAPGIT_REPO_ONLINE` (`ltcl_create_branch`), failed first with
+      ASSERTION_FAILED. Reproduced on A4H25 (dump), the fix checked there by
+      writing the class into `$ABAPGIT` for the test and restoring it
+      byte for byte.
 14. **`complete_heads_branch_name` ignores case.** It uses `CP`, so
     `REFS/HEADS/x` counts as complete and is pushed outside `refs/heads/`;
     the remote refuses it with an unclear message. Minor.
+    - **Reproduced (2026-10-02):** `REFS/HEADS/case-test` on `$UMLAUT` gave
+      "Git protocol error: Funny refname"; nothing created.
+    - **Fix prepared (2026-10-02):** same worktree, branch
+      `fix/heads-prefix-case`: the prefix check uses `find( )` (case-sensitive),
+      so `REFS/HEADS/x` becomes `refs/heads/REFS/HEADS/x`. First test include
+      for `ZCL_ABAPGIT_GIT_BRANCH_UTILS` (3 tests, one failed first). Checked
+      on A4H25 the same way (also with a CHAR field), then restored.
 
 ## abapGit: API proposals (for headless callers and other frontends)
 
