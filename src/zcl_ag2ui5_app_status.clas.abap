@@ -68,8 +68,11 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
     TYPES:
       BEGIN OF ty_branch_row,
-        name TYPE string,
-        text TYPE string,
+        name    TYPE string,
+        text    TYPE string,
+        default TYPE abap_bool,
+        current TYPE abap_bool,
+        sha1    TYPE string,
       END OF ty_branch_row,
       ty_branch_rows TYPE STANDARD TABLE OF ty_branch_row WITH EMPTY KEY.
     "! The branch dialog: the remote's branches, and the one picked
@@ -80,6 +83,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_new_name     TYPE string.
     DATA mv_start_text   TYPE string.
     DATA mv_branch_button TYPE string VALUE `Switch`.
+    "! An existing branch that is neither the default nor the current one
+    DATA mv_can_delete   TYPE abap_bool.
 
     CLASS-METHODS create
       IMPORTING
@@ -89,6 +94,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
   PROTECTED SECTION.
     CONSTANTS c_new_branch TYPE string VALUE `NEW`.
+    "! The branch the open delete confirmation is about, set on the server
+    DATA mv_delete_branch TYPE string.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
     "! Every file of the last status; sorting and the switch start from here
@@ -108,6 +115,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS load_branches.
     METHODS switch_branch.
     METHODS create_branch.
+    METHODS delete_branch.
+    "! Name field, button text and Delete follow the picked entry
+    METHODS branch_buttons.
 
     "! One group of the decision dialog; nothing when the group is empty
     METHODS group_display
@@ -230,7 +240,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
     header_content->tag( `Button`
-        )->a( n = `text`  v = `Switch branch`
+        )->a( n = `text`  v = `Branches`
         )->a( n = `icon`  v = `sap-icon://split`
         )->a( n = `press` v = client->_event( `BRANCHES` ) ).
     header_content->tag( `Button`
@@ -437,14 +447,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `xmlns`      v = `sap.m`
         )->a( n = `xmlns:core` v = `sap.ui.core`
         )->ele( `Dialog`
-            )->a( n = `title`        v = `Switch branch`
+            )->a( n = `title`        v = `Branches`
             )->a( n = `contentWidth` v = `28rem` ).
 
     DATA(box) = dialog->ele( `content`
         )->ele( `VBox`
             )->a( n = `class` v = `sapUiSmallMargin` ).
     box->tag( `Text`
-        )->a( n = `text`  v = `Only the branch the repository follows changes. The status then shows what a pull would bring.`
+        )->a( n = `text`  v = `Switch: only the branch the repository follows changes. Create and delete act on GitHub.`
         )->a( n = `class` v = `sapUiSmallMarginBottom` ).
     box->tag( `Label`
         )->a( n = `text` v = `Branch` ).
@@ -470,15 +480,20 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `placeholder` v = `feature/my-change`
         )->a( n = `visible`     v = client->_bind( mv_new_mode ) ).
 
-    dialog->ele( `beginButton`
-        )->tag( `Button`
-            )->a( n = `text`  v = client->_bind( mv_branch_button )
-            )->a( n = `type`  v = `Emphasized`
-            )->a( n = `press` v = client->_event( `SWITCH_BRANCH` ) ).
-    dialog->ele( `endButton`
-        )->tag( `Button`
-            )->a( n = `text`  v = `Cancel`
-            )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
+    " three buttons: beginButton and endButton hold only two
+    DATA(buttons) = dialog->ele( `buttons` ).
+    buttons->tag( `Button`
+        )->a( n = `text`  v = client->_bind( mv_branch_button )
+        )->a( n = `type`  v = `Emphasized`
+        )->a( n = `press` v = client->_event( `SWITCH_BRANCH` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text`    v = `Delete`
+        )->a( n = `type`    v = `Reject`
+        )->a( n = `visible` v = client->_bind( mv_can_delete )
+        )->a( n = `press`   v = client->_event( `BRANCH_DELETE` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text`  v = `Cancel`
+        )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
 
     client->popup_display( popup->stringify( ) ).
 
@@ -495,8 +510,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     CLEAR: mt_branches, mv_branch.
     LOOP AT lt_branches INTO DATA(ls_branch).
-      INSERT VALUE #( name = ls_branch-name
-                      text = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)` ) )
+      INSERT VALUE #( name    = ls_branch-name
+                      text    = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)` )
+                      default = ls_branch-default
+                      current = ls_branch-current
+                      sha1    = ls_branch-sha1 )
         INTO TABLE mt_branches.
       IF ls_branch-current = abap_true.
         mv_branch = ls_branch-name.
@@ -504,8 +522,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDLOOP.
     INSERT VALUE #( name = c_new_branch text = `New branch...` ) INTO TABLE mt_branches.
     mv_start_text = |Starts from: { ms_head-branch } at { ms_head-remote_commit }|.
-    CLEAR: mv_new_mode, mv_new_name.
-    mv_branch_button = `Switch`.
+    CLEAR mv_new_name.
+    branch_buttons( ).
     popup_branches_display( ).
 
   ENDMETHOD.
@@ -545,6 +563,33 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     client->popup_destroy( ).
     client->message_toast_display( |Created and following { substring( val = lv_branch off = 11 ) }| ).
     load_status( ).
+
+  ENDMETHOD.
+
+  METHOD branch_buttons.
+
+    mv_new_mode      = xsdbool( mv_branch = c_new_branch ).
+    mv_branch_button = COND #( WHEN mv_new_mode = abap_true THEN `Create` ELSE `Switch` ).
+    READ TABLE mt_branches INTO DATA(ls_picked) WITH KEY name = mv_branch.
+    mv_can_delete = xsdbool( sy-subrc = 0 AND mv_new_mode = abap_false
+                             AND ls_picked-default = abap_false AND ls_picked-current = abap_false ).
+
+  ENDMETHOD.
+
+  METHOD delete_branch.
+
+    TRY.
+        DATA(lv_sha1) = service( )->delete_branch( iv_key    = mv_key
+                                                   iv_branch = mv_delete_branch ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+
+    client->message_toast_display(
+      |Deleted { substring( val = mv_delete_branch off = 11 ) } (was at { substring( val = lv_sha1 len = 7 ) })| ).
+    " the list without the deleted branch, the current one picked again
+    load_branches( ).
 
   ENDMETHOD.
 
@@ -656,8 +701,25 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `BRANCHES`.
         load_branches( ).
       WHEN `BRANCH_PICK`.
-        mv_new_mode      = xsdbool( mv_branch = c_new_branch ).
-        mv_branch_button = COND #( WHEN mv_new_mode = abap_true THEN `Create` ELSE `Switch` ).
+        branch_buttons( ).
+      WHEN `BRANCH_DELETE`.
+        READ TABLE mt_branches INTO DATA(ls_delete) WITH KEY name = mv_branch.
+        IF sy-subrc = 0 AND mv_can_delete = abap_true.
+          mv_delete_branch = mv_branch.
+          client->message_box_display(
+            text             = |Delete branch { ls_delete-text } (at {
+                                 substring( val = ls_delete-sha1 len = nmin( val1 = 7 val2 = strlen( ls_delete-sha1 ) ) )
+                               }) on GitHub? abapGit cannot undo this.|
+            type             = `confirm`
+            actions          = VALUE #( ( `DELETE` ) ( `CANCEL` ) )
+            emphasizedaction = `CANCEL`
+            onclose          = `BRANCH_DELETE_CLOSE` ).
+        ENDIF.
+      WHEN `BRANCH_DELETE_CLOSE`.
+        IF client->get_event_arg( ) = `DELETE`.
+          delete_branch( ).
+        ENDIF.
+        CLEAR mv_delete_branch.
       WHEN `SWITCH_BRANCH`.
         switch_branch( ).
       WHEN `PULL`.
