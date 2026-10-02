@@ -363,4 +363,15 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
+  "! Deletes a branch on the remote; not the default one, not the one the
+  "! repository follows. Returns the commit it pointed to
+  METHODS delete_branch
+    IMPORTING
+      iv_key         TYPE string
+      iv_branch      TYPE string
+    RETURNING
+      VALUE(rv_sha1) TYPE string
+    RAISING
+      zcx_abapgit_exception.
+
 ENDINTERFACE.

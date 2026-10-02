@@ -1106,6 +1106,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD zif_ag2ui5_repo_service~delete_branch.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    " the name comes from the browser; the commit comes from a fresh list
+    DATA(lt_branches) = zif_ag2ui5_repo_service~list_branches( iv_key ).
+    assert_deletable( iv_branch   = iv_branch
+                      it_branches = lt_branches ).
+    DATA(ls_branch) = lt_branches[ name = iv_branch ].
+
+    zcl_abapgit_git_porcelain=>delete_branch(
+      iv_url    = get_online_repo( iv_key )->get_url( )
+      is_branch = VALUE #( name = ls_branch-name sha1 = ls_branch-sha1 display_name = ls_branch-display ) ).
+    rv_sha1 = ls_branch-sha1.
+
+  ENDMETHOD.
+
   METHOD fingerprint.
 
     " each side hashed on its own, so no two pairs share a fingerprint
