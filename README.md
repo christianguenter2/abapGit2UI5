@@ -9,12 +9,11 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 (A4H). It supports:
 
 - **Repository list:** all abapGit repositories of the system, with a search.
-- **Status:** every file of the repository. A coloured bar marks the changed
-  ones: orange for a change in the system (or an inactive object), blue for a
-  change in Git only, red for both, and the changed rows get a light
-  background in the same colour. "Changes only" hides the rest. Sort by
-  object, file or type; "Changes on top" (on by default) lists the changed
-  files first.
+- **Status:** every file of the repository. Changed files (in the system, in
+  Git or both, or inactive) are marked yellow, with a bar and a light
+  background; the Local and Remote columns tell which side changed. "Changes
+  only" hides the rest. Sort by object, file or type; "Changes on top" (on by
+  default) lists the changed files first.
 - **Diff:** pressing a file in the status list shows its line diff, inline or
   side by side, with changes in context or the whole file. As in abapGit, the
   side that changed is the "new" one, in green. Added lines have a light green

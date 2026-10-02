@@ -531,6 +531,18 @@ writes its highlight as `data-change` (`CustomData`, `writeToDom`), and a
 colours the cells. Checked in the browser on `$ABAPGIT2UI5`: 21 rows, the
 blue and the red one coloured, 19 transparent.
 
+## Changed rows yellow (2026-10-02)
+
+Chris asked for one colour for every change. `change_highlight` now returns
+`Indication03` for any change or an inactive object (its test was adapted
+first and failed), and the style block colours such a row light yellow
+(`#fff8d6`). Horizon has no yellow highlight colour (`Indication03` is
+`#b95100`, a dark orange; the indication colours read from the browser), so
+the same style block colours the bar `#e9c000`, through UI5's
+`sapMLIBHighlight` class. That depends on UI5's DOM: if a later version
+renames the class, the bar falls back to `#b95100`. Checked in the browser on
+`$ABAPGIT2UI5`: 4 changed rows with yellow bar and background, 17 white.
+
 ## Open points (as of 2026-10-01)
 
 Next slices, in the order agreed with Chris:
