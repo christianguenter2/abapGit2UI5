@@ -194,10 +194,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         zcx_abapgit_exception.
 
     "! Raises unless the branch is listed and is neither the remote's
-    "! default nor the one the repository follows
+    "! default nor the one the repository follows. With iv_sha1, also when
+    "! the branch no longer points to that commit (it moved since shown)
     CLASS-METHODS assert_deletable
       IMPORTING
         iv_branch   TYPE string
+        iv_sha1     TYPE string OPTIONAL
         it_branches TYPE zif_ag2ui5_repo_service=>ty_branches
       RAISING
         zcx_abapgit_exception.

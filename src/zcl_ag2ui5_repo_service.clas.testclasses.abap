@@ -1638,6 +1638,8 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS default_not_deletable FOR TESTING.
     METHODS current_not_deletable FOR TESTING.
     METHODS unknown_not_deletable FOR TESTING.
+    METHODS moved_not_deletable FOR TESTING.
+    METHODS unmoved_deletable FOR TESTING RAISING cx_static_check.
     METHODS branch_name_normalized FOR TESTING.
     METHODS branch_name_keeps_prefix FOR TESTING.
     METHODS branch_name_trims FOR TESTING.
@@ -1781,6 +1783,23 @@ CLASS ltcl_branches IMPLEMENTATION.
         cl_abap_unit_assert=>fail( `The current branch must be refused` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
     ENDTRY.
+  ENDMETHOD.
+
+  METHOD moved_not_deletable.
+    " the user confirmed the commit shown; someone pushed since
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_deletable( iv_branch   = `refs/heads/alpha`
+                                                   iv_sha1     = `9999999`
+                                                   it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `A branch that moved must not be deleted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD unmoved_deletable.
+    zcl_ag2ui5_repo_service=>assert_deletable( iv_branch   = `refs/heads/alpha`
+                                               iv_sha1     = `3333333`
+                                               it_branches = rows( ) ).
   ENDMETHOD.
 
   METHOD unknown_not_deletable.
