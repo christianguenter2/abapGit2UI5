@@ -543,16 +543,23 @@ the same style block colours the bar `#e9c000`, through UI5's
 renames the class, the bar falls back to `#b95100`. Checked in the browser on
 `$ABAPGIT2UI5`: 4 changed rows with yellow bar and background, 17 white.
 
-## Open points (as of 2026-10-01)
+## Open points (as of 2026-10-02)
 
-Next slices, in the order agreed with Chris:
+Done since 2026-10-01: patch (single lines), switch, create and delete
+branches, all files on the status page (sorted, changes on top, yellow),
+diff colours, search field focus, URLs as links.
 
-- **A per-object view** of the status, with a switch to the per-file view.
+Next slices:
 
-1. **Ignore and `.gitignore`** on the staging page.
-2. **Pushing to another branch, or a new one.**
-3. **Creating a transport request** from the pull dialog. Today the user is
+1. **A per-object view** of the status, with a switch to the per-file view.
+2. **Ignore and `.gitignore`** on the staging page.
+3. **Pushing to another branch** (creating one exists now).
+4. **Creating a transport request** from the pull dialog. Today the user is
    pointed to SE09.
+
+Upstream work (abapGit, abap2UI5, abapgit-agent): see
+`docs/upstream-notes.md`, which has the agreed order. The abapGit PR for the
+form feed in a partial push is open.
 
 Minor points left open by the reviews:
 
@@ -575,5 +582,5 @@ Minor points left open by the reviews:
   - Ignored files from `.abapgit.xml` are offered as candidates.
   - The status and staging pages read private repositories without
     credentials, so they work there only through the abapGit user exit.
-- abap2UI5 upstream (worth an issue): `escape_string` in `z2ui5_cl_ajson`
-  escapes no control characters other than tab, CR and LF.
+- Per slice, the minor points of the reviews are listed in their sections
+  above (patch, branches, delete).
