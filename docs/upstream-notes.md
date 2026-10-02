@@ -11,8 +11,7 @@ abapGit with the fix.
 
 **Next, in this order (agreed with Chris):**
 1. abap2UI5: control characters blank the page (`escape_string`, below).
-   Reproduced, affects every app; first check whether abap2UI5's tests run
-   offline with the transpiler, then a short design and a test-first fix.
+   The fix is in AJSON, prepared on 2026-10-02 (see below).
 2. abapGit 1 (a table with data deleted despite "No"): prepare a fixture
    table on A4H25; Chris reproduces it in SAP GUI.
 3. abapGit 2 (the self-update guard): discuss with the maintainers first.
@@ -132,6 +131,16 @@ abapGit with the fix.
   `z2ui5_cl_ajson` (`src/00/01`, `locals_imp`, around line 752) escapes only
   `" \ \t \n \r`. Any other control character (form feed, ESC, NUL) makes the
   frontend's `response.json()` fail, and the page goes blank.
+  - `src/00/01` is a mirror of AJSON (`sbcgua/ajson`, via
+    `abap2UI5/ajson_mirror`, refreshed monthly), so the fix belongs in AJSON.
+  - **Fix prepared (2026-10-02):** `/home/chris/Projects/GIT/ajson`, branch
+    `fix/escape-control-chars` on top of `master` `99e0bf5`. `escape_string`
+    escapes U+0000 to U+001F (`\b`, `\f`, otherwise `\u00xx`); the set is
+    built once in `class_constructor`. New test
+    `ltcl_serializer_test->escape_control_chars`; transpiled tests green,
+    abaplint clean, the same logic checked on the A4H25 kernel (NUL included).
+    Possibly related: AJSON issue #82. After the merge, abap2UI5 has to
+    refresh `ajson_mirror`.
 - **Secrets in the draft table:** bound input fields are written as plain-text
   XML into `Z2UI5_T_01` after every event, including password fields. The
   guide could warn about this, or abap2UI5 could offer a binding for secrets
