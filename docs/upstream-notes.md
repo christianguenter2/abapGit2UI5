@@ -4,12 +4,17 @@ Collected while building abapGit2UI5 (2026-09-30 to 2026-10-02). Nothing here
 is filed yet. The "likely bugs" are from reading code and code reviews; only
 11 is reproduced so far.
 
-**Next step (agreed with Chris):**
-1. Reproduce 1 and 3 on A4H25 with the fixture packages (see
-   `AGENTS-LOCAL.md`).
-2. Check 4 with a small test file.
-3. Draft the issue texts, and for 2 and 5 possibly PRs. Chris files them
-   himself.
+**Status (2026-10-02):** 11 (the form feed in a partial push) is fixed in
+PR from `christianguenter2/abapGit` branch `fix/patch-form-feed`, opened by
+Chris.
+
+**Next, in this order (agreed with Chris):**
+1. abap2UI5: control characters blank the page (`escape_string`, below).
+   Reproduced, affects every app; first check whether abap2UI5's tests run
+   offline with the transpiler, then a short design and a test-first fix.
+2. abapGit 1 (a table with data deleted despite "No"): prepare a fixture
+   table on A4H25; Chris reproduces it in SAP GUI.
+3. abapGit 2 (the self-update guard): discuss with the maintainers first.
 
 ## abapGit: likely bugs
 
