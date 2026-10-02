@@ -254,8 +254,8 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_rows)   TYPE zif_ag2ui5_repo_service=>ty_status_rows.
 
-    "! The row highlight of a status row: Warning for a local change,
-    "! Information for a change in Git only, Error for both, None otherwise
+    "! The row highlight of a status row: Indication03 (yellow) for any
+    "! change or an inactive object, None otherwise
     CLASS-METHODS change_highlight
       IMPORTING
         iv_lstate           TYPE string
@@ -1444,10 +1444,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD change_highlight.
 
-    DATA(lv_local) = xsdbool( iv_lstate IS NOT INITIAL OR iv_inactive = abap_true ).
-    rv_highlight = COND #( WHEN lv_local = abap_true AND iv_rstate IS NOT INITIAL THEN `Error`
-                           WHEN lv_local = abap_true THEN `Warning`
-                           WHEN iv_rstate IS NOT INITIAL THEN `Information`
+    " one colour for every change; the Local and Remote columns tell the sides apart
+    rv_highlight = COND #( WHEN iv_lstate IS NOT INITIAL OR iv_rstate IS NOT INITIAL OR iv_inactive = abap_true
+                           THEN `Indication03`
                            ELSE `None` ).
 
   ENDMETHOD.

@@ -262,9 +262,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     " row writes its highlight as data-change, see the CustomData below
     content->tag( n = `HTML` ns = `core`
         )->a( n = `content` v = `<style>` &&
-                                `tr[data-change="Warning"] > td \{ background-color: #fff4e5 \}` &&
-                                `tr[data-change="Information"] > td \{ background-color: #e8f1ff \}` &&
-                                `tr[data-change="Error"] > td \{ background-color: #ffebe9 \}` &&
+                                `tr[data-change="Indication03"] > td \{ background-color: #fff8d6 \}` &&
                                 `</style>` ).
 
     DATA(attributes) = content->ele( `ObjectHeader`
