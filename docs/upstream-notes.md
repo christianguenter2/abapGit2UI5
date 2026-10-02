@@ -96,6 +96,17 @@ abapGit with the fix.
     with `strlen` (characters), but the line is sent as UTF-8. A branch
     `Änderung` gets a length that is too short, and Git answers with a
     protocol error. Names over about 150 characters hit "PKT, todo".
+    - **Reproduced (2026-10-02):** `create_branch( 'refs/heads/test-<a-umlaut>' )`
+      on `$UMLAUT` gave `(HTTP 400)` from GitHub; nothing was created, the
+      selected branch stayed `feature/test1234`.
+    - **Fix prepared (2026-10-02):** worktree
+      `/home/chris/Projects/GIT/abapGit-pkt-line`, branch
+      `fix/pkt-line-length` on `upstream/main` `7b5f9cf2`. `pkt_string` counts
+      UTF-8 bytes and writes a 2-byte length (lines up to 65516 bytes, as in
+      Git). Three new tests in `ltcl_git_utils` failed first; `npm run unit`
+      green, abaplint clean. Parsing the branch list is not affected (fixed
+      offsets, split at newlines). Not verified end to end: that needs the
+      fix in the running `$ABAPGIT`.
 13. **`create_branch` ASSERTs instead of raising.**
     `zif_abapgit_repo_online~create_branch` has
     `ASSERT iv_name CP 'refs/heads/*'`. A headless caller without the prefix
