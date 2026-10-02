@@ -1633,6 +1633,11 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS listed_branch_accepted FOR TESTING RAISING cx_static_check.
     METHODS unknown_branch_refused FOR TESTING.
     METHODS empty_branch_refused FOR TESTING.
+    METHODS sha1_carried FOR TESTING.
+    METHODS other_branch_deletable FOR TESTING RAISING cx_static_check.
+    METHODS default_not_deletable FOR TESTING.
+    METHODS current_not_deletable FOR TESTING.
+    METHODS unknown_not_deletable FOR TESTING.
     METHODS branch_name_normalized FOR TESTING.
     METHODS branch_name_keeps_prefix FOR TESTING.
     METHODS branch_name_trims FOR TESTING.
@@ -1649,11 +1654,11 @@ CLASS ltcl_branches IMPLEMENTATION.
   METHOD remote_list.
     " as get_branches_only( ) returns it: HEAD next to the real default
     rt_branches = VALUE #(
-      ( name = `refs/heads/zeta`  display_name = `zeta` )
-      ( name = `HEAD`             display_name = `HEAD` is_head = abap_true )
-      ( name = `refs/heads/main`  display_name = `main` is_head = abap_true )
+      ( name = `refs/heads/zeta`  display_name = `zeta` sha1 = '1111111' )
+      ( name = `HEAD`             display_name = `HEAD` is_head = abap_true sha1 = '2222222' )
+      ( name = `refs/heads/main`  display_name = `main` is_head = abap_true sha1 = '2222222' )
       ( name = ``                 display_name = `` )
-      ( name = `refs/heads/alpha` display_name = `alpha` ) ).
+      ( name = `refs/heads/alpha` display_name = `alpha` sha1 = '3333333' ) ).
   ENDMETHOD.
 
   METHOD rows.
@@ -1678,10 +1683,10 @@ CLASS ltcl_branches IMPLEMENTATION.
     DATA(lt_rows) = rows( ).
     cl_abap_unit_assert=>assert_equals(
       act = lt_rows[ 1 ]
-      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/main` display = `main` default = abap_true ) ).
+      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/main` display = `main` default = abap_true sha1 = `2222222` ) ).
     cl_abap_unit_assert=>assert_equals(
       act = lt_rows[ 3 ]
-      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/zeta` display = `zeta` current = abap_true ) ).
+      exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/zeta` display = `zeta` current = abap_true sha1 = `1111111` ) ).
   ENDMETHOD.
 
   METHOD listed_branch_accepted.
@@ -1751,6 +1756,42 @@ CLASS ltcl_branches IMPLEMENTATION.
   METHOD case_differs_is_new.
     " Git refs are case-sensitive, as abapGit's check
     zcl_ag2ui5_repo_service=>assert_new_branch( iv_branch = `refs/heads/Main` it_branches = rows( ) ).
+  ENDMETHOD.
+
+  METHOD sha1_carried.
+    DATA(lt_rows) = rows( ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ name = `refs/heads/alpha` ]-sha1 exp = `3333333` ).
+  ENDMETHOD.
+
+  METHOD other_branch_deletable.
+    zcl_ag2ui5_repo_service=>assert_deletable( iv_branch = `refs/heads/alpha` it_branches = rows( ) ).
+  ENDMETHOD.
+
+  METHOD default_not_deletable.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_deletable( iv_branch = `refs/heads/main` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `The default branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD current_not_deletable.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_deletable( iv_branch = `refs/heads/zeta` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `The current branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD unknown_not_deletable.
+    " the name comes from the browser; HEAD is never listed
+    LOOP AT VALUE string_table( ( `refs/heads/gone` ) ( `HEAD` ) ( `` ) ) INTO DATA(lv_name).
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_deletable( iv_branch = lv_name it_branches = rows( ) ).
+          cl_abap_unit_assert=>fail( |{ lv_name } must be refused| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
   ENDMETHOD.
 
 ENDCLASS.

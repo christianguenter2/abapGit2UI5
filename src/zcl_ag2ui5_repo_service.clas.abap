@@ -193,6 +193,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Raises unless the branch is listed and is neither the remote's
+    "! default nor the one the repository follows
+    CLASS-METHODS assert_deletable
+      IMPORTING
+        iv_branch   TYPE string
+        it_branches TYPE zif_ag2ui5_repo_service=>ty_branches
+      RAISING
+        zcx_abapgit_exception.
+
     "! The files changed locally, and what a commit does with each
     CLASS-METHODS stage_candidates
       IMPORTING
@@ -1024,6 +1033,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       zcx_abapgit_exception=>raise( |Branch { substring( val = iv_branch off = 11 ) } already exists| ).
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD assert_deletable.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.

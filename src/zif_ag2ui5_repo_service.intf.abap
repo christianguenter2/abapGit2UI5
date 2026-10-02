@@ -240,6 +240,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       default TYPE abap_bool,
       "! The branch the repository follows now
       current TYPE abap_bool,
+      "! The commit the branch points to
+      sha1    TYPE string,
     END OF ty_branch,
     ty_branches TYPE STANDARD TABLE OF ty_branch WITH EMPTY KEY.
 
