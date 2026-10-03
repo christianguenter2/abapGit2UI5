@@ -16,7 +16,7 @@ Date: 2026-10-03. Status: approved in chat.
 
 | Key | App | Values | Default |
 |---|---|---|---|
-| `REPOS_LAYOUT` | Repository list | `LIST`, `TILES` | `LIST` |
+| `REPOS_LAYOUT` | Repository list | `LIST`, `TILES` | `TILES` (since 2026-10-03, Chris's choice; was `LIST`) |
 | `STATUS_VIEW` | Status | `ALL`, `CHANGES` | `ALL` |
 | `STATUS_SORT` | Status | `OBJECT`, `FILE`, `TYPE` | `OBJECT` |
 | `STATUS_CHANGES_FIRST` | Status | `X`, blank | `X` |

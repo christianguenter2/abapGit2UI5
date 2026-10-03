@@ -84,6 +84,7 @@ CLASS ltcl_settings DEFINITION FINAL FOR TESTING
     METHODS setup.
     METHODS teardown.
     METHODS start_reads_layout FOR TESTING.
+    METHODS start_defaults_to_tiles FOR TESTING.
     METHODS layout_event_saves FOR TESTING.
 ENDCLASS.
 
@@ -103,6 +104,13 @@ CLASS ltcl_settings IMPLEMENTATION.
   METHOD start_reads_layout.
     " the start also lists the repositories of the system; that only reads
     mo_settings->mt_preset = VALUE #( ( key = zif_ag2ui5_settings=>c_key-repos_layout value = `TILES` ) ).
+    mo_client->mv_start = abap_true.
+    mo_cut->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `TILES` act = mo_cut->mv_layout ).
+  ENDMETHOD.
+
+  METHOD start_defaults_to_tiles.
+    " nothing stored: tiles
     mo_client->mv_start = abap_true.
     mo_cut->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( exp = `TILES` act = mo_cut->mv_layout ).

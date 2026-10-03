@@ -592,6 +592,8 @@ See `docs/superpowers/specs/2026-10-03-user-settings-design.md`.
   comes back side by side with "Show all"; no console errors. Patch mode is
   covered by the unit test only. The test rows were deleted afterwards (the
   table was empty before).
+- Tiles are the default for the repository list (Chris, 2026-10-03); the
+  list is one click away and remembered once chosen.
 
 ## Open points (as of 2026-10-02)
 

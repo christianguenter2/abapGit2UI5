@@ -25,7 +25,7 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     DATA mt_repos  TYPE ty_rows.
     DATA mv_search TYPE string.
     "! LIST or TILES; switched on the client, stored per user
-    DATA mv_layout TYPE string VALUE `LIST`.
+    DATA mv_layout TYPE string VALUE `TILES`.
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
@@ -54,7 +54,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     IF client->check_on_navigated( ).
       mv_layout = zcl_ag2ui5_settings=>get_instance( )->get(
                     iv_key     = zif_ag2ui5_settings=>c_key-repos_layout
-                    iv_default = `LIST` ).
+                    iv_default = `TILES` ).
       " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
       view_display( ).
