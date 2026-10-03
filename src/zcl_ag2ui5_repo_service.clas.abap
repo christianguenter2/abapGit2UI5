@@ -300,8 +300,8 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         ct_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors.
 
     "! Creates the checked repository as abapGit's services do, without
-    "! their popups. A new online repository that fails its last checks is
-    "! deleted again
+    "! their popups. A new repository that fails its last checks is deleted
+    "! again
     METHODS add_repo
       IMPORTING
         is_repo        TYPE zif_ag2ui5_repo_service=>ty_new_repo
@@ -1913,21 +1913,22 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                           iv_ign_subpkg     = is_repo-ign_subpackages
                                           iv_main_lang_only = is_repo-main_lang_only
                                           iv_abap_lang_vers = is_repo-abap_lang_vers ).
-      RETURN.
+    ELSE.
+      ri_repo = li_repo_srv->new_online( iv_url            = is_repo-url
+                                         iv_branch_name    = is_repo-branch
+                                         iv_display_name   = is_repo-display_name
+                                         iv_package        = CONV #( is_repo-package )
+                                         iv_folder_logic   = is_repo-folder_logic
+                                         iv_labels         = is_repo-labels
+                                         iv_ign_subpkg     = is_repo-ign_subpackages
+                                         iv_main_lang_only = is_repo-main_lang_only
+                                         iv_abap_lang_vers = is_repo-abap_lang_vers ).
     ENDIF.
 
-    ri_repo = li_repo_srv->new_online( iv_url            = is_repo-url
-                                       iv_branch_name    = is_repo-branch
-                                       iv_display_name   = is_repo-display_name
-                                       iv_package        = CONV #( is_repo-package )
-                                       iv_folder_logic   = is_repo-folder_logic
-                                       iv_labels         = is_repo-labels
-                                       iv_ign_subpkg     = is_repo-ign_subpackages
-                                       iv_main_lang_only = is_repo-main_lang_only
-                                       iv_abap_lang_vers = is_repo-abap_lang_vers ).
     TRY.
-        " the steps of abapGit's services after new_online
-        IF zcl_abapgit_factory=>get_sap_package( CONV #( is_repo-package ) )->exists( ) = abap_false.
+        " the steps of abapGit's services after new_online / new_offline
+        IF is_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-online
+            AND zcl_abapgit_factory=>get_sap_package( CONV #( is_repo-package ) )->exists( ) = abap_false.
           DATA(lt_remote) = ri_repo->get_files_remote( ).
           READ TABLE lt_remote TRANSPORTING NO FIELDS
             WITH KEY file COMPONENTS filename = zcl_abapgit_filename_logic=>c_package_file.
