@@ -46,6 +46,11 @@ CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~message_toast_display ##NEEDED.
   ENDMETHOD.
+  "! the view is built but not checked here
+  METHOD z2ui5_if_client~_bind ##NEEDED.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~_event ##NEEDED.
+  ENDMETHOD.
 ENDCLASS.
 
 
