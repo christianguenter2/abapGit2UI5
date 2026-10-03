@@ -71,8 +71,9 @@ The class does not talk to abapGit, so it stays apart from
 
 ## Apps
 
-- **Repository list:** `REPOS_LAYOUT` is read on the first start
-  (`check_on_init`). The toggle gets `selectionChange` with a new event
+- **Repository list:** `REPOS_LAYOUT` is read in the start branch of
+  `main( )` (`check_on_navigated`, which abap2UI5 also reports on the first
+  start; the app loads its list there today). The toggle gets `selectionChange` with a new event
   `LAYOUT`, which only saves; switching stays on the client.
 - **Status:** `create( )` reads `STATUS_VIEW`, `STATUS_SORT` and
   `STATUS_CHANGES_FIRST`. The existing `VIEW` event saves all three.
