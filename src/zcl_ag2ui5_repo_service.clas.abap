@@ -289,6 +289,24 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         is_repo          TYPE zif_ag2ui5_repo_service=>ty_new_repo
       RETURNING
         VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+    "! Binary upload, validated before the app replaces its previous ZIP
+    CLASS-METHODS decode_zip
+      IMPORTING
+        iv_upload     TYPE string
+      RETURNING
+        VALUE(rv_zip) TYPE xstring
+      RAISING
+        zcx_abapgit_exception.
+
+    "! Parses abapGit/GitHub ZIPs. A missing .abapgit.xml is never an empty remote
+    CLASS-METHODS zip_files
+      IMPORTING
+        iv_zip          TYPE xstring
+      RETURNING
+        VALUE(rt_files) TYPE zif_abapgit_git_definitions=>ty_files_tt
+      RAISING
+        zcx_abapgit_exception.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
     "! abapGit's own checks for a normalized form; adds to ct_errors. A
@@ -317,6 +335,16 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! Restores offline remote files from plain app data, never from session cache
+    METHODS get_repo
+      IMPORTING
+        iv_key        TYPE string
+        iv_zip        TYPE xstring OPTIONAL
+      RETURNING
+        VALUE(ri_repo) TYPE REF TO zif_abapgit_repo
+      RAISING
+        zcx_abapgit_exception.
+
     METHODS get_online_repo
       IMPORTING
         iv_key         TYPE string
@@ -329,7 +357,7 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
     "! Raises when neither exists
     METHODS read_file_pair
       IMPORTING
-        ii_repo     TYPE REF TO zif_abapgit_repo_online
+        ii_repo     TYPE REF TO zif_abapgit_repo
         iv_path     TYPE string
         iv_filename TYPE string
       EXPORTING
@@ -847,7 +875,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     silence_progress( ).
 
-    DATA(li_repo) = get_online_repo( iv_key ).
+    DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
     read_file_pair( EXPORTING ii_repo     = li_repo
                               iv_path     = iv_path
                               iv_filename = iv_filename
@@ -886,19 +914,19 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     zcl_abapgit_filename_logic=>file_to_object(
       EXPORTING iv_filename = iv_filename
                 iv_path     = iv_path
-                io_dot      = ii_repo->zif_abapgit_repo~get_dot_abapgit( )
-                iv_devclass = ii_repo->zif_abapgit_repo~get_package( )
+                io_dot      = ii_repo->get_dot_abapgit( )
+                iv_devclass = ii_repo->get_package( )
       IMPORTING es_item     = DATA(ls_item) ).
     DATA(li_filter) = CAST zif_abapgit_object_filter( NEW zcl_ag2ui5_object_filter( is_item = ls_item ) ).
 
     DATA(lv_found) = abap_false.
-    LOOP AT ii_repo->zif_abapgit_repo~get_files_local_filtered( li_filter ) INTO DATA(ls_local)
+    LOOP AT ii_repo->get_files_local_filtered( li_filter ) INTO DATA(ls_local)
         WHERE file-path = iv_path AND file-filename = iv_filename.
       ev_local = ls_local-file-data.
       lv_found = abap_true.
       EXIT.
     ENDLOOP.
-    LOOP AT ii_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true
+    LOOP AT ii_repo->get_files_remote( iv_ignore_files = abap_true
                                                         ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
         USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
       ev_remote = ls_remote-data.
@@ -1521,15 +1549,19 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     silence_progress( ).
 
-    DATA(li_repo) = get_online_repo( iv_key ).
-    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
+    li_repo->refresh( iv_drop_cache = abap_true ).
 
     rs_status-key           = iv_key.
-    rs_status-name          = li_repo->zif_abapgit_repo~get_name( ).
-    rs_status-package       = li_repo->zif_abapgit_repo~get_package( ).
-    rs_status-url           = li_repo->get_url( ).
-    rs_status-branch        = li_repo->get_selected_branch( ).
-    rs_status-remote_commit = li_repo->get_current_remote( ).
+    rs_status-name          = li_repo->get_name( ).
+    rs_status-package       = li_repo->get_package( ).
+    rs_status-offline       = li_repo->is_offline( ).
+    IF rs_status-offline = abap_false.
+      DATA(li_online) = CAST zif_abapgit_repo_online( li_repo ).
+      rs_status-url           = li_online->get_url( ).
+      rs_status-branch        = li_online->get_selected_branch( ).
+      rs_status-remote_commit = li_online->get_current_remote( ).
+    ENDIF.
     rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
 
   ENDMETHOD.
@@ -1539,11 +1571,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     silence_progress( ).
 
-    DATA(li_repo) = get_online_repo( iv_key ).
-    assert_pull_allowed( li_repo->zif_abapgit_repo~get_package( ) ).
-    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
+    IF li_repo->is_offline( ) = abap_true AND iv_zip IS INITIAL.
+      zcx_abapgit_exception=>raise( `Upload a ZIP before importing an offline repository` ).
+    ENDIF.
+    assert_pull_allowed( li_repo->get_package( ) ).
+    li_repo->refresh( iv_drop_cache = abap_true ).
 
-    rs_preview = preview( li_repo->zif_abapgit_repo~deserialize_checks( ) ).
+    rs_preview = preview( li_repo->deserialize_checks( ) ).
 
   ENDMETHOD.
 
@@ -1552,12 +1587,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     silence_progress( ).
 
-    DATA(li_repo) = get_online_repo( iv_key ).
-    assert_pull_allowed( li_repo->zif_abapgit_repo~get_package( ) ).
-    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
+    IF li_repo->is_offline( ) = abap_true AND iv_zip IS INITIAL.
+      zcx_abapgit_exception=>raise( `Upload a ZIP before importing an offline repository` ).
+    ENDIF.
+    assert_pull_allowed( li_repo->get_package( ) ).
+    li_repo->refresh( iv_drop_cache = abap_true ).
 
     " check again - the remote or the system may have changed since the preview
-    DATA(ls_checks)  = li_repo->zif_abapgit_repo~deserialize_checks( ).
+    DATA(ls_checks)  = li_repo->deserialize_checks( ).
     DATA(ls_preview) = preview( ls_checks ).
 
     CASE ls_preview-outcome.
@@ -1700,6 +1738,90 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     zcl_abapgit_progress=>set_instance( NEW zcl_ag2ui5_progress_silent( ) ).
   ENDMETHOD.
 
+  METHOD decode_zip.
+
+    DATA lv_metadata TYPE string.
+    DATA lv_base64 TYPE string.
+    SPLIT iv_upload AT `,` INTO lv_metadata lv_base64.
+    IF lv_metadata NP `data:*;base64` OR lv_base64 IS INITIAL.
+      zcx_abapgit_exception=>raise( `Choose a ZIP file to upload` ).
+    ENDIF.
+    rv_zip = cl_http_utility=>decode_x_base64( lv_base64 ).
+    zip_files( rv_zip ).
+
+  ENDMETHOD.
+
+  METHOD zip_files.
+
+    DATA lt_paths TYPE HASHED TABLE OF string WITH UNIQUE KEY table_line.
+
+    IF iv_zip IS INITIAL.
+      zcx_abapgit_exception=>raise( `Choose a non-empty ZIP file` ).
+    ENDIF.
+    " abapGit's loader dumps on duplicate filenames after lower-casing them.
+    " Inspect directory entries first, before its table's unique key is filled.
+    DATA(lo_zip) = NEW cl_abap_zip( ).
+    lo_zip->load( EXPORTING zip = iv_zip
+                  EXCEPTIONS zip_parse_error = 1 OTHERS = 2 ).
+    IF sy-subrc <> 0.
+      zcx_abapgit_exception=>raise( `The file is not a valid ZIP` ).
+    ENDIF.
+    LOOP AT lo_zip->files INTO DATA(ls_entry) WHERE name IS NOT INITIAL.
+      IF ls_entry-name CP `*/`.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_name) = `/` && ls_entry-name.
+      IF lv_name CS `/../` OR lv_name CS `/./` OR lv_name CS `\`.
+        zcx_abapgit_exception=>raise( `The ZIP contains an invalid path` ).
+      ENDIF.
+      INSERT to_lower( ls_entry-name ) INTO TABLE lt_paths.
+      IF sy-subrc <> 0.
+        zcx_abapgit_exception=>raise( `The ZIP contains duplicate file paths` ).
+      ENDIF.
+    ENDLOOP.
+    rt_files = zcl_abapgit_zip=>load( iv_zip ).
+    IF NOT line_exists( rt_files[ path = `/` filename = `.abapgit.xml` ] ).
+      zcx_abapgit_exception=>raise( `The ZIP must contain .abapgit.xml at its root` ).
+    ENDIF.
+    TRY.
+        zcl_abapgit_dot_abapgit=>deserialize( rt_files[ path = `/` filename = `.abapgit.xml` ]-data ).
+      CATCH cx_root INTO DATA(lx_xml).
+        zcx_abapgit_exception=>raise( |Invalid .abapgit.xml in the ZIP: { lx_xml->get_text( ) }| ).
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD get_repo.
+
+    IF iv_key IS INITIAL.
+      zcx_abapgit_exception=>raise( `No repository selected - start with zcl_ag2ui5_app_repos` ).
+    ENDIF.
+    ri_repo = zcl_abapgit_repo_srv=>get_instance( )->get( CONV #( iv_key ) ).
+    IF ri_repo->is_offline( ) = abap_true.
+      DATA lt_files TYPE zif_abapgit_git_definitions=>ty_files_tt.
+      IF iv_zip IS NOT INITIAL.
+        lt_files = zip_files( iv_zip ).
+      ENDIF.
+      ri_repo->set_files_remote( lt_files ).
+    ELSEIF iv_zip IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( `ZIP import is only available for offline repositories` ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~export_zip.
+
+    assert_authorized( ).
+    silence_progress( ).
+    DATA(li_repo) = get_repo( iv_key ).
+    IF li_repo->is_offline( ) = abap_false.
+      zcx_abapgit_exception=>raise( `ZIP export is only available for offline repositories` ).
+    ENDIF.
+    li_repo->refresh( iv_drop_cache = abap_true ).
+    rv_zip = zcl_abapgit_zip=>encode_files( li_repo->get_files_local( ) ).
+
+  ENDMETHOD.
+
   METHOD get_online_repo.
 
     IF iv_key IS INITIAL.
@@ -1709,7 +1831,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->get( CONV #( iv_key ) ).
 
     IF li_repo->is_offline( ) = abap_true.
-      zcx_abapgit_exception=>raise( |Repository { li_repo->get_name( ) } is offline - only online repositories are supported| ).
+      zcx_abapgit_exception=>raise( |Repository { li_repo->get_name( ) } is offline - this operation requires an online repository| ).
     ENDIF.
 
     ri_repo ?= li_repo.

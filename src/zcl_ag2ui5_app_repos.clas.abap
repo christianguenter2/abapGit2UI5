@@ -17,7 +17,7 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
         branch          TYPE string,
         deserialized_at TYPE string,
         offline         TYPE abap_bool,
-        "! Navigation for online repositories, Inactive for offline ones
+        "! Navigation for every repository
         nav_type        TYPE string,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
@@ -259,7 +259,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     CLEAR mt_all.
     LOOP AT lt_repos INTO DATA(ls_repo).
       DATA(ls_row) = CORRESPONDING ty_row( ls_repo ).
-      ls_row-nav_type = COND #( WHEN ls_repo-offline = abap_true THEN `Inactive` ELSE `Navigation` ).
+      ls_row-nav_type = `Navigation`.
       INSERT ls_row INTO TABLE mt_all.
     ENDLOOP.
 
@@ -285,11 +285,6 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     READ TABLE mt_all INTO DATA(ls_row) WITH KEY key = client->get_event_arg( ).
     IF sy-subrc <> 0.
-      RETURN.
-    ENDIF.
-
-    IF ls_row-offline = abap_true.
-      client->message_toast_display( `Offline repositories are not supported` ).
       RETURN.
     ENDIF.
 

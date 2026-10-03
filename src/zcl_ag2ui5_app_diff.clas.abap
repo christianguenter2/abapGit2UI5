@@ -17,6 +17,8 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         "! which side is old and which new
         system_label TYPE string,
         git_label    TYPE string,
+        remote_label TYPE string,
+        legend       TYPE string,
       END OF ty_head.
 
     TYPES:
@@ -76,6 +78,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     CLASS-METHODS create
       IMPORTING
         iv_key        TYPE string
+        iv_zip        TYPE xstring OPTIONAL
         iv_path       TYPE string
         iv_filename   TYPE string
         iv_obj_type   TYPE string
@@ -94,6 +97,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
+    DATA mv_zip TYPE xstring.
     DATA mv_path TYPE string.
     DATA mv_filename TYPE string.
     DATA mv_show_all TYPE abap_bool.
@@ -146,8 +150,11 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     ro_app = NEW #( ).
     ro_app->mv_key       = iv_key.
+    ro_app->mv_zip       = iv_zip.
     ro_app->mv_path      = iv_path.
     ro_app->mv_filename  = iv_filename.
+    ro_app->ms_head-remote_label = `Remote`.
+    ro_app->ms_head-legend = `Local: the version in this system. Remote: the version in Git. Green (+) is the side that changed.`.
     ro_app->ms_head-title = |{ iv_obj_type } { iv_obj_name }|.
     ro_app->ms_head-file  = |{ iv_path }{ iv_filename }|.
     " a patch is made on local changes: the system is always the new side
@@ -170,6 +177,14 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->ms_head-direction = COND #( WHEN ro_app->mv_remote_is_new = abap_true
                                         THEN `Changes in Git, compared with this system`
                                         ELSE `Changes in this system, compared with Git` ).
+
+    IF iv_zip IS NOT INITIAL.
+      ro_app->ms_head-remote_label = `ZIP`.
+      REPLACE ALL OCCURRENCES OF `Git` IN ro_app->ms_head-git_label WITH `ZIP`.
+      REPLACE ALL OCCURRENCES OF `Git` IN ro_app->ms_head-direction WITH `ZIP`.
+      REPLACE ALL OCCURRENCES OF `Remote` IN ro_app->ms_head-legend WITH `ZIP`.
+      REPLACE ALL OCCURRENCES OF `Git` IN ro_app->ms_head-legend WITH `ZIP`.
+    ENDIF.
 
   ENDMETHOD.
 
@@ -316,7 +331,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                 )->a( n = `text`  v = client->_bind( ms_head-direction ) ).
 
     content->tag( `MessageStrip`
-        )->a( n = `text`     v = `Local: the version in this system. Remote: the version in Git. Green (+) is the side that changed.`
+        )->a( n = `text`     v = client->_bind( ms_head-legend )
         )->a( n = `showIcon` v = `true`
         )->a( n = `class`    v = `sapUiSmallMarginBeginEnd` ).
     IF mv_patch = abap_true.
@@ -366,7 +381,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
         )->tag( `Text`
-            )->a( n = `text` v = `Remote` ).
+            )->a( n = `text` v = client->_bind( ms_head-remote_label ) ).
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
         )->tag( `Text`
@@ -506,6 +521,7 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     TRY.
         DATA(ls_diff) = NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~get_diff(
           iv_key      = mv_key
+          iv_zip      = mv_zip
           iv_path     = mv_path
           iv_filename = mv_filename
           iv_remote_is_new = mv_remote_is_new ).
@@ -522,6 +538,9 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ms_head-counts = zcl_ag2ui5_repo_service=>counts_text( iv_local         = ls_diff-local_count
                                                           iv_remote        = ls_diff-remote_count
                                                           iv_remote_is_new = mv_remote_is_new ).
+    IF mv_zip IS NOT INITIAL.
+      REPLACE ALL OCCURRENCES OF `Git` IN ms_head-counts WITH `ZIP`.
+    ENDIF.
     rows_build( ).
 
   ENDMETHOD.

@@ -13,8 +13,11 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 - **New repository:** online (from a Git URL) or offline, with abapGit's
   settings and its own checks; each error is shown on its field. No
   credentials (a private repository needs abapGit's user exit), no package
-  creation (an online repository may bring its package along), and offline
-  repositories cannot be opened yet.
+  creation (an online repository may bring its package along).
+- **Offline repositories:** open an offline repository, import an abapGit or
+  GitHub source ZIP through the same pull decision dialog, or export the
+  current local files as a ZIP. Status and diff compare the uploaded ZIP
+  with the system; branches and staging are available for online repositories.
 - **Settings:** every toggle (list or tiles, the status page's filter, sort
   and "changes on top", the diff's layout and "show all") is remembered per
   SAP user.
@@ -115,6 +118,13 @@ npm run check   # abaplint + abap2UI5 linter, no SAP system needed
 ```
 
 Unit tests (`ZCL_AG2UI5_REPO_SERVICE`) run as ABAP Unit on the system.
+
+For an offline repository, choose **Import ZIP**, select the file, and press
+**Upload**. Review the decisions and choose **Pull selected** to import.
+Canceling the decisions keeps the ZIP available for status and diff; Back
+discards it, and reopening the repository starts without a ZIP. **Export
+ZIP** downloads the local package as `repository.zip` (the button may be in
+the header's overflow menu).
 
 The design is in `docs/superpowers/specs/`. The results of the end-to-end test
 are in `docs/findings.md`.

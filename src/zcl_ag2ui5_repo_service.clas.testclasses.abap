@@ -1988,3 +1988,110 @@ CLASS ltcl_new_repo IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_zip DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS archive
+      IMPORTING
+        iv_prefix      TYPE string OPTIONAL
+        iv_extra       TYPE string DEFAULT `src/ztest.abap`
+      RETURNING
+        VALUE(rv_zip) TYPE xstring
+      RAISING zcx_abapgit_exception.
+    METHODS rejects
+      IMPORTING iv_zip TYPE xstring.
+    METHODS abapgit_zip FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS github_zip FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS binary_upload FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS empty_upload FOR TESTING.
+    METHODS empty_zip FOR TESTING.
+    METHODS malformed_zip FOR TESTING.
+    METHODS missing_metadata FOR TESTING.
+    METHODS invalid_metadata FOR TESTING.
+    METHODS parent_path FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS duplicate_paths FOR TESTING RAISING zcx_abapgit_exception.
+ENDCLASS.
+
+CLASS ltcl_zip IMPLEMENTATION.
+
+  METHOD archive.
+    DATA(lo_zip) = NEW cl_abap_zip( ).
+    lo_zip->add( name = iv_prefix && `.abapgit.xml`
+                content = zcl_abapgit_dot_abapgit=>build_default( )->serialize( ) ).
+    " Includes bytes that cannot survive conversion through a text string
+    lo_zip->add( name = iv_prefix && iv_extra content = CONV xstring( '00FF0C80' ) ).
+    rv_zip = lo_zip->save( ).
+  ENDMETHOD.
+
+  METHOD rejects.
+    TRY.
+        zcl_ag2ui5_repo_service=>zip_files( iv_zip ).
+        cl_abap_unit_assert=>fail( `Invalid ZIP accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD abapgit_zip.
+    DATA(lt_files) = zcl_ag2ui5_repo_service=>zip_files( archive( ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( lt_files ) ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( '00FF0C80' )
+                                       act = lt_files[ path = `/src/` filename = `ztest.abap` ]-data ).
+  ENDMETHOD.
+
+  METHOD github_zip.
+    DATA(lt_files) = zcl_ag2ui5_repo_service=>zip_files( archive( iv_prefix = `repository-main/` ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_files[ path = `/` filename = `.abapgit.xml` ] ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_files[ path = `/src/` filename = `ztest.abap` ] ) ) ).
+  ENDMETHOD.
+
+  METHOD binary_upload.
+    DATA(lv_zip) = archive( ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_zip act = zcl_ag2ui5_repo_service=>decode_zip(
+      `data:application/octet-stream;base64,` && cl_http_utility=>encode_x_base64( lv_zip ) ) ).
+  ENDMETHOD.
+
+  METHOD empty_upload.
+    TRY.
+        zcl_ag2ui5_repo_service=>decode_zip( `` ).
+        cl_abap_unit_assert=>fail( `Empty upload accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD empty_zip.
+    rejects( NEW cl_abap_zip( )->save( ) ).
+  ENDMETHOD.
+
+  METHOD malformed_zip.
+    rejects( CONV xstring( '01020304' ) ).
+  ENDMETHOD.
+
+  METHOD missing_metadata.
+    DATA(lo_zip) = NEW cl_abap_zip( ).
+    lo_zip->add( name = `src/ztest.abap` content = CONV xstring( '00FF' ) ).
+    rejects( lo_zip->save( ) ).
+  ENDMETHOD.
+
+  METHOD invalid_metadata.
+    DATA(lo_zip) = NEW cl_abap_zip( ).
+    lo_zip->add( name = `.abapgit.xml` content = CONV xstring( '01020304' ) ).
+    rejects( lo_zip->save( ) ).
+  ENDMETHOD.
+
+  METHOD parent_path.
+    rejects( archive( iv_extra = `../src/ztest.abap` ) ).
+  ENDMETHOD.
+
+  METHOD duplicate_paths.
+    DATA(lo_zip) = NEW cl_abap_zip( ).
+    lo_zip->add( name = `.abapgit.xml` content = zcl_abapgit_dot_abapgit=>build_default( )->serialize( ) ).
+    lo_zip->add( name = `src/ZTEST.abap` content = CONV xstring( '01' ) ).
+    lo_zip->add( name = `src/ztest.abap` content = CONV xstring( '02' ) ).
+    rejects( lo_zip->save( ) ).
+  ENDMETHOD.
+
+ENDCLASS.

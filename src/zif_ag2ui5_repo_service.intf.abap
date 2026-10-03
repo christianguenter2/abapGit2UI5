@@ -74,6 +74,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       url           TYPE string,
       branch        TYPE string,
       remote_commit TYPE string,
+      offline       TYPE abap_bool,
       rows          TYPE ty_status_rows,
     END OF ty_status.
 
@@ -306,6 +307,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
   METHODS get_status
     IMPORTING
       iv_key           TYPE string
+      "! Original uploaded ZIP; offline only, restored on every request
+      iv_zip           TYPE xstring OPTIONAL
     RETURNING
       VALUE(rs_status) TYPE ty_status
     RAISING
@@ -316,6 +319,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
   METHODS preview_pull
     IMPORTING
       iv_key            TYPE string
+      "! Original uploaded ZIP; offline only, restored on every request
+      iv_zip           TYPE xstring OPTIONAL
     RETURNING
       VALUE(rs_preview) TYPE ty_preview
     RAISING
@@ -333,6 +338,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_transport     TYPE string OPTIONAL
       "! Required when the preview names a customizing_type
       iv_customizing   TYPE string OPTIONAL
+      "! Original uploaded ZIP; offline only, restored on every request
+      iv_zip           TYPE xstring OPTIONAL
     RETURNING
       VALUE(rs_result) TYPE ty_pull_result
     RAISING
@@ -354,6 +361,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_path        TYPE string
       iv_filename    TYPE string
       iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+      "! Original uploaded ZIP; offline only, restored on every request
+      iv_zip           TYPE xstring OPTIONAL
     RETURNING
       VALUE(rs_diff) TYPE ty_diff
     RAISING
@@ -436,6 +445,15 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       is_repo          TYPE ty_new_repo
     RETURNING
       VALUE(rs_result) TYPE ty_new_repo_result
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Serializes the local files of an offline repository, with no SAP GUI
+  METHODS export_zip
+    IMPORTING
+      iv_key        TYPE string
+    RETURNING
+      VALUE(rv_zip) TYPE xstring
     RAISING
       zcx_abapgit_exception.
 

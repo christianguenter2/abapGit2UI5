@@ -678,7 +678,51 @@ ZIP through the pull dialog, export a ZIP).
   - without the create authorization the URL is still checked over the
     network.
 
-## Open points (as of 2026-10-02)
+## Offline repositories (2026-10-03)
+
+- Both repository list layouts open offline repositories. The status header
+  offers Import ZIP and Export ZIP; branches and staging stay online-only.
+- Uploads remain binary. The status app keeps the original ZIP in protected
+  state and supplies it to status, diff, preview and pull on every request.
+  The service restores offline remote files each time, including after an
+  export cleared the session cache. Back clears the ZIP; canceling the
+  decisions keeps the comparison and clears the dialog's data.
+- Import reuses the existing pull checks and decisions, acknowledgment,
+  transport selection and self-update guard. Empty/malformed archives,
+  missing or invalid root .abapgit.xml, ambiguous paths and duplicate files
+  are refused. The original online-only guard remains for Git operations.
+- Native tests exposed two issues fixed before completion:
+  - abapGit's ZIP loader raises ITAB_DUPLICATE_KEY for filenames duplicated
+    after lower-casing. Raw directory entries are now checked before loading.
+  - invalid metadata can raise CX_XSLT_RUNTIME_ERROR outside abapGit's
+    declared exception; it is now reported as a normal validation error.
+- `npm run check`: no errors or warnings, one existing MessageStrip hint;
+  eight view documents passed the render gate.
+- ABAP Unit on A4H25: service 134/134, status 19/19, repos 6/6, diff 18/18,
+  stage 13/13, settings 9/9, new repository 8/8 (207 total).
+- All changes activated over ADT using existing classes and test includes;
+  all eight changed source files were read back and matched the working tree.
+- Browser: opened $TEST_OFFLINE from both its tile and table row; offline controls and ZIP
+  column displayed, branches/stage absent; upload dialog opened and canceled;
+  Export ZIP in the toolbar overflow downloaded repository.zip. The browser
+  automation download event timed out, but the actual 642-byte file existed
+  and its two entries and CRCs were verified locally.
+- Service smoke test on $TEST_OFFLINE (key 29): exported two files, loaded
+  them into status, preview NOTHING. No-ZIP preview and supplying a ZIP to
+  an online repository both refused.
+- Native import: ZIP containing the original two files plus the new
+  ZIF_AG2UI5_OFFLINE_E2E interface previewed exactly one Import decision.
+  Pull activated it; its freshly exported ZIP previewed NOTHING. Cleanup
+  selected only that newly created interface's Delete decision and pulled
+  the original ZIP. The restored fixture previewed NOTHING; no test object
+  was retained. The repository's last-pull timestamp moved as expected.
+- Final dump check: only three historical dumps dated September 30 to
+  October 2, none from the completed offline smoke tests.
+- Browser file selection/upload, phone-width layout and large ZIPs were not
+  exercised. Binary decoding, preview/pull handoff, invalid-upload retry,
+  cancellation and ZIP download arguments are covered by native app tests.
+
+## Open points (as of 2026-10-03)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
@@ -686,9 +730,6 @@ diff colours, search field focus, URLs as links.
 
 Next slices:
 
-0. **Offline support** (slice 2 of "New repository"): open an offline
-   repository, import a ZIP through the pull dialog, export a ZIP. Test
-   repository: "ag2ui5 offline" in `$TEST_OFFLINE` on A4H25.
 1. **A per-object view** of the status, with a switch to the per-file view.
 2. **Ignore and `.gitignore`** on the staging page.
 3. **Pushing to another branch** (creating one exists now).

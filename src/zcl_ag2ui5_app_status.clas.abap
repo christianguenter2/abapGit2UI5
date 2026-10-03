@@ -45,6 +45,12 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         skipped   TYPE zif_ag2ui5_repo_service=>ty_decision_items,
       END OF ty_decisions.
 
+    "! Bound only while the binary upload dialog is open
+    DATA mv_upload       TYPE string.
+    DATA mv_upload_path  TYPE string.
+    DATA mv_remote_label TYPE string VALUE `Remote`.
+    DATA mv_pull_text    TYPE string VALUE `Pull`.
+    DATA mv_row_type     TYPE string VALUE `Navigation`.
     DATA ms_head         TYPE ty_head.
     "! The rows shown: all files, or only the changed ones
     DATA mt_rows         TYPE ty_rows.
@@ -56,7 +62,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
-    "! Stage is offered only when something changed locally
+    "! Stage is offered only online, when something changed locally
     DATA mv_can_stage    TYPE abap_bool.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
@@ -93,6 +99,15 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    "! ZIP bytes survive HTTP requests; no abapGit references in app state
+    DATA mv_zip TYPE xstring.
+    DATA mv_offline TYPE abap_bool.
+    "! Test double only; the production service is constructed on demand
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+    METHODS popup_upload_display.
+    METHODS upload_zip.
+    METHODS export_zip.
+
     "! The toggles of the header, stored for the user
     METHODS save_view_settings.
     CONSTANTS c_new_branch TYPE string VALUE `NEW`.
@@ -267,16 +282,23 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
     header_content->tag( `Button`
+        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `text`  v = `Branches`
         )->a( n = `icon`  v = `sap-icon://split`
         )->a( n = `press` v = client->_event( `BRANCHES` ) ).
     header_content->tag( `Button`
+        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `text`    v = `Stage`
         )->a( n = `icon`    v = `sap-icon://upload`
         )->a( n = `enabled` v = client->_bind( mv_can_stage )
         )->a( n = `press`   v = client->_event( `STAGE` ) ).
+    header_content->tag( `Button`
+        )->a( n = `visible` b = mv_offline
+        )->a( n = `text`    v = `Export ZIP`
+        )->a( n = `icon`    v = `sap-icon://download`
+        )->a( n = `press`   v = client->_event( `EXPORT_ZIP` ) ).
     header_content->ele( `Button`
-        )->a( n = `text`  v = `Pull`
+        )->a( n = `text`  v = client->_bind( mv_pull_text )
         )->a( n = `icon`  v = `sap-icon://download`
         )->a( n = `type`  v = `Emphasized`
         )->a( n = `press` v = client->_event( `PULL` )
@@ -285,6 +307,12 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `priority` v = `NeverOverflow` ).
 
     DATA(content) = page->ele( `content` ).
+    IF mv_offline = abap_true AND mv_zip IS INITIAL.
+      content->tag( `MessageStrip`
+          )->a( n = `text`     v = `Offline repository: import a ZIP to compare and choose what to change. Export ZIP downloads the current local files.`
+          )->a( n = `type`     v = `Information`
+          )->a( n = `showIcon` v = `true` ).
+    ENDIF.
 
     " a changed row gets a light background in the colour of its bar; the
     " row writes its highlight as data-change, see the CustomData below
@@ -299,6 +327,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `title` v = client->_bind( ms_head-package )
         )->ele( `attributes` ).
     attributes->ele( `ObjectAttribute`
+        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `URL`
         )->ele( `customContent`
             )->tag( `Link`
@@ -306,9 +335,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `href`   v = client->_bind( ms_head-url )
                 )->a( n = `target` v = `_blank` ).
     attributes->tag( `ObjectAttribute`
+        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Branch`
         )->a( n = `text`  v = client->_bind( ms_head-branch ) ).
     attributes->tag( `ObjectAttribute`
+        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Remote commit`
         )->a( n = `text`  v = client->_bind( ms_head-remote_commit ) ).
 
@@ -336,7 +367,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->a( n = `text` v = `Local` ).
     columns->ele( `Column`
         )->tag( `Text`
-            )->a( n = `text` v = `Remote` ).
+            )->a( n = `text` v = client->_bind( mv_remote_label ) ).
     columns->ele( `Column`
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
@@ -345,7 +376,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(item) = table->ele( `items`
         )->ele( `ColumnListItem`
-            )->a( n = `type`      v = `Navigation`
+            )->a( n = `type`      v = client->_bind( mv_row_type )
             )->a( n = `highlight` v = `{HIGHLIGHT}`
             )->a( n = `press`     v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
     " data-change="<highlight>" on the row, for the style block above
@@ -452,7 +483,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     dialog->ele( `endButton`
         )->tag( `Button`
             )->a( n = `text`  v = `Cancel`
-            )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
+            )->a( n = `press` v = client->_event( `PULL_CANCEL` ) ).
 
     client->popup_display( popup->stringify( ) ).
 
@@ -484,6 +515,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDLOOP.
     IF mv_loaded = abap_true.
       mv_no_data = COND #( WHEN mv_view = `CHANGES` THEN `Local and remote match` ELSE `The repository has no files` ).
+      IF mv_offline = abap_true AND mv_zip IS INITIAL.
+        mv_no_data = `Choose a ZIP to compare with the local files`.
+      ENDIF.
     ENDIF.
 
   ENDMETHOD.
@@ -728,6 +762,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
+        CLEAR: mv_zip, mv_upload, mv_upload_path.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
@@ -735,12 +770,19 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         save_view_settings( ).
         rows_build( ).
       WHEN `STAGE`.
+        IF mv_offline = abap_true.
+          RETURN.
+        ENDIF.
         client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
       WHEN `DIFF`.
+        IF mv_offline = abap_true AND mv_zip IS INITIAL.
+          RETURN.
+        ENDIF.
         READ TABLE mt_rows INTO DATA(ls_row)
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
         IF sy-subrc = 0.
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
+                                                             iv_zip      = mv_zip
                                                              iv_path     = ls_row-path
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
@@ -750,7 +792,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                                                   iv_rstate = ls_row-rstate ) ) ).
         ENDIF.
       WHEN `BRANCHES`.
-        load_branches( ).
+        IF mv_offline = abap_false.
+          load_branches( ).
+        ENDIF.
       WHEN `BRANCH_PICK`.
         branch_buttons( ).
       WHEN `BRANCH_DELETE`.
@@ -775,7 +819,22 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `SWITCH_BRANCH`.
         switch_branch( ).
       WHEN `PULL`.
-        preview_pull( ).
+        IF mv_offline = abap_true.
+          popup_upload_display( ).
+        ELSE.
+          preview_pull( ).
+        ENDIF.
+      WHEN `ZIP_UPLOAD`.
+        upload_zip( ).
+      WHEN `ZIP_CANCEL`.
+        CLEAR: mv_upload, mv_upload_path.
+        client->popup_destroy( ).
+      WHEN `EXPORT_ZIP`.
+        export_zip( ).
+      WHEN `PULL_CANCEL`.
+        CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+               mt_transports, mv_transport, mt_customizing, mv_customizing.
+        client->popup_destroy( ).
       WHEN `PULL_SELECTED`.
         pull_selected( ).
     ENDCASE.
@@ -785,7 +844,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD load_status.
 
     TRY.
-        DATA(ls_status) = service( )->get_status( mv_key ).
+        DATA(ls_status) = service( )->get_status( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR: mt_rows, mt_status, mv_loaded.
         mv_no_data = `Status could not be loaded`.
@@ -794,9 +853,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDTRY.
 
     mv_loaded = abap_true.
-    mv_can_stage = xsdbool( line_exists( ls_status-rows[ lstate = `A` ] )
+    mv_offline = ls_status-offline.
+    mv_remote_label = COND #( WHEN mv_offline = abap_true THEN `ZIP` ELSE `Remote` ).
+    mv_pull_text = COND #( WHEN mv_offline = abap_true THEN `Import ZIP` ELSE `Pull` ).
+    mv_row_type = COND #( WHEN mv_offline = abap_true AND mv_zip IS INITIAL THEN `Inactive` ELSE `Navigation` ).
+    mv_can_stage = xsdbool( mv_offline = abap_false AND ( line_exists( ls_status-rows[ lstate = `A` ] )
                          OR line_exists( ls_status-rows[ lstate = `M` ] )
-                         OR line_exists( ls_status-rows[ lstate = `D` ] ) ).
+                         OR line_exists( ls_status-rows[ lstate = `D` ] ) ) ).
     ms_head = CORRESPONDING #( ls_status ).
     ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
                                     THEN substring( val = ls_status-remote_commit len = 7 )
@@ -812,7 +875,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
            mt_transports, mv_transport, mt_customizing, mv_customizing.
 
     TRY.
-        DATA(ls_preview) = service( )->preview_pull( mv_key ).
+        DATA(ls_preview) = service( )->preview_pull( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
@@ -898,6 +961,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     TRY.
         DATA(ls_result) = service( )->pull( iv_key          = mv_key
+                                            iv_zip          = mv_zip
                                             it_items        = lt_items
                                             iv_acknowledged = mv_acknowledged
                                             iv_transport    = mv_transport
@@ -937,8 +1001,74 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD popup_upload_display.
+
+    CLEAR: mv_upload, mv_upload_path.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory(
+        )->ele( n = `FragmentDefinition` ns = `core`
+            )->a( n = `xmlns`       v = `sap.m`
+            )->a( n = `xmlns:core`  v = `sap.ui.core`
+            )->a( n = `xmlns:z2ui5` v = `z2ui5.cc` ).
+    DATA(dialog) = popup->ele( `Dialog`
+        )->a( n = `title`      v = `Import ZIP`
+        )->a( n = `afterClose` v = client->_event( `ZIP_CANCEL` ) ).
+    dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin`
+            )->tag( `Text`
+                )->a( n = `text` v = `Choose an abapGit ZIP or a GitHub source ZIP. Review the decisions before importing.`
+            )->tag( n = `FileUploader` ns = `z2ui5`
+                )->a( n = `value`  v = client->_bind( mv_upload )
+                )->a( n = `path`   v = client->_bind( mv_upload_path )
+                )->a( n = `upload` v = client->_event( `ZIP_UPLOAD` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text`  v = `Cancel`
+            )->a( n = `press` v = client->_event( `ZIP_CANCEL` ) ).
+    client->popup_display( popup->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD upload_zip.
+
+    DATA(lv_upload) = mv_upload.
+    CLEAR: mv_upload, mv_upload_path.
+    IF mv_offline = abap_false.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lv_zip) = zcl_ag2ui5_repo_service=>decode_zip( lv_upload ).
+      CATCH cx_root INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+    mv_zip = lv_zip.
+    client->popup_destroy( ).
+    load_status( ).
+    view_display( ).
+    preview_pull( ).
+
+  ENDMETHOD.
+
+  METHOD export_zip.
+
+    IF mv_offline = abap_false.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lv_zip) = service( )->export_zip( mv_key ).
+        DATA(lv_base64) = cl_http_utility=>encode_x_base64( lv_zip ).
+        client->follow_up_action( val = client->cs_event-download_b64_file
+                                  t_arg = VALUE #( ( `data:application/zip;base64,` && lv_base64 )
+                                                   ( `repository.zip` ) ) ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+    ENDTRY.
+
+  ENDMETHOD.
+
   METHOD service.
-    ri_service = NEW zcl_ag2ui5_repo_service( ).
+    ri_service = COND #( WHEN mi_service IS BOUND THEN mi_service ELSE NEW zcl_ag2ui5_repo_service( ) ).
   ENDMETHOD.
 
   METHOD state_text.

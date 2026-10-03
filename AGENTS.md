@@ -45,6 +45,14 @@ present. It is Git-ignored.
   login manager for the one call and clears them in `CLEANUP`.
 - After `push( )` the service calls `COMMIT WORK AND WAIT`, as abapGit does.
   abap2UI5 rolls back after `main( )`.
+- **Offline ZIPs:** the status and diff apps retain the original ZIP bytes
+  in PROTECTED attributes. `get_repo` restores the offline remote files on
+  every status, diff, preview and pull call; without a ZIP it clears them.
+  Offline preview/pull without a ZIP is refused. `zip_files` checks raw ZIP
+  entries before abapGit's loader (duplicate filenames can dump there),
+  requires root `.abapgit.xml` and wraps invalid XML as an abapGit exception.
+  Keep uploads and downloads binary; the framework's generic file popups
+  convert through text. Export uses `encode_files`, never SAP GUI file APIs.
 - **User settings** (the apps' toggles, table `ZAG2UI5_SETTING`) go through
   `ZCL_AG2UI5_SETTINGS`, not the service: they have nothing to do with
   abapGit. It always uses `sy-uname`, and its `set( )` commits itself. Apps
@@ -62,6 +70,7 @@ present. It is Git-ignored.
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
 | New repository | `normalize_new_repo`, `new_repo_errors` |
+| Offline ZIP | `decode_zip`, `zip_files` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every
 row of abapGit's four check tables needs a decision, or abapGit's

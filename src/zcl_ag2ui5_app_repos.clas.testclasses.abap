@@ -1,3 +1,6 @@
+CLASS ltcl_offline DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline.
+
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
@@ -49,6 +52,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mo_called TYPE REF TO z2ui5_if_app.
     DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
     DATA mv_toast TYPE string.
+    DATA mv_arg TYPE string.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -75,6 +79,9 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~nav_app_call.
     mo_called = app.
   ENDMETHOD.
+  METHOD z2ui5_if_client~get_event_arg.
+    result = mv_arg.
+  ENDMETHOD.
   METHOD z2ui5_if_client~get.
     result = ms_get.
   ENDMETHOD.
@@ -83,6 +90,27 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 ENDCLASS.
 
+
+CLASS ltcl_offline DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS offline_opens_status FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_offline IMPLEMENTATION.
+  METHOD offline_opens_status.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    DATA(lo_app) = NEW zcl_ag2ui5_app_repos( ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->mt_all = VALUE #( ( key = `29` name = `offline` offline = abap_true ) ).
+    lo_client->mv_arg = `29`.
+    lo_client->mv_event = `OPEN`.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mo_called IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+  ENDMETHOD.
+ENDCLASS.
 
 CLASS ltcl_settings DEFINITION FINAL FOR TESTING
   RISK LEVEL HARMLESS
