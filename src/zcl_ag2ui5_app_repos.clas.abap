@@ -24,6 +24,8 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
 
     DATA mt_repos  TYPE ty_rows.
     DATA mv_search TYPE string.
+    "! LIST or TILES; switched on the client, kept for the session
+    DATA mv_layout TYPE string VALUE `LIST`.
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
@@ -31,6 +33,9 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     DATA mt_all TYPE ty_rows.
 
     METHODS view_display.
+    METHODS tiles_display
+      IMPORTING
+        io_content TYPE REF TO z2ui5_cl_ui5_view_builder.
     METHODS on_event.
     METHODS load_repos.
     METHODS apply_search.
@@ -67,6 +72,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->ele( n = `View` ns = `mvc`
             )->a( n = `xmlns`        v = `sap.m`
             )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
+            )->a( n = `xmlns:f`      v = `sap.f`
+            )->a( n = `xmlns:card`   v = `sap.f.cards`
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
 
@@ -85,12 +92,25 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
                 )->a( n = `id`          v = `search`
                 )->a( n = `value`       v = client->_bind( mv_search )
                 )->a( n = `placeholder` v = `Search name, package or URL`
-                )->a( n = `search`      v = client->_event( `SEARCH` ) ).
+                )->a( n = `search`      v = client->_event( `SEARCH` )
+            )->ele( `SegmentedButton`
+                )->a( n = `selectedKey` v = client->_bind( mv_layout )
+                )->ele( `items`
+                    )->tag( `SegmentedButtonItem`
+                        )->a( n = `key`     v = `LIST`
+                        )->a( n = `icon`    v = `sap-icon://list`
+                        )->a( n = `tooltip` v = `List`
+                    )->tag( `SegmentedButtonItem`
+                        )->a( n = `key`     v = `TILES`
+                        )->a( n = `icon`    v = `sap-icon://grid`
+                        )->a( n = `tooltip` v = `Tiles` ).
 
-    DATA(table) = page->ele( `content`
-        )->ele( `Table`
-            )->a( n = `items`      v = client->_bind( mt_repos )
-            )->a( n = `noDataText` v = `No repositories found` ).
+    " both layouts are in the view; the toggle only switches which one shows
+    DATA(content) = page->ele( `content` ).
+    DATA(table) = content->ele( `Table`
+        )->a( n = `items`      v = client->_bind( mt_repos )
+        )->a( n = `noDataText` v = `No repositories found`
+        )->a( n = `visible`    v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'LIST' \}| ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -134,7 +154,53 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     cells->tag( `Text`
         )->a( n = `text` v = `{DESERIALIZED_AT}` ).
 
+    tiles_display( content ).
+
     client->view_display( view->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD tiles_display.
+
+    DATA(grid) = io_content->ele( n = `GridContainer` ns = `f`
+        )->a( n = `items`   v = client->_bind( mt_repos )
+        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'TILES' \}|
+        )->a( n = `class`   v = `sapUiSmallMargin` ).
+    grid->ele( n = `layout` ns = `f`
+        )->tag( n = `GridContainerSettings` ns = `f`
+            )->a( n = `columnSize` v = `20rem`
+            )->a( n = `gap`        v = `1rem` ).
+
+    " a click on the header opens the repository, as a table row does
+    DATA(card) = grid->ele( n = `Card` ns = `f`
+        )->a( n = `width` v = `100%` ).
+    card->ele( n = `header` ns = `f`
+        )->tag( n = `Header` ns = `card`
+            )->a( n = `title`    v = `{NAME}`
+            )->a( n = `subtitle` v = `{PACKAGE}`
+            )->a( n = `iconSrc`  v = `{= ${OFFLINE} ? 'sap-icon://disconnected' : 'sap-icon://cloud' }`
+            )->a( n = `press`    v = client->_event( val = `OPEN` arg = `${KEY}` ) ).
+
+    DATA(box) = card->ele( n = `content` ns = `f`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin` ).
+    " a link opens in a new tab; a click on it does not open the repository
+    " a URL has no blank to wrap at: cut it off at the card's inner width
+    " (column 20rem less the margins); the tooltip has all of it
+    box->tag( `Link`
+        )->a( n = `text`    v = `{URL}`
+        )->a( n = `href`    v = `{URL}`
+        )->a( n = `target`  v = `_blank`
+        )->a( n = `width`   v = `18rem`
+        )->a( n = `tooltip` v = `{URL}` ).
+    box->tag( `ObjectAttribute`
+        )->a( n = `title`   v = `Branch`
+        )->a( n = `text`    v = `{BRANCH}`
+        )->a( n = `visible` v = `{= !!${BRANCH} }` ).
+    box->tag( `ObjectAttribute`
+        )->a( n = `title`   v = `Last pull`
+        )->a( n = `text`    v = `{DESERIALIZED_AT}`
+        )->a( n = `visible` v = `{= !!${DESERIALIZED_AT} }` ).
 
   ENDMETHOD.
 
