@@ -35,6 +35,9 @@ present. It is Git-ignored.
     again, and a different fingerprint gives `changed`
   - `ZCL_AG2UI5_SETTINGS->set` for a toggle: key and value against an
     allow-list
+  - `create_repo` for a new repository: `normalize_new_repo`,
+    `new_repo_errors`, then abapGit's own checks and the self-update guard
+    for the package. Nothing is written while one fails
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
@@ -58,6 +61,7 @@ present. It is Git-ignored.
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
+| New repository | `normalize_new_repo`, `new_repo_errors` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every
 row of abapGit's four check tables needs a decision, or abapGit's
@@ -69,17 +73,21 @@ row of abapGit's four check tables needs a decision, or abapGit's
   gate. It needs no system, and CI runs it too.
 - ABAP Unit runs only on a system (`ZCL_AG2UI5_REPO_SERVICE`,
   `ZCL_AG2UI5_SETTINGS`, `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`,
-  `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`). A client double that is
+  `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`, `ZCL_AG2UI5_APP_NEW_REPO`).
+  A client double that is
   `PARTIALLY IMPLEMENTED` raises on the kernel for every method it leaves
   out: building a view needs `_bind` and `_event`.
 - The headless screenshot (`abap2ui5lint --screenshot`) cannot follow values
   passed into helper methods (`group_display`, `transport_display`), and it
   renders every branch of an `IF`. Check dialogs on a system, or render a
   scratch copy with the helpers inlined.
-- Page headers are an `OverflowToolbar` in `customHeader` (status, diff,
-  stage), not `headerContent`, which has no overflow and hides the back
+- Page headers are an `OverflowToolbar` in `customHeader` (every page), not
+  `headerContent`, which has no overflow and hides the back
   button on narrow screens. A control that gets `layoutData` must be opened
   with `ele( )`: after `tag( )` the chain is back on the toolbar.
+- A toast sent in the same round trip as `nav_app_leave` is lost. Hand the
+  message over with `nav_app_leave( r_data = ... )`; the list shows it from
+  `get( )-r_event_data`.
 - Event arguments arrive as abap2UI5 sends them: a boolean is `X` or space,
   not `true`. App tests with a client double must send the same values.
 - Code reaches the browser through `sap.m.FormattedText` (`code_html`): it is

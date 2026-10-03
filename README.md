@@ -10,6 +10,11 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 
 - **Repository list:** all abapGit repositories of the system, with a search,
   as a table or as tiles (one card per repository).
+- **New repository:** online (from a Git URL) or offline, with abapGit's
+  settings and its own checks; each error is shown on its field. No
+  credentials (a private repository needs abapGit's user exit), no package
+  creation (an online repository may bring its package along), and offline
+  repositories cannot be opened yet.
 - **Settings:** every toggle (list or tiles, the status page's filter, sort
   and "changes on top", the diff's layout and "show all") is remembered per
   SAP user.

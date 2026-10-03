@@ -621,6 +621,51 @@ overflow, so the controls pushed the left side out.
   works; the menu shows the rest. The stage page is covered by its unit
   test only.
 
+## New repository (2026-10-03)
+
+See `docs/superpowers/specs/2026-10-03-new-repository-design.md` and the
+plan next to it. Slice 1 of 2; slice 2 is offline support (open, import a
+ZIP through the pull dialog, export a ZIP).
+
+- "New repository" on the list opens `ZCL_AG2UI5_APP_NEW_REPO`: online
+  (URL, branch, display name) or offline (name), package, and a collapsed
+  "More settings" panel (folder logic, labels, ignore subpackages, main
+  language only, ABAP language version) with abapGit's defaults.
+- `create_repo` normalizes the form (`normalize_new_repo`), collects the
+  form's own errors (`new_repo_errors`), then abapGit's: `validate_url`, the
+  provider check, the branch list (connection, empty remote, branch),
+  `validate_package`, the self-update guard, the labels. Only then
+  `new_online` / `new_offline`, the favorite and `COMMIT WORK AND WAIT`. A
+  new online repository whose package is missing and whose remote has no
+  package file is deleted again.
+- Decided while planning: the display name only online (`new_offline` has
+  none); no separate connection check (the branch list connects); offline
+  needs an existing package; the list's header is an overflow toolbar too.
+- Found on the system:
+  - abapGit refuses a URL that another repository already uses
+    (`validate_url`), so `abapGit-tests/DTEL` (repository 026) could not be
+    used; `abapGit-tests/DOMA` was.
+  - A toast sent in the same round trip as `nav_app_leave` never shows (a
+    hook on `MessageToast.show` saw nothing). The page hands the message
+    over with `r_data`; the list shows it.
+  - `COND #( WHEN condense( x ) IS NOT INITIAL ...)` does not compile on the
+    kernel (abaplint accepts it).
+- ABAP Unit on A4H25: service 124/124, settings 9/9, stage 13/13, diff
+  18/18, status 4/4, repository list 5/5, new repository 8/8. Every new test
+  failed first.
+- Browser on A4H25 (screen locked, driven through UI5):
+  - online `abapGit-tests/DOMA` into the new package `$ag2ui5_new1` (typed in
+    lower case): status page of `$AG2UI5_NEW1`, Back to the list, pull
+    created the package and the domain;
+  - refused on their fields: a used package, `$TMP`, an unknown branch, an
+    untrusted certificate (example.com), an offline package in use;
+  - `octocat/Hello-World` into a missing package: message strip, no
+    repository left behind;
+  - offline into `$TEST_OFFLINE`: back to the list with the toast, a greyed
+    tile; the toast is not repeated on later returns;
+  - 390px: the form keeps Back, title and Create; the list keeps its title
+    and both buttons.
+
 ## Open points (as of 2026-10-02)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
