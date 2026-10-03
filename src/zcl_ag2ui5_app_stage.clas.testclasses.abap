@@ -2,6 +2,22 @@ CLASS ltcl_push DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch.
 
+"! Settings double: always the default, nothing stored - so a diff app the
+"! stage app creates does not read the tester's own settings
+CLASS ltd_settings DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_settings.
+ENDCLASS.
+
+CLASS ltd_settings IMPLEMENTATION.
+  METHOD zif_ag2ui5_settings~get.
+    rv_value = iv_default.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_settings~set.
+    rv_saved = abap_true.
+  ENDMETHOD.
+ENDCLASS.
+
 "! abap2UI5 client for one event round trip
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
@@ -86,6 +102,7 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     DATA mo_service TYPE REF TO ltd_service.
 
     METHODS setup.
+    METHODS teardown.
     METHODS token_cleared_after_push FOR TESTING.
     METHODS token_cleared_after_error FOR TESTING.
     METHODS token_cleared_without_select FOR TESTING.
@@ -97,7 +114,12 @@ ENDCLASS.
 
 CLASS ltcl_push IMPLEMENTATION.
 
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
   METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
     mo_client  = NEW #( ).
     mo_service = NEW #( ).
     mo_client->mv_event = `PUSH`.
@@ -181,6 +203,7 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     DATA mo_service TYPE REF TO ltd_service.
 
     METHODS setup.
+    METHODS teardown.
     METHODS patch
       IMPORTING
         it_ids          TYPE string_table
@@ -200,7 +223,12 @@ ENDCLASS.
 
 CLASS ltcl_patch IMPLEMENTATION.
 
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
   METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
     mo_client  = NEW #( ).
     mo_service = NEW #( ).
     mo_app = zcl_ag2ui5_app_stage=>create( iv_key = `000000000001` iv_title = `test` ).
