@@ -80,14 +80,28 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
 
-    DATA(page) = view->ele( `Page`
-        )->a( n = `title` v = `abapGit - Repositories` ).
-
-    page->ele( `headerContent`
-        )->tag( `Button`
-            )->a( n = `icon`    v = `sap-icon://refresh`
-            )->a( n = `tooltip` v = `Refresh`
-            )->a( n = `press`   v = client->_event( `REFRESH` ) ).
+    " the header is an overflow toolbar: on a narrow screen the buttons move
+    " into its menu, the title stays
+    DATA(page) = view->ele( `Page` ).
+    DATA(header_content) = page->ele( `customHeader` )->ele( `OverflowToolbar` ).
+    header_content->ele( `Title`
+        )->a( n = `text`  v = `abapGit - Repositories`
+        )->a( n = `level` v = `H2`
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority`   v = `NeverOverflow`
+                )->a( n = `shrinkable` v = `true` ).
+    header_content->tag( `ToolbarSpacer` ).
+    header_content->tag( `Button`
+        )->a( n = `text`  v = `New repository`
+        )->a( n = `icon`  v = `sap-icon://add`
+        )->a( n = `press` v = client->_event( `NEW` ) ).
+    " icon only in the bar, with its text in the overflow menu
+    header_content->tag( `OverflowToolbarButton`
+        )->a( n = `icon`    v = `sap-icon://refresh`
+        )->a( n = `text`    v = `Refresh`
+        )->a( n = `tooltip` v = `Refresh`
+        )->a( n = `press`   v = client->_event( `REFRESH` ) ).
 
     page->ele( `subHeader`
         )->ele( `Toolbar`
@@ -221,6 +235,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         " switching happens on the client; the server only remembers it
         zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-repos_layout
                                                    iv_value = mv_layout ).
+      WHEN `NEW`.
+        client->nav_app_call( zcl_ag2ui5_app_new_repo=>create( ) ).
     ENDCASE.
 
   ENDMETHOD.

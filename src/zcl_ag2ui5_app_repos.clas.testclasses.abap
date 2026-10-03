@@ -46,6 +46,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
     DATA mv_start TYPE abap_bool.
     DATA mv_event TYPE string.
+    DATA mo_called TYPE REF TO z2ui5_if_app.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -68,6 +69,9 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~_bind ##NEEDED.
   ENDMETHOD.
   METHOD z2ui5_if_client~_event ##NEEDED.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~nav_app_call.
+    mo_called = app.
   ENDMETHOD.
 ENDCLASS.
 
@@ -123,6 +127,27 @@ CLASS ltcl_settings IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       exp = `TILES`
       act = mo_settings->saved( zif_ag2ui5_settings=>c_key-repos_layout ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_new DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS new_opens_page FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_new IMPLEMENTATION.
+
+  METHOD new_opens_page.
+    DATA(lo_app) = NEW zcl_ag2ui5_app_repos( ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_event = `NEW`.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mo_called IS INSTANCE OF zcl_ag2ui5_app_new_repo ) ).
   ENDMETHOD.
 
 ENDCLASS.
