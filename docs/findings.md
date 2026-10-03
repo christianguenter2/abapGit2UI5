@@ -570,6 +570,29 @@ renames the class, the bar falls back to `#b95100`. Checked in the browser on
   in tile mode, opening a card, back, list again, no console errors). No
   ABAP Unit test: the change is view and binding only.
 
+## User settings (2026-10-03)
+
+See `docs/superpowers/specs/2026-10-03-user-settings-design.md`.
+
+- Table `ZAG2UI5_SETTING` (user, key, value), `ZIF_AG2UI5_SETTINGS` and
+  `ZCL_AG2UI5_SETTINGS`: an allow-list per key, the default for a missing or
+  outdated value, `set( )` commits. The three apps read their toggles when
+  they start or are created and save them in the toggle's event; in patch
+  mode the diff stays inline and stores no layout.
+- ABAP Unit on A4H25: settings 9/9, repository list 2/2 (new include),
+  status 3/3 (new include), diff 15/15, stage 12/12, service 113/113. Every
+  new test failed first on the system (pull with a stub class).
+- Deployment: one abapgit-agent pull of the feature branch, 0 conflicts this
+  time; then ADT writes. The table was created over ADT and serialized with
+  abapGit into `zag2ui5_setting.tabl.xml`; abaplint now allows TABL.
+- Found on the way: on the kernel a `PARTIALLY IMPLEMENTED` client double
+  raises for `_bind`/`_event`, so the doubles implement both.
+- Browser on A4H25 (screen locked, driven through UI5): tiles survive a
+  reload; the status toggles carry over to another repository; the diff
+  comes back side by side with "Show all"; no console errors. Patch mode is
+  covered by the unit test only. The test rows were deleted afterwards (the
+  table was empty before).
+
 ## Open points (as of 2026-10-02)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete

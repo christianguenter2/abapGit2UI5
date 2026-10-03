@@ -33,6 +33,8 @@ present. It is Git-ignored.
     the commit sent to the remote comes from that list
   - `apply_patch` and the fingerprint for picked lines: the diff is computed
     again, and a different fingerprint gives `changed`
+  - `ZCL_AG2UI5_SETTINGS->set` for a toggle: key and value against an
+    allow-list
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
@@ -40,6 +42,11 @@ present. It is Git-ignored.
   login manager for the one call and clears them in `CLEANUP`.
 - After `push( )` the service calls `COMMIT WORK AND WAIT`, as abapGit does.
   abap2UI5 rolls back after `main( )`.
+- **User settings** (the apps' toggles, table `ZAG2UI5_SETTING`) go through
+  `ZCL_AG2UI5_SETTINGS`, not the service: they have nothing to do with
+  abapGit. It always uses `sy-uname`, and its `set( )` commits itself. Apps
+  call `get_instance( )` where they need it and keep no reference; tests
+  replace it with `inject( )` and restore it in `teardown`.
 
 ## Logic without side effects (unit-tested; keep it that way)
 
@@ -61,7 +68,10 @@ row of abapGit's four check tables needs a decision, or abapGit's
 - `npm run check` runs abaplint and the abap2UI5 linter, including the render
   gate. It needs no system, and CI runs it too.
 - ABAP Unit runs only on a system (`ZCL_AG2UI5_REPO_SERVICE`,
-  `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`).
+  `ZCL_AG2UI5_SETTINGS`, `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`,
+  `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`). A client double that is
+  `PARTIALLY IMPLEMENTED` raises on the kernel for every method it leaves
+  out: building a view needs `_bind` and `_event`.
 - The headless screenshot (`abap2ui5lint --screenshot`) cannot follow values
   passed into helper methods (`group_display`, `transport_display`), and it
   renders every branch of an `IF`. Check dialogs on a system, or render a

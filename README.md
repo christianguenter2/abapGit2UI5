@@ -10,6 +10,9 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 
 - **Repository list:** all abapGit repositories of the system, with a search,
   as a table or as tiles (one card per repository).
+- **Settings:** every toggle (list or tiles, the status page's filter, sort
+  and "changes on top", the diff's layout and "show all") is remembered per
+  SAP user.
 - **Status:** every file of the repository. Changed files (in the system, in
   Git or both, or inactive) are marked yellow, with a bar and a light
   background; the Local and Remote columns tell which side changed. "Changes
