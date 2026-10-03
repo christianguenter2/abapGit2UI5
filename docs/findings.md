@@ -554,6 +554,22 @@ renames the class, the bar falls back to `#b95100`. Checked in the browser on
   columns to system/Git; the service is unchanged.
 - ABAP Unit: diff app 11/11 (two new tests, one per direction, failed first).
 
+## Repository tiles (2026-10-03)
+
+- A List/Tiles toggle next to the search. Tiles are `sap.f.Card`s in a
+  `sap.f.GridContainer` (20rem columns): name and package in the header,
+  cloud or disconnected icon for online and offline, then the URL (a link,
+  cut off with an ellipsis, full URL in the tooltip), branch and last pull.
+  A click on the header opens the repository like a table row.
+- Both layouts bind `mt_repos`, so the search filters both. The toggle only
+  switches `visible` on the client (expression binding on `mv_layout`); the
+  choice stays for the session, also on the way back from the status page,
+  but not across logins.
+- Checked: `npm run check` with the render gate (UI5 1.71), headless
+  screenshots of both layouts, and in the browser on A4H25 (toggle, search
+  in tile mode, opening a card, back, list again, no console errors). No
+  ABAP Unit test: the change is view and binding only.
+
 ## Open points (as of 2026-10-02)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
