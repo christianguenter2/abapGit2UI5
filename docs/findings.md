@@ -665,6 +665,18 @@ ZIP through the pull dialog, export a ZIP).
     tile; the toast is not repeated on later returns;
   - 390px: the form keeps Back, title and Create; the list keeps its title
     and both buttons.
+- Final review (fresh reviewer): offline creation skipped abapGit's
+  checksum rebuild and its delete-on-failure; fixed, both kinds now follow
+  abapGit's services (not reproduced first: that needs a package whose
+  subpackages break the prefix rule). Minor points left open:
+  - a package name longer than 30 characters is cut instead of refused
+    (only a crafted request; the field has maxLength 30);
+  - the two checkboxes are not normalized to `X` / space;
+  - the list converts the handed-over value without checking its type;
+  - the branch error shows the full ref;
+  - a comment in `normalize_new_repo` says condense "takes" inner blanks;
+  - without the create authorization the URL is still checked over the
+    network.
 
 ## Open points (as of 2026-10-02)
 
