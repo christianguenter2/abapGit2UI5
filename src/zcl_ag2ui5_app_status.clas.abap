@@ -93,6 +93,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    "! The toggles of the header, stored for the user
+    METHODS save_view_settings.
     CONSTANTS c_new_branch TYPE string VALUE `NEW`.
     "! The branch the open delete confirmation is about, set on the server
     DATA mv_delete_branch TYPE string.
@@ -175,6 +177,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     ro_app = NEW #( ).
     ro_app->mv_key = iv_key.
+    DATA(li_settings) = zcl_ag2ui5_settings=>get_instance( ).
+    ro_app->mv_view = li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_view
+                                        iv_default = `ALL` ).
+    ro_app->mv_sort = li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_sort
+                                        iv_default = `OBJECT` ).
+    ro_app->mv_changes_first = xsdbool( li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_changes_first
+                                                          iv_default = `X` ) = abap_true ).
 
   ENDMETHOD.
 
@@ -704,6 +713,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `REFRESH`.
         load_status( ).
       WHEN `VIEW`.
+        save_view_settings( ).
         rows_build( ).
       WHEN `STAGE`.
         client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
@@ -930,6 +940,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDLOOP.
 
     rv_text = concat_lines_of( table = lt_lines sep = |\n| ).
+
+  ENDMETHOD.
+
+  METHOD save_view_settings.
+
+    DATA(li_settings) = zcl_ag2ui5_settings=>get_instance( ).
+    li_settings->set( iv_key = zif_ag2ui5_settings=>c_key-status_view          iv_value = mv_view ).
+    li_settings->set( iv_key = zif_ag2ui5_settings=>c_key-status_sort          iv_value = mv_sort ).
+    li_settings->set( iv_key = zif_ag2ui5_settings=>c_key-status_changes_first iv_value = CONV #( mv_changes_first ) ).
 
   ENDMETHOD.
 

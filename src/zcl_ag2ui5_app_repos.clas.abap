@@ -24,7 +24,7 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
 
     DATA mt_repos  TYPE ty_rows.
     DATA mv_search TYPE string.
-    "! LIST or TILES; switched on the client, kept for the session
+    "! LIST or TILES; switched on the client, stored per user
     DATA mv_layout TYPE string VALUE `LIST`.
 
   PROTECTED SECTION.
@@ -52,6 +52,9 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     me->client = client.
     IF client->check_on_navigated( ).
+      mv_layout = zcl_ag2ui5_settings=>get_instance( )->get(
+                    iv_key     = zif_ag2ui5_settings=>c_key-repos_layout
+                    iv_default = `LIST` ).
       " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
       view_display( ).
@@ -94,7 +97,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
                 )->a( n = `placeholder` v = `Search name, package or URL`
                 )->a( n = `search`      v = client->_event( `SEARCH` )
             )->ele( `SegmentedButton`
-                )->a( n = `selectedKey` v = client->_bind( mv_layout )
+                )->a( n = `selectedKey`     v = client->_bind( mv_layout )
+                )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
                 )->ele( `items`
                     )->tag( `SegmentedButtonItem`
                         )->a( n = `key`     v = `LIST`
@@ -213,6 +217,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         load_repos( ).
       WHEN `OPEN`.
         open_repo( ).
+      WHEN `LAYOUT`.
+        " switching happens on the client; the server only remembers it
+        zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-repos_layout
+                                                   iv_value = mv_layout ).
     ENDCASE.
 
   ENDMETHOD.

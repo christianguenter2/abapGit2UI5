@@ -154,6 +154,14 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->mv_remote_is_new = xsdbool( iv_remote_is_new = abap_true AND iv_patch = abap_false ).
     ro_app->mv_patch  = iv_patch.
     ro_app->mt_picked = it_picked.
+    DATA(li_settings) = zcl_ag2ui5_settings=>get_instance( ).
+    ro_app->mv_show_all = xsdbool( li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-diff_show_all
+                                                     iv_default = `` ) = abap_true ).
+    " a patch is picked inline
+    IF iv_patch = abap_false.
+      ro_app->mv_layout = li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-diff_layout
+                                            iv_default = `INLINE` ).
+    ENDIF.
     IF iv_patch = abap_true.
       ro_app->ms_head-title = |Pick lines - { ro_app->ms_head-title }|.
     ENDIF.
@@ -440,6 +448,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         client->nav_app_leave( ).
       WHEN `TOGGLE`.
         mv_show_all = xsdbool( mv_show_all = abap_false ).
+        zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_show_all
+                                                   iv_value = CONV #( mv_show_all ) ).
         rows_build( ).
       WHEN `PICK`.
         pick( iv_id     = client->get_event_arg( )
@@ -463,6 +473,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                             fingerprint = mv_fingerprint ).
         client->nav_app_leave( ).
       WHEN `LAYOUT`.
+        zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_layout
+                                                   iv_value = mv_layout ).
         " the layout changes the view's structure, not only its data
         view_display( ).
     ENDCASE.
