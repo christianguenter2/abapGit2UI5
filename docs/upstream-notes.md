@@ -37,6 +37,11 @@ abapGit with the fix.
      first). `npm run unit` green, abaplint clean.
    - **PR #7923** opened by Chris on 2026-10-02. It asks the maintainers
      whether the background pull should skip such tables too.
+   - Approved by mbtools (2026-10-02), with a suggestion: delete only on an
+     explicit Yes. Its snippet as written would stop all other deletions; the
+     intended form is `decision <> c_yes` -> `CONTINUE`, which makes the
+     background pull raise "undecided" instead of deleting. Chris answered in
+     the PR (2026-10-03); no code change for now.
    - The background pull sets only the overwrite decisions; its table-data
      decisions stay initial, so it still deletes such tables, as before.
    - abapGit2UI5 is not affected: one decision per object is applied to all
