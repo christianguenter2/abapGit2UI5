@@ -473,8 +473,11 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
                             fingerprint = mv_fingerprint ).
         client->nav_app_leave( ).
       WHEN `LAYOUT`.
-        zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_layout
-                                                   iv_value = mv_layout ).
+        " patch mode has no layout switch: nothing to remember from there
+        IF mv_patch = abap_false.
+          zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_layout
+                                                     iv_value = mv_layout ).
+        ENDIF.
         " the layout changes the view's structure, not only its data
         view_display( ).
     ENDCASE.

@@ -341,6 +341,7 @@ CLASS ltcl_settings DEFINITION FINAL FOR TESTING
 
     METHODS create_reads_settings FOR TESTING.
     METHODS patch_ignores_layout FOR TESTING.
+    METHODS patch_layout_event_not_saved FOR TESTING.
     METHODS layout_event_saves FOR TESTING.
     METHODS toggle_event_saves FOR TESTING.
 ENDCLASS.
@@ -381,6 +382,15 @@ CLASS ltcl_settings IMPLEMENTATION.
     DATA(lo_app) = create( abap_true ).
     cl_abap_unit_assert=>assert_equals( exp = `INLINE` act = lo_app->mv_layout ).
     fire( io_app = lo_app iv_event = `TOGGLE` ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `?` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-diff_layout ) ).
+  ENDMETHOD.
+
+  METHOD patch_layout_event_not_saved.
+    " patch mode shows no layout switch; a crafted LAYOUT event must not
+    " overwrite the stored side by side with the inline it shows
+    DATA(lo_app) = create( abap_true ).
+    fire( io_app = lo_app iv_event = `LAYOUT` ).
     cl_abap_unit_assert=>assert_equals(
       exp = `?` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-diff_layout ) ).
   ENDMETHOD.
