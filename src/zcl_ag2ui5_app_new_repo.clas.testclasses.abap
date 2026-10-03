@@ -11,6 +11,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_toast TYPE string.
     DATA mv_left TYPE abap_bool.
     DATA mo_left_to TYPE REF TO z2ui5_if_app.
+    "! what the page handed over when it left
+    DATA mv_left_data TYPE string.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -32,6 +34,9 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~nav_app_leave.
     mv_left = abap_true.
     mo_left_to = app.
+    IF r_data IS SUPPLIED.
+      mv_left_data = r_data.
+    ENDIF.
   ENDMETHOD.
   "! bindings and events are not checked here
   METHOD z2ui5_if_client~_bind ##NEEDED.
@@ -127,7 +132,9 @@ CLASS ltcl_app IMPLEMENTATION.
     fire( `CREATE` ).
     cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
     cl_abap_unit_assert=>assert_not_bound( mo_client->mo_left_to ).
-    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_toast exp = `*offline repo*` ).
+    " a toast sent while leaving is lost: the list shows what is handed over
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_left_data exp = `*offline repo*` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_toast ).
   ENDMETHOD.
 
   METHOD errors_to_fields.

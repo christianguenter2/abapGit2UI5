@@ -98,9 +98,10 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
     ENDIF.
 
     IF ms_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-offline.
-      " offline repositories open in slice 2; the list shows the new one
-      client->message_toast_display( |Offline repository { ms_repo-name } created| ).
-      client->nav_app_leave( ).
+      " offline repositories open in slice 2; the list shows the new one.
+      " A toast sent while leaving is lost, so the list shows this message
+      DATA(lv_message) = |Offline repository { ms_repo-name } created|.
+      client->nav_app_leave( r_data = lv_message ).
     ELSE.
       " leave this page for the status page: its Back returns to the list
       client->nav_app_leave( zcl_ag2ui5_app_status=>create( ls_result-key ) ).

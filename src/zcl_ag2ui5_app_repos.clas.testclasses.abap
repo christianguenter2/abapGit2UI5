@@ -47,6 +47,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_start TYPE abap_bool.
     DATA mv_event TYPE string.
     DATA mo_called TYPE REF TO z2ui5_if_app.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
+    DATA mv_toast TYPE string.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -72,6 +74,12 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_call.
     mo_called = app.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~message_toast_display.
+    mv_toast = text.
   ENDMETHOD.
 ENDCLASS.
 
@@ -138,6 +146,7 @@ CLASS ltcl_new DEFINITION FINAL FOR TESTING
 
   PRIVATE SECTION.
     METHODS new_opens_page FOR TESTING.
+    METHODS back_shows_handed_message FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_new IMPLEMENTATION.
@@ -148,6 +157,16 @@ CLASS ltcl_new IMPLEMENTATION.
     lo_client->mv_event = `NEW`.
     lo_app->z2ui5_if_app~main( lo_client ).
     cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mo_called IS INSTANCE OF zcl_ag2ui5_app_new_repo ) ).
+  ENDMETHOD.
+
+  METHOD back_shows_handed_message.
+    " the new repository page hands its message over when it leaves
+    DATA(lo_app) = NEW zcl_ag2ui5_app_repos( ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_start = abap_true.
+    lo_client->ms_get-r_event_data = NEW string( `Offline repository x created` ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `Offline repository x created` act = lo_client->mv_toast ).
   ENDMETHOD.
 
 ENDCLASS.

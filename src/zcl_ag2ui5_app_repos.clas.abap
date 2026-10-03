@@ -58,6 +58,12 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
       " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
       view_display( ).
+      " a page that created a repository hands its message over when it leaves
+      DATA(lr_message) = client->get( )-r_event_data.
+      IF lr_message IS BOUND.
+        ASSIGN lr_message->* TO FIELD-SYMBOL(<lv_message>).
+        client->message_toast_display( CONV #( <lv_message> ) ).
+      ENDIF.
       " start typing right away: the cursor behind what is in the field,
       " scheduled for after the response, when the view is rendered
       DATA(lv_end) = |{ strlen( mv_search ) }|.
