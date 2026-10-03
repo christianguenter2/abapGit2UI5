@@ -1816,3 +1816,163 @@ CLASS ltcl_branches IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
+
+CLASS ltcl_new_repo DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS valid_online
+      RETURNING
+        VALUE(rs_repo) TYPE zif_ag2ui5_repo_service=>ty_new_repo.
+    METHODS fields
+      IMPORTING
+        it_errors      TYPE zif_ag2ui5_repo_service=>ty_field_errors
+      RETURNING
+        VALUE(rv_list) TYPE string.
+
+    METHODS normalize_trims_upper FOR TESTING.
+    METHODS normalize_branch_full_name FOR TESTING.
+    METHODS normalize_clears_other_kind FOR TESTING.
+    METHODS valid_online_no_errors FOR TESTING.
+    METHODS online_needs_url FOR TESTING.
+    METHODS offline_needs_name FOR TESTING.
+    METHODS package_required FOR TESTING.
+    METHODS unknown_kind FOR TESTING.
+    METHODS folder_logic_allowed FOR TESTING.
+    METHODS language_version_allowed FOR TESTING.
+ENDCLASS.
+
+
+CLASS ltcl_new_repo IMPLEMENTATION.
+
+  METHOD valid_online.
+    rs_repo = VALUE #( kind         = zif_ag2ui5_repo_service=>c_repo_kind-online
+                       url          = `https://github.com/abapGit-tests/DTEL.git`
+                       package      = `$AG2UI5_NEW`
+                       folder_logic = `PREFIX` ).
+  ENDMETHOD.
+
+  METHOD fields.
+    " the fields with an error, in order, for one compact assertion
+    LOOP AT it_errors INTO DATA(ls_error).
+      rv_list = rv_list && |{ ls_error-field };|.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD normalize_trims_upper.
+    " the form comes from the browser: blanks around, a package in lower case
+    DATA(ls_repo) = zcl_ag2ui5_repo_service=>normalize_new_repo( VALUE #(
+      kind           = ` online `
+      url            = `  https://github.com/abapGit-tests/DTEL.git `
+      package        = `  $ag2ui5_new `
+      display_name   = ` My repo `
+      folder_logic   = ` full `
+      labels         = ` a,b `
+      abap_lang_vers = ` keyUser ` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `ONLINE` act = ls_repo-kind ).
+    cl_abap_unit_assert=>assert_equals( exp = `https://github.com/abapGit-tests/DTEL.git` act = ls_repo-url ).
+    cl_abap_unit_assert=>assert_equals( exp = `$AG2UI5_NEW` act = ls_repo-package ).
+    " inner blanks stay in a name
+    cl_abap_unit_assert=>assert_equals( exp = `My repo` act = ls_repo-display_name ).
+    cl_abap_unit_assert=>assert_equals( exp = `FULL` act = ls_repo-folder_logic ).
+    cl_abap_unit_assert=>assert_equals( exp = `a,b` act = ls_repo-labels ).
+    " abapGit's language versions are case-sensitive
+    cl_abap_unit_assert=>assert_equals( exp = `keyUser` act = ls_repo-abap_lang_vers ).
+  ENDMETHOD.
+
+  METHOD normalize_branch_full_name.
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-branch = ` main `.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `refs/heads/main`
+      act = zcl_ag2ui5_repo_service=>normalize_new_repo( ls_repo )-branch ).
+    " empty stays empty: the remote's default branch
+    ls_repo-branch = ``.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>normalize_new_repo( ls_repo )-branch ).
+  ENDMETHOD.
+
+  METHOD normalize_clears_other_kind.
+    " the browser keeps the fields of the kind the user switched away from
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-name = `left over`.
+    ls_repo = zcl_ag2ui5_repo_service=>normalize_new_repo( ls_repo ).
+    cl_abap_unit_assert=>assert_initial( ls_repo-name ).
+
+    ls_repo = valid_online( ).
+    ls_repo-kind         = zif_ag2ui5_repo_service=>c_repo_kind-offline.
+    ls_repo-name         = `offline`.
+    ls_repo-branch       = `main`.
+    ls_repo-display_name = `shown`.
+    ls_repo = zcl_ag2ui5_repo_service=>normalize_new_repo( ls_repo ).
+    cl_abap_unit_assert=>assert_initial( ls_repo-url ).
+    cl_abap_unit_assert=>assert_initial( ls_repo-branch ).
+    cl_abap_unit_assert=>assert_initial( ls_repo-display_name ).
+    cl_abap_unit_assert=>assert_equals( exp = `offline` act = ls_repo-name ).
+  ENDMETHOD.
+
+  METHOD valid_online_no_errors.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_repo_errors( valid_online( ) ) ).
+  ENDMETHOD.
+
+  METHOD online_needs_url.
+    DATA(ls_repo) = valid_online( ).
+    CLEAR ls_repo-url.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `url;`
+      act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+  ENDMETHOD.
+
+  METHOD offline_needs_name.
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-offline.
+    CLEAR ls_repo-url.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `name;`
+      act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+  ENDMETHOD.
+
+  METHOD package_required.
+    DATA(ls_repo) = valid_online( ).
+    CLEAR ls_repo-package.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `package;`
+      act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+  ENDMETHOD.
+
+  METHOD unknown_kind.
+    " no field: the switch only offers the two kinds
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-kind = `ZIP`.
+    cl_abap_unit_assert=>assert_equals(
+      exp = `;`
+      act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+  ENDMETHOD.
+
+  METHOD folder_logic_allowed.
+    DATA(ls_repo) = valid_online( ).
+    LOOP AT VALUE string_table( ( `PREFIX` ) ( `FULL` ) ( `MIXED` ) ) INTO ls_repo-folder_logic.
+      cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ).
+    ENDLOOP.
+    LOOP AT VALUE string_table( ( `` ) ( `FLAT` ) ) INTO ls_repo-folder_logic.
+      cl_abap_unit_assert=>assert_equals(
+        exp = `folder_logic;`
+        act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD language_version_allowed.
+    DATA(ls_repo) = valid_online( ).
+    LOOP AT VALUE string_table( ( `` ) ( `ignore` ) ( `standard` ) ( `keyUser` ) ( `cloudDevelopment` ) )
+         INTO ls_repo-abap_lang_vers.
+      cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ).
+    ENDLOOP.
+    LOOP AT VALUE string_table( ( `STANDARD` ) ( `undefined` ) ( `cloud` ) ) INTO ls_repo-abap_lang_vers.
+      cl_abap_unit_assert=>assert_equals(
+        exp = `abap_lang_vers;`
+        act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+ENDCLASS.

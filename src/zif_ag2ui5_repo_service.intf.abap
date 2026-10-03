@@ -21,6 +21,10 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       changed TYPE ty_outcome VALUE `CHANGED`,
       "! The commit is in the remote
       pushed  TYPE ty_outcome VALUE `PUSHED`,
+      "! The repository was created
+      created TYPE ty_outcome VALUE `CREATED`,
+      "! A check failed - nothing was created
+      invalid TYPE ty_outcome VALUE `INVALID`,
     END OF c_outcome.
 
   TYPES ty_group TYPE string.
@@ -245,6 +249,53 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     END OF ty_branch,
     ty_branches TYPE STANDARD TABLE OF ty_branch WITH EMPTY KEY.
 
+  CONSTANTS:
+    BEGIN OF c_repo_kind,
+      online  TYPE string VALUE `ONLINE`,
+      offline TYPE string VALUE `OFFLINE`,
+    END OF c_repo_kind.
+
+  "! The form of a new repository, as the browser sends it
+  TYPES:
+    BEGIN OF ty_new_repo,
+      "! c_repo_kind
+      kind            TYPE string,
+      "! online only
+      url             TYPE string,
+      "! online only; empty: the remote's default branch
+      branch          TYPE string,
+      "! offline only
+      name            TYPE string,
+      package         TYPE string,
+      "! online only
+      display_name    TYPE string,
+      "! PREFIX, FULL or MIXED
+      folder_logic    TYPE string,
+      "! comma-separated
+      labels          TYPE string,
+      ign_subpackages TYPE abap_bool,
+      main_lang_only  TYPE abap_bool,
+      "! empty (any), ignore, standard, keyUser or cloudDevelopment
+      abap_lang_vers  TYPE string,
+    END OF ty_new_repo.
+
+  TYPES:
+    BEGIN OF ty_field_error,
+      "! a component of ty_new_repo in lower case; empty: no field
+      field TYPE string,
+      text  TYPE string,
+    END OF ty_field_error,
+    ty_field_errors TYPE STANDARD TABLE OF ty_field_error WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_new_repo_result,
+      "! c_outcome-created or -invalid
+      outcome TYPE ty_outcome,
+      "! the new repository's key, when created
+      key     TYPE string,
+      errors  TYPE ty_field_errors,
+    END OF ty_new_repo_result.
+
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos
@@ -373,6 +424,18 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_sha1        TYPE string
     RETURNING
       VALUE(rv_sha1) TYPE string
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Creates an online or offline repository. Every check runs first and
+  "! all errors are returned per field; while one fails nothing is created
+  "! and the outcome is invalid. No credentials: a private repository works
+  "! only through abapGit's user exit, an empty remote is refused
+  METHODS create_repo
+    IMPORTING
+      is_repo          TYPE ty_new_repo
+    RETURNING
+      VALUE(rs_result) TYPE ty_new_repo_result
     RAISING
       zcx_abapgit_exception.
 

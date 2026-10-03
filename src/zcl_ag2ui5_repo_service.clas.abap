@@ -272,6 +272,23 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_text) TYPE string.
 
+
+    "! The form as the checks see it: blanks around values removed, kind,
+    "! package and folder logic in upper case, a branch as refs/heads/...,
+    "! and the fields of the other kind cleared
+    CLASS-METHODS normalize_new_repo
+      IMPORTING
+        is_repo        TYPE zif_ag2ui5_repo_service=>ty_new_repo
+      RETURNING
+        VALUE(rs_repo) TYPE zif_ag2ui5_repo_service=>ty_new_repo.
+
+    "! The form's own errors, before anything asks abapGit: required fields
+    "! and the allowed values. Expects a normalized form
+    CLASS-METHODS new_repo_errors
+      IMPORTING
+        is_repo          TYPE zif_ag2ui5_repo_service=>ty_new_repo
+      RETURNING
+        VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
   PROTECTED SECTION.
   PRIVATE SECTION.
     METHODS silence_progress.
@@ -1717,6 +1734,71 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       obj_name = ls_message-obj_name ) INTO TABLE rt_messages.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD normalize_new_repo.
+
+    rs_repo = is_repo.
+    " single values: condense also takes inner blanks, which they never have
+    rs_repo-kind         = to_upper( condense( is_repo-kind ) ).
+    rs_repo-url          = condense( is_repo-url ).
+    rs_repo-package      = to_upper( condense( is_repo-package ) ).
+    rs_repo-folder_logic = to_upper( condense( is_repo-folder_logic ) ).
+    " abapGit's language versions are case-sensitive (keyUser)
+    rs_repo-abap_lang_vers = condense( is_repo-abap_lang_vers ).
+    " names keep their inner blanks
+    rs_repo-name         = shift_right( shift_left( is_repo-name ) ).
+    rs_repo-display_name = shift_right( shift_left( is_repo-display_name ) ).
+    rs_repo-labels       = shift_right( shift_left( is_repo-labels ) ).
+    rs_repo-branch       = COND #( WHEN condense( is_repo-branch ) <> ``
+                                   THEN branch_name( is_repo-branch ) ).
+
+    " the browser keeps what was typed for the other kind
+    IF rs_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-online.
+      CLEAR rs_repo-name.
+    ELSE.
+      CLEAR: rs_repo-url, rs_repo-branch, rs_repo-display_name.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD new_repo_errors.
+
+    CASE is_repo-kind.
+      WHEN zif_ag2ui5_repo_service=>c_repo_kind-online.
+        IF is_repo-url IS INITIAL.
+          INSERT VALUE #( field = `url` text = `Enter the URL of the Git repository` ) INTO TABLE rt_errors.
+        ENDIF.
+      WHEN zif_ag2ui5_repo_service=>c_repo_kind-offline.
+        IF is_repo-name IS INITIAL.
+          INSERT VALUE #( field = `name` text = `Enter a name for the repository` ) INTO TABLE rt_errors.
+        ENDIF.
+      WHEN OTHERS.
+        INSERT VALUE #( text = |Unknown kind of repository "{ is_repo-kind }"| ) INTO TABLE rt_errors.
+    ENDCASE.
+
+    IF is_repo-package IS INITIAL.
+      INSERT VALUE #( field = `package` text = `Enter a package` ) INTO TABLE rt_errors.
+    ENDIF.
+
+    IF is_repo-folder_logic <> zif_abapgit_dot_abapgit=>c_folder_logic-prefix
+        AND is_repo-folder_logic <> zif_abapgit_dot_abapgit=>c_folder_logic-full
+        AND is_repo-folder_logic <> zif_abapgit_dot_abapgit=>c_folder_logic-mixed.
+      INSERT VALUE #( field = `folder_logic` text = `Choose Prefix, Full or Mixed` ) INTO TABLE rt_errors.
+    ENDIF.
+
+    " empty is abapGit's "Any"; undefined is its internal name for it
+    IF is_repo-abap_lang_vers IS NOT INITIAL
+        AND is_repo-abap_lang_vers <> zif_abapgit_dot_abapgit=>c_abap_language_version-ignore
+        AND is_repo-abap_lang_vers <> zif_abapgit_dot_abapgit=>c_abap_language_version-standard
+        AND is_repo-abap_lang_vers <> zif_abapgit_dot_abapgit=>c_abap_language_version-key_user
+        AND is_repo-abap_lang_vers <> zif_abapgit_dot_abapgit=>c_abap_language_version-cloud_development.
+      INSERT VALUE #( field = `abap_lang_vers` text = `Choose an ABAP language version` ) INTO TABLE rt_errors.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~create_repo ##NEEDED.
   ENDMETHOD.
 
 ENDCLASS.
