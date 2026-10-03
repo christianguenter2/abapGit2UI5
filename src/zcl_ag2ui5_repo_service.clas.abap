@@ -291,6 +291,25 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
   PROTECTED SECTION.
   PRIVATE SECTION.
+    "! abapGit's own checks for a normalized form; adds to ct_errors. A
+    "! field that already has an error is not checked again
+    METHODS check_new_repo
+      IMPORTING
+        is_repo   TYPE zif_ag2ui5_repo_service=>ty_new_repo
+      CHANGING
+        ct_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+
+    "! Creates the checked repository as abapGit's services do, without
+    "! their popups. A new online repository that fails its last checks is
+    "! deleted again
+    METHODS add_repo
+      IMPORTING
+        is_repo        TYPE zif_ag2ui5_repo_service=>ty_new_repo
+      RETURNING
+        VALUE(ri_repo) TYPE REF TO zif_abapgit_repo
+      RAISING
+        zcx_abapgit_exception.
+
     METHODS silence_progress.
 
     "! abapGit's own startup authorization (its user exit can restrict it)
@@ -1798,7 +1817,133 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
-  METHOD zif_ag2ui5_repo_service~create_repo ##NEEDED.
+  METHOD zif_ag2ui5_repo_service~create_repo.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    " the form comes from the browser: every check runs, all errors are
+    " collected, and nothing is written while one fails
+    DATA(ls_repo) = normalize_new_repo( is_repo ).
+    rs_result-errors = new_repo_errors( ls_repo ).
+    IF zcl_abapgit_auth=>is_allowed( zif_abapgit_auth=>c_authorization-create_repo ) = abap_false.
+      INSERT VALUE #( text = `You are not authorized to create repositories` ) INTO TABLE rs_result-errors.
+    ENDIF.
+    check_new_repo( EXPORTING is_repo   = ls_repo
+                    CHANGING  ct_errors = rs_result-errors ).
+    IF rs_result-errors IS NOT INITIAL.
+      rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-invalid.
+      RETURN.
+    ENDIF.
+
+    DATA(li_repo) = add_repo( ls_repo ).
+    " as abapGit: a new repository is one of the user's favorites
+    zcl_abapgit_persist_factory=>get_user( )->toggle_favorite( li_repo->get_key( ) ).
+    " abap2UI5 rolls back after main( )
+    COMMIT WORK AND WAIT.
+
+    rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-created.
+    rs_result-key     = li_repo->get_key( ).
+
+  ENDMETHOD.
+
+  METHOD check_new_repo.
+
+    DATA lx_error TYPE REF TO zcx_abapgit_exception.
+
+    IF is_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-online AND NOT line_exists( ct_errors[ field = `url` ] ).
+      TRY.
+          zcl_abapgit_repo_srv=>get_instance( )->validate_url( is_repo-url ).
+          NEW zcl_abapgit_git_url( )->validate_url( is_repo-url ).
+          " connects: HTTP, SSL and login errors end up on the URL
+          DATA(li_branches) = zcl_abapgit_git_factory=>get_git_transport( )->branches( is_repo-url ).
+          IF is_repo-branch IS INITIAL AND li_branches->get_head_symref( ) IS INITIAL.
+            " abapGit would push a first branch, which needs a login
+            INSERT VALUE #( field = `url`
+                            text  = `The repository has no commit yet. Push a first commit ` &&
+                                    `(for example a README), then try again.` ) INTO TABLE ct_errors.
+          ELSEIF is_repo-branch IS NOT INITIAL.
+            TRY.
+                li_branches->find_by_name( is_repo-branch ).
+              CATCH zcx_abapgit_exception.
+                INSERT VALUE #( field = `branch`
+                                text  = |Branch { is_repo-branch } is not on the remote| ) INTO TABLE ct_errors.
+            ENDTRY.
+          ENDIF.
+        CATCH zcx_abapgit_exception INTO lx_error.
+          INSERT VALUE #( field = `url` text = lx_error->get_text( ) ) INTO TABLE ct_errors.
+      ENDTRY.
+    ENDIF.
+
+    IF NOT line_exists( ct_errors[ field = `package` ] ).
+      TRY.
+          " name, SAP's own packages, used by another repository, local and
+          " transportable mixed
+          zcl_abapgit_repo_srv=>get_instance( )->validate_package(
+            iv_package    = CONV #( is_repo-package )
+            iv_ign_subpkg = is_repo-ign_subpackages ).
+          assert_pull_allowed( CONV #( is_repo-package ) ).
+          " an online repository may bring its package along; an offline one cannot
+          IF is_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-offline
+              AND zcl_abapgit_factory=>get_sap_package( CONV #( is_repo-package ) )->exists( ) = abap_false.
+            zcx_abapgit_exception=>raise( |Package { is_repo-package } does not exist| ).
+          ENDIF.
+        CATCH zcx_abapgit_exception INTO lx_error.
+          INSERT VALUE #( field = `package` text = lx_error->get_text( ) ) INTO TABLE ct_errors.
+      ENDTRY.
+    ENDIF.
+
+    TRY.
+        zcl_abapgit_repo_labels=>validate( is_repo-labels ).
+      CATCH zcx_abapgit_exception INTO lx_error.
+        INSERT VALUE #( field = `labels` text = lx_error->get_text( ) ) INTO TABLE ct_errors.
+    ENDTRY.
+
+  ENDMETHOD.
+
+  METHOD add_repo.
+
+    DATA(li_repo_srv) = zcl_abapgit_repo_srv=>get_instance( ).
+
+    IF is_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-offline.
+      ri_repo = li_repo_srv->new_offline( iv_name           = is_repo-name
+                                          iv_package        = CONV #( is_repo-package )
+                                          iv_folder_logic   = is_repo-folder_logic
+                                          iv_labels         = is_repo-labels
+                                          iv_ign_subpkg     = is_repo-ign_subpackages
+                                          iv_main_lang_only = is_repo-main_lang_only
+                                          iv_abap_lang_vers = is_repo-abap_lang_vers ).
+      RETURN.
+    ENDIF.
+
+    ri_repo = li_repo_srv->new_online( iv_url            = is_repo-url
+                                       iv_branch_name    = is_repo-branch
+                                       iv_display_name   = is_repo-display_name
+                                       iv_package        = CONV #( is_repo-package )
+                                       iv_folder_logic   = is_repo-folder_logic
+                                       iv_labels         = is_repo-labels
+                                       iv_ign_subpkg     = is_repo-ign_subpackages
+                                       iv_main_lang_only = is_repo-main_lang_only
+                                       iv_abap_lang_vers = is_repo-abap_lang_vers ).
+    TRY.
+        " the steps of abapGit's services after new_online
+        IF zcl_abapgit_factory=>get_sap_package( CONV #( is_repo-package ) )->exists( ) = abap_false.
+          DATA(lt_remote) = ri_repo->get_files_remote( ).
+          READ TABLE lt_remote TRANSPORTING NO FIELDS
+            WITH KEY file COMPONENTS filename = zcl_abapgit_filename_logic=>c_package_file.
+          IF sy-subrc <> 0.
+            zcx_abapgit_exception=>raise( |Package { is_repo-package } does not exist and the repository | &&
+                                          |contains no package. Choose an existing package.| ).
+          ENDIF.
+        ENDIF.
+        " no leftovers of an earlier repository; also checks the folder logic
+        ri_repo->checksums( )->rebuild( ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        li_repo_srv->delete( ri_repo ).
+        COMMIT WORK.
+        RAISE EXCEPTION lx_error.
+    ENDTRY.
+
   ENDMETHOD.
 
 ENDCLASS.

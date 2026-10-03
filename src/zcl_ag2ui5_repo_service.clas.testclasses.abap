@@ -1842,6 +1842,7 @@ CLASS ltcl_new_repo DEFINITION FINAL FOR TESTING
     METHODS unknown_kind FOR TESTING.
     METHODS folder_logic_allowed FOR TESTING.
     METHODS language_version_allowed FOR TESTING.
+    METHODS invalid_form_creates_nothing FOR TESTING RAISING zcx_abapgit_exception.
 ENDCLASS.
 
 
@@ -1973,6 +1974,17 @@ CLASS ltcl_new_repo IMPLEMENTATION.
         exp = `abap_lang_vers;`
         act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ) ).
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD invalid_form_creates_nothing.
+    " no URL, no package: refused before anything reaches abapGit
+    DATA(li_service) = CAST zif_ag2ui5_repo_service( NEW zcl_ag2ui5_repo_service( ) ).
+    DATA(lv_before) = lines( li_service->list_repos( ) ).
+    DATA(ls_result) = li_service->create_repo( VALUE #( kind = ` online ` folder_logic = `PREFIX` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = zif_ag2ui5_repo_service=>c_outcome-invalid act = ls_result-outcome ).
+    cl_abap_unit_assert=>assert_equals( exp = `url;package;` act = fields( ls_result-errors ) ).
+    cl_abap_unit_assert=>assert_initial( ls_result-key ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_before act = lines( li_service->list_repos( ) ) ).
   ENDMETHOD.
 
 ENDCLASS.
