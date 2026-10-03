@@ -686,6 +686,9 @@ diff colours, search field focus, URLs as links.
 
 Next slices:
 
+0. **Offline support** (slice 2 of "New repository"): open an offline
+   repository, import a ZIP through the pull dialog, export a ZIP. Test
+   repository: "ag2ui5 offline" in `$TEST_OFFLINE` on A4H25.
 1. **A per-object view** of the status, with a switch to the per-file view.
 2. **Ignore and `.gitignore`** on the staging page.
 3. **Pushing to another branch** (creating one exists now).

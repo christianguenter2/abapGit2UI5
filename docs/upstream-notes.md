@@ -214,3 +214,9 @@ abapGit with the fix.
   from a binding. abapGit2UI5 uses `CustomData` with `writeToDom` plus a
   `<style>` block through `core:HTML` (the status page). A recipe in the guide,
   or a bindable class helper, would save every app the search.
+- **A toast is lost when the app leaves in the same round trip:**
+  `message_toast_display( )` followed by `nav_app_leave( )` shows nothing
+  (checked with a hook on `MessageToast.show`, 2026-10-03). abapGit2UI5 hands
+  the text over with `nav_app_leave( r_data = ... )` and the previous app
+  shows it. Either the toast should survive the navigation, or the guide
+  should say so next to `nav_app_leave`.
