@@ -76,6 +76,10 @@ row of abapGit's four check tables needs a decision, or abapGit's
   passed into helper methods (`group_display`, `transport_display`), and it
   renders every branch of an `IF`. Check dialogs on a system, or render a
   scratch copy with the helpers inlined.
+- Page headers are an `OverflowToolbar` in `customHeader` (status, diff,
+  stage), not `headerContent`, which has no overflow and hides the back
+  button on narrow screens. A control that gets `layoutData` must be opened
+  with `ele( )`: after `tag( )` the chain is back on the toolbar.
 - Event arguments arrive as abap2UI5 sends them: a boolean is `X` or space,
   not `true`. App tests with a client double must send the same values.
 - Code reaches the browser through `sap.m.FormattedText` (`code_html`): it is
