@@ -595,6 +595,32 @@ See `docs/superpowers/specs/2026-10-03-user-settings-design.md`.
 - Tiles are the default for the repository list (Chris, 2026-10-03); the
   list is one click away and remembered once chosen.
 
+## Header on narrow screens (2026-10-03)
+
+On a narrow screen (already at about 860px) the status page lost its back
+button and title: `sap.m.Page` puts `headerContent` into a bar that has no
+overflow, so the controls pushed the left side out.
+
+- Status, diff and stage now use an `OverflowToolbar` as `customHeader`: a
+  back button and a shrinkable `Title`, both `NeverOverflow`, then the
+  controls. Pull (status) and Apply (diff, patch mode) are `NeverOverflow`
+  too; everything else moves into the "⋯" menu. Refresh is an
+  `OverflowToolbarButton`: icon in the bar, text in the menu.
+- Priority `High` did not work here: Pull with `High` was the **first**
+  control in the menu while the title shrank. `NeverOverflow` behaves.
+- Builder trap: `tag( )` stays on the parent, so `tag( `Button` )->...->ele(
+  `layoutData` )` gives the **toolbar** the layout data. A control that gets
+  `layoutData` must be opened with `ele( )`. A first test missed it because
+  its regex matched across the button's `/>`; the tests now require an
+  element that is not self-closing.
+- ABAP Unit on A4H25: status 4/4, diff 18/18, stage 13/13 (one header test
+  each, diff also Apply), service 113/113, settings 9/9, repository list
+  3/3.
+- Browser on A4H25 (body narrowed to 390px, the window could not be
+  resized): status and diff keep back, title and the main action; Back
+  works; the menu shows the rest. The stage page is covered by its unit
+  test only.
+
 ## Open points (as of 2026-10-02)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete

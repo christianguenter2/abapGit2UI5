@@ -211,12 +211,26 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
 
-    DATA(page) = view->ele( `Page`
-        )->a( n = `title`          v = client->_bind( ms_head-name )
-        )->a( n = `showNavButton`  v = `true`
-        )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
-
-    DATA(header_content) = page->ele( `headerContent` ).
+    " the header is an overflow toolbar: on a narrow screen the controls
+    " move into its menu, the back button and the title stay
+    DATA(page) = view->ele( `Page` ).
+    DATA(header_content) = page->ele( `customHeader` )->ele( `OverflowToolbar` ).
+    header_content->ele( `Button`
+        )->a( n = `icon`    v = `sap-icon://nav-back`
+        )->a( n = `tooltip` v = `Back`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `press`   v = client->_event( `BACK` )
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority` v = `NeverOverflow` ).
+    header_content->ele( `Title`
+        )->a( n = `text`  v = client->_bind( ms_head-name )
+        )->a( n = `level` v = `H2`
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority`   v = `NeverOverflow`
+                )->a( n = `shrinkable` v = `true` ).
+    header_content->tag( `ToolbarSpacer` ).
     header_content->ele( `SegmentedButton`
         )->a( n = `selectedKey`     v = client->_bind( mv_view )
         )->a( n = `selectionChange` v = client->_event( `VIEW` )
@@ -246,8 +260,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `text`    v = `Changes on top`
         )->a( n = `pressed` v = client->_bind( mv_changes_first )
         )->a( n = `press`   v = client->_event( `VIEW` ) ).
-    header_content->tag( `Button`
+    " icon only in the bar, with its text in the overflow menu
+    header_content->tag( `OverflowToolbarButton`
         )->a( n = `icon`    v = `sap-icon://refresh`
+        )->a( n = `text`    v = `Refresh status`
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
     header_content->tag( `Button`
@@ -259,11 +275,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `icon`    v = `sap-icon://upload`
         )->a( n = `enabled` v = client->_bind( mv_can_stage )
         )->a( n = `press`   v = client->_event( `STAGE` ) ).
-    header_content->tag( `Button`
+    header_content->ele( `Button`
         )->a( n = `text`  v = `Pull`
         )->a( n = `icon`  v = `sap-icon://download`
         )->a( n = `type`  v = `Emphasized`
-        )->a( n = `press` v = client->_event( `PULL` ) ).
+        )->a( n = `press` v = client->_event( `PULL` )
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority` v = `NeverOverflow` ).
 
     DATA(content) = page->ele( `content` ).
 

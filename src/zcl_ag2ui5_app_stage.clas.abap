@@ -183,12 +183,26 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
 
-    DATA(page) = view->ele( `Page`
-        )->a( n = `title`          t = |Stage - { mv_title }|
-        )->a( n = `showNavButton`  v = `true`
-        )->a( n = `navButtonPress` v = client->_event( `BACK` ) ).
-
-    DATA(header_content) = page->ele( `headerContent` ).
+    " the header is an overflow toolbar: on a narrow screen the controls
+    " move into its menu, the back button and the title stay
+    DATA(page) = view->ele( `Page` ).
+    DATA(header_content) = page->ele( `customHeader` )->ele( `OverflowToolbar` ).
+    header_content->ele( `Button`
+        )->a( n = `icon`    v = `sap-icon://nav-back`
+        )->a( n = `tooltip` v = `Back`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `press`   v = client->_event( `BACK` )
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority` v = `NeverOverflow` ).
+    header_content->ele( `Title`
+        )->a( n = `text`  t = |Stage - { mv_title }|
+        )->a( n = `level` v = `H2`
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority`   v = `NeverOverflow`
+                )->a( n = `shrinkable` v = `true` ).
+    header_content->tag( `ToolbarSpacer` ).
     header_content->tag( `Button`
         )->a( n = `text`  v = `Select all`
         )->a( n = `press` v = client->_event( `ALL` ) ).

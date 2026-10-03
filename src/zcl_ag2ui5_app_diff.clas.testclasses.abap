@@ -1,7 +1,8 @@
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_columns DEFINITION DEFERRED.
 CLASS ltcl_settings DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns ltcl_settings.
+CLASS ltcl_header DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns ltcl_settings ltcl_header.
 
 "! abap2UI5 client for one event with its arguments
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -10,6 +11,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_event TYPE string.
     DATA mt_args TYPE string_table.
     DATA mv_left TYPE abap_bool.
+    DATA mv_view TYPE string.
 ENDCLASS.
 
 
@@ -38,7 +40,8 @@ CLASS ltd_client IMPLEMENTATION.
     mv_left = abap_true.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~view_display ##NEEDED.
+  METHOD z2ui5_if_client~view_display.
+    mv_view = val.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_box_display ##NEEDED.
@@ -409,6 +412,65 @@ CLASS ltcl_settings IMPLEMENTATION.
     fire( io_app = lo_app iv_event = `TOGGLE` ).
     cl_abap_unit_assert=>assert_equals(
       exp = `` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-diff_show_all ) ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_header DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS setup.
+    METHODS teardown.
+    METHODS back_never_overflows FOR TESTING.
+    METHODS apply_never_overflows FOR TESTING.
+    METHODS assert_back
+      IMPORTING
+        iv_patch TYPE abap_bool.
+ENDCLASS.
+
+CLASS ltcl_header IMPLEMENTATION.
+
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+  ENDMETHOD.
+
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
+  METHOD back_never_overflows.
+    " on a narrow screen the header controls must not push out the back
+    " button: they sit in an overflow toolbar, the back button stays
+    assert_back( abap_false ).
+    assert_back( abap_true ).
+  ENDMETHOD.
+
+  METHOD apply_never_overflows.
+    " Apply never moves into the menu
+    DATA(lo_app) = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/` iv_filename = `zcl_a.clas.abap`
+                                                iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` iv_patch = abap_true ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->mv_fingerprint = `fp`.
+    lo_app->view_display( ).
+    FIND REGEX `<Button text="Apply"[^>]*[^/>]>\s*<layoutData>\s*<OverflowToolbarLayoutData[^>]*priority="NeverOverflow"`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD assert_back.
+    DATA(lo_app) = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/` iv_filename = `zcl_a.clas.abap`
+                                                iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` iv_patch = iv_patch ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->view_display( ).
+    FIND REGEX `<customHeader>\s*<OverflowToolbar[^>]*>\s*<Button[^>]*sap-icon://nav-back[^>]*[^/>]>\s*`
+            && `<layoutData>\s*<OverflowToolbarLayoutData[^>]*priority="NeverOverflow"`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
   ENDMETHOD.
 
 ENDCLASS.

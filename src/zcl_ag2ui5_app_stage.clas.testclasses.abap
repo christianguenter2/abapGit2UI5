@@ -1,6 +1,7 @@
 CLASS ltcl_push DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch.
+CLASS ltcl_header DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch ltcl_header.
 
 "! Settings double: always the default, nothing stored - so a diff app the
 "! stage app creates does not read the tester's own settings
@@ -25,6 +26,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_event TYPE string.
     DATA mv_message TYPE string.
     DATA mv_called TYPE REF TO z2ui5_if_app.
+    DATA mv_view TYPE string.
 ENDCLASS.
 
 
@@ -62,6 +64,15 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave ##NEEDED.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~view_display.
+    mv_view = val.
+  ENDMETHOD.
+  "! bindings and events are not checked here
+  METHOD z2ui5_if_client~_bind ##NEEDED.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~_event ##NEEDED.
   ENDMETHOD.
 ENDCLASS.
 
@@ -315,6 +326,32 @@ CLASS ltcl_patch IMPLEMENTATION.
 
     DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( mo_client->mv_called ).
     cl_abap_unit_assert=>assert_char_cp( act = lo_diff->ms_head-title exp = `Pick lines - *` ).
+  ENDMETHOD.
+
+ENDCLASS.
+
+
+CLASS ltcl_header DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS back_never_overflows FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_header IMPLEMENTATION.
+
+  METHOD back_never_overflows.
+    " on a narrow screen the header controls must not push out the back
+    " button: they sit in an overflow toolbar, the back button stays
+    DATA(lo_app) = zcl_ag2ui5_app_stage=>create( iv_key = `000000000001` iv_title = `test` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->view_display( ).
+    FIND REGEX `<customHeader>\s*<OverflowToolbar[^>]*>\s*<Button[^>]*sap-icon://nav-back[^>]*[^/>]>\s*`
+            && `<layoutData>\s*<OverflowToolbarLayoutData[^>]*priority="NeverOverflow"`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
   ENDMETHOD.
 
 ENDCLASS.
