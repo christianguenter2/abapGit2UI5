@@ -579,8 +579,8 @@ See `docs/superpowers/specs/2026-10-03-user-settings-design.md`.
   outdated value, `set( )` commits. The three apps read their toggles when
   they start or are created and save them in the toggle's event; in patch
   mode the diff stays inline and stores no layout.
-- ABAP Unit on A4H25: settings 9/9, repository list 2/2 (new include),
-  status 3/3 (new include), diff 15/15, stage 12/12, service 113/113. Every
+- ABAP Unit on A4H25: settings 9/9, repository list 3/3 (new include),
+  status 3/3 (new include), diff 16/16, stage 12/12, service 113/113. Every
   new test failed first on the system (pull with a stub class).
 - Deployment: one abapgit-agent pull of the feature branch, 0 conflicts this
   time; then ADT writes. The table was created over ADT and serialized with
