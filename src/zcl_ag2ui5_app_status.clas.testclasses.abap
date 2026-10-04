@@ -1,6 +1,7 @@
+CLASS ltcl_overview DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links.
+CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -480,5 +481,142 @@ CLASS ltcl_object_links IMPLEMENTATION.
     lo_app->on_event( ).
     DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( lo_client->mo_called ).
     cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_overview DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_status.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_settings TYPE REF TO ltd_settings.
+    METHODS setup.
+    METHODS teardown.
+    METHODS defaults_and_saved FOR TESTING.
+    METHODS switch_saves FOR TESTING.
+    METHODS counts_before_filter FOR TESTING.
+    METHODS open_all_files FOR TESTING.
+    METHODS diff_and_return FOR TESTING.
+    METHODS close_clears FOR TESTING.
+    METHODS unknown_key FOR TESTING.
+    METHODS offline_without_zip FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_overview IMPLEMENTATION.
+  METHOD setup.
+    mo_settings = NEW #( ).
+    zcl_ag2ui5_settings=>inject( mo_settings ).
+    mo_app = zcl_ag2ui5_app_status=>create( `1` ).
+    mo_client = NEW #( ).
+    mo_app->client = mo_client.
+    mo_app->mt_status = VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/src/` filename = `a.abap`
+        lstate = `M` changed = abap_true object_link = `adt://A4H/a` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/src/` filename = `a.xml` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/other/` filename = `a.xml`
+        rstate = `A` changed = abap_true object_link = `adt://A4H/a` )
+      ( path = `/` filename = `.abapgit.xml` ) ).
+    mo_app->mv_overview = `OBJECTS`.
+    mo_app->rows_build( ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD defaults_and_saved.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `2` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_app->mv_overview exp = `FILES` ).
+    mo_settings->mt_preset = VALUE #( ( key = zif_ag2ui5_settings=>c_key-status_overview value = `OBJECTS` ) ).
+    lo_app = zcl_ag2ui5_app_status=>create( `2` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_app->mv_overview exp = `OBJECTS` ).
+  ENDMETHOD.
+  METHOD switch_saves.
+    mo_client->mv_event = `OVERVIEW`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( exp = `OBJECTS`
+      act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_overview ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 2 ).
+    mo_app->mv_overview = `FILES`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 4 ).
+    cl_abap_unit_assert=>assert_equals( exp = `FILES`
+      act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_overview ) ).
+  ENDMETHOD.
+  METHOD counts_before_filter.
+    mo_app->mv_view = `CHANGES`.
+    mo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-files_text exp = `2 of 3 changed` ).
+    mo_app->mv_view = `ALL`.
+    mo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 2 ]-object_display exp = `Repository files` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_rows[ 2 ]-object_link ).
+  ENDMETHOD.
+  METHOD open_all_files.
+    mo_app->mv_view = `CHANGES`.
+    mo_app->rows_build( ).
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_files_open ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_object_files ) exp = 3 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_files_title exp = `Files - ZCL_A` ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_popup ).
+    " Metadata has its own navigable group; it never becomes an invented object.
+    mo_app->mv_view = `ALL`.
+    mo_app->rows_build( ).
+    mo_client->mt_args = VALUE #( ( `` ) ( `` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_object_files ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_object_files[ 1 ]-filename exp = `.abapgit.xml` ).
+  ENDMETHOD.
+  METHOD diff_and_return.
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    mo_client->mv_event = `DIFF`.
+    mo_client->mt_args = VALUE #( ( `/other/` ) ( `a.xml` ) ).
+    mo_app->on_event( ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-file exp = `/other/a.xml` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/a` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-direction exp = `Changes in Git, compared with this system` ).
+    CLEAR mo_client->mv_popup.
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_files_open ).
+  ENDMETHOD.
+  METHOD close_clears.
+    mo_app->mv_zip = CONV xstring( 'CAFE' ).
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    mo_client->mv_event = `FILES_CLOSE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_files_open ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_object_files ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_files_title ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_destroyed ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_zip exp = CONV xstring( 'CAFE' ) ).
+  ENDMETHOD.
+  METHOD unknown_key.
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_UNKNOWN` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_files_open ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_object_files ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+  ENDMETHOD.
+  METHOD offline_without_zip.
+    mo_app->mv_offline = abap_true.
+    mo_app->mv_row_type = `Inactive`.
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_files_open ).
+    mo_client->mv_event = `DIFF`.
+    mo_client->mt_args = VALUE #( ( `/src/` ) ( `a.abap` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
   ENDMETHOD.
 ENDCLASS.

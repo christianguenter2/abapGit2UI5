@@ -69,6 +69,20 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     ty_status_rows TYPE STANDARD TABLE OF ty_status_row WITH EMPTY KEY.
 
   TYPES:
+    BEGIN OF ty_object_status,
+      obj_type    TYPE string,
+      obj_name    TYPE string,
+      object_link TYPE string,
+      lstate      TYPE string,
+      rstate      TYPE string,
+      inactive    TYPE abap_bool,
+      changed     TYPE abap_bool,
+      file_count  TYPE i,
+      changed_count TYPE i,
+    END OF ty_object_status,
+    ty_object_status_rows TYPE STANDARD TABLE OF ty_object_status WITH EMPTY KEY.
+
+  TYPES:
     BEGIN OF ty_status,
       key           TYPE string,
       name          TYPE string,

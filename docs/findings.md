@@ -792,6 +792,39 @@ See [the design](superpowers/specs/2026-10-04-object-links-design.md) and
   page intact. Eclipse is registered as the ADT handler, but the final
   editor opening cannot be confirmed through this browser session.
 
+## Object overview (2026-10-04)
+
+See [the design](superpowers/specs/2026-10-04-object-overview-design.md) and
+[implementation plan](superpowers/plans/2026-10-04-object-overview.md).
+
+- Status now has independent Files / Objects and All / Changes only
+  switches. Files remains the default; `STATUS_OVERVIEW` is allow-listed
+  and remembered per SAP user. File sorting stays available in Files.
+- A pure service helper groups complete object type/name keys, counts all
+  files before filtering, combines nonempty states (differing states become
+  mixed), and retains inactive/changed flags and ADT links. Incomplete keys
+  share Repository files. No extra abapGit fetch is needed.
+- Object rows open a full-path file dialog, including unchanged files.
+  Files open the existing diff with their own direction and ADT link;
+  returning reopens the dialog. Close clears its bound data. Offline
+  browsing works without a ZIP, while file diff remains disabled.
+- Native ABAP Unit on A4H25: service 144/144, settings 10/10, status
+  28/28, diff 19/19, stage 14/14, repositories 6/6, new repository 8/8:
+  **229/229 passed**. New tests cover grouping, counts, mixed/inactive
+  states, incomplete keys, ordering, settings, filtering, duplicate
+  filenames in different paths, navigation, closing and offline guards.
+- Local lint/render gate passes with no errors or warnings and only the
+  existing MessageStrip hint. Existing SAP objects were backed up under
+  `/tmp/ag2ui5-object-overview-backup`; all eight deployed sources/test
+  includes match the working tree on readback.
+- Chrome/SAP confirmed Files / Objects, changed/total counts, changes-only
+  filtering, all three files of ZCL_AG2UI5_APP_STATUS (two changed), correct
+  diff direction/link, Back reopening the file dialog, Close, and metadata
+  drilldown. Opening an offline repository retained the saved Objects
+  preference and allowed its files to be browsed without enabling diff.
+  The compact browser viewport exposed a cramped filename
+  column; the file dialog now gives filenames 55% of its width.
+
 ## Open points (as of 2026-10-04)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
@@ -805,10 +838,9 @@ Potential distinguishing features are collected in
 pull impact preview, recovery checkpoints and a repository cockpit. These
 are candidates for discussion, not committed slices.
 
-1. **A per-object view** of the status, with a switch to the per-file view.
-2. **Ignore and `.gitignore`** on the staging page.
-3. **Pushing to another branch** (creating one exists now).
-4. **Creating a transport request** from the pull dialog. Today the user is
+1. **Ignore and `.gitignore`** on the staging page.
+2. **Pushing to another branch** (creating one exists now).
+3. **Creating a transport request** from the pull dialog. Today the user is
    pointed to SE09.
 
 Upstream work (abapGit, abap2UI5, abapgit-agent): see

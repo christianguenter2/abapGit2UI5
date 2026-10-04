@@ -49,6 +49,7 @@ CLASS ltcl_settings DEFINITION FINAL FOR TESTING
     METHODS get_ignores_stale_value FOR TESTING.
     METHODS row_carries_current_user FOR TESTING.
     METHODS every_key_has_values FOR TESTING.
+    METHODS overview_allow_list FOR TESTING.
 ENDCLASS.
 
 CLASS zcl_ag2ui5_settings DEFINITION LOCAL FRIENDS ltcl_settings.
@@ -124,6 +125,7 @@ CLASS ltcl_settings IMPLEMENTATION.
     DATA(lt_keys) = VALUE string_table(
       ( zif_ag2ui5_settings=>c_key-repos_layout )
       ( zif_ag2ui5_settings=>c_key-status_view )
+      ( zif_ag2ui5_settings=>c_key-status_overview )
       ( zif_ag2ui5_settings=>c_key-status_sort )
       ( zif_ag2ui5_settings=>c_key-status_changes_first )
       ( zif_ag2ui5_settings=>c_key-diff_layout )
@@ -132,6 +134,17 @@ CLASS ltcl_settings IMPLEMENTATION.
       cl_abap_unit_assert=>assert_not_initial( act = zcl_ag2ui5_settings=>allowed_values( lv_key )
                                                msg = lv_key ).
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD overview_allow_list.
+    cl_abap_unit_assert=>assert_true( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_value = `OBJECTS` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `OBJECTS` act = mi_cut->get(
+      iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_default = `FILES` ) ).
+    cl_abap_unit_assert=>assert_false( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_value = `OBJECT` ) ).
+    cl_abap_unit_assert=>assert_true( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_value = `FILES` ) ).
   ENDMETHOD.
 
 ENDCLASS.

@@ -56,6 +56,8 @@ CLASS zcl_ag2ui5_settings IMPLEMENTATION.
     CASE iv_key.
       WHEN zif_ag2ui5_settings=>c_key-repos_layout.
         rt_values = VALUE #( ( `LIST` ) ( `TILES` ) ).
+      WHEN zif_ag2ui5_settings=>c_key-status_overview.
+        rt_values = VALUE #( ( `FILES` ) ( `OBJECTS` ) ).
       WHEN zif_ag2ui5_settings=>c_key-status_view.
         rt_values = VALUE #( ( `ALL` ) ( `CHANGES` ) ).
       WHEN zif_ag2ui5_settings=>c_key-status_sort.

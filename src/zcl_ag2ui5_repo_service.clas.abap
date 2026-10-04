@@ -7,6 +7,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    "! One row per object; files without an object share the empty key.
+    "! Counts include every file; differing nonempty states become MIXED.
+    CLASS-METHODS object_status_rows
+      IMPORTING
+        it_rows TYPE zif_ag2ui5_repo_service=>ty_status_rows
+        iv_changes_first TYPE abap_bool DEFAULT abap_true
+      RETURNING
+        VALUE(rt_rows) TYPE zif_ag2ui5_repo_service=>ty_object_status_rows.
+
     "! The decision dialog's content: one item per object, in its most
     "! dangerous group, with abapGit's defaults preselected
     CLASS-METHODS preview
@@ -1485,6 +1494,45 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         zcl_abapgit_login_manager=>clear( ).
     ENDTRY.
     zcl_abapgit_login_manager=>clear( ).
+
+  ENDMETHOD.
+
+  METHOD object_status_rows.
+
+    DATA(lt_files) = it_rows.
+    LOOP AT lt_files ASSIGNING FIELD-SYMBOL(<ls_file>) WHERE obj_type IS INITIAL OR obj_name IS INITIAL.
+      CLEAR: <ls_file>-obj_type, <ls_file>-obj_name, <ls_file>-object_link.
+    ENDLOOP.
+    lt_files = sort_status_rows( it_rows = lt_files iv_by = `OBJECT` iv_changes_first = iv_changes_first ).
+    LOOP AT lt_files INTO DATA(ls_file)
+        GROUP BY ( obj_type = ls_file-obj_type obj_name = ls_file-obj_name ) INTO DATA(ls_group).
+      DATA(ls_object) = VALUE zif_ag2ui5_repo_service=>ty_object_status(
+        obj_type = ls_group-obj_type obj_name = ls_group-obj_name ).
+      LOOP AT GROUP ls_group INTO DATA(ls_member).
+        ls_object-file_count = ls_object-file_count + 1.
+        IF ls_member-changed = abap_true.
+          ls_object-changed_count = ls_object-changed_count + 1.
+          ls_object-changed = abap_true.
+        ENDIF.
+        IF ls_member-inactive = abap_true.
+          ls_object-inactive = abap_true.
+        ENDIF.
+        IF ls_object-object_link IS INITIAL.
+          ls_object-object_link = ls_member-object_link.
+        ENDIF.
+        IF ls_member-lstate IS NOT INITIAL.
+          ls_object-lstate = COND #( WHEN ls_object-lstate IS INITIAL THEN ls_member-lstate
+                                    WHEN ls_object-lstate = ls_member-lstate THEN ls_object-lstate
+                                    ELSE `MIXED` ).
+        ENDIF.
+        IF ls_member-rstate IS NOT INITIAL.
+          ls_object-rstate = COND #( WHEN ls_object-rstate IS INITIAL THEN ls_member-rstate
+                                    WHEN ls_object-rstate = ls_member-rstate THEN ls_object-rstate
+                                    ELSE `MIXED` ).
+        ENDIF.
+      ENDLOOP.
+      INSERT ls_object INTO TABLE rt_rows.
+    ENDLOOP.
 
   ENDMETHOD.
 

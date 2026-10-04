@@ -20,6 +20,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       BEGIN OF ty_row,
         obj_type TYPE string,
         obj_name TYPE string,
+        object_display TYPE string,
+        files_text TYPE string,
         object_link TYPE string,
         path     TYPE string,
         filename TYPE string,
@@ -52,9 +54,14 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_remote_label TYPE string VALUE `Remote`.
     DATA mv_pull_text    TYPE string VALUE `Pull`.
     DATA mv_row_type     TYPE string VALUE `Navigation`.
+    DATA mv_overview_row_type TYPE string VALUE `Navigation`.
     DATA ms_head         TYPE ty_head.
     "! The rows shown: all files, or only the changed ones
     DATA mt_rows         TYPE ty_rows.
+    "! Files of the selected object, bound only while its dialog is open
+    DATA mt_object_files TYPE ty_rows.
+    DATA mv_files_title TYPE string.
+    DATA mv_overview TYPE string VALUE `FILES`.
     "! ALL or CHANGES
     DATA mv_view         TYPE string VALUE `ALL`.
     "! OBJECT, FILE or TYPE
@@ -100,6 +107,12 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    DATA mv_files_open TYPE abap_bool.
+    METHODS popup_files_display.
+    METHODS open_object_files.
+    METHODS file_rows
+      IMPORTING it_rows TYPE zif_ag2ui5_repo_service=>ty_status_rows
+      RETURNING VALUE(rt_rows) TYPE ty_rows.
     "! ZIP bytes survive HTTP requests; no abapGit references in app state
     DATA mv_zip TYPE xstring.
     DATA mv_offline TYPE abap_bool.
@@ -196,6 +209,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     DATA(li_settings) = zcl_ag2ui5_settings=>get_instance( ).
     ro_app->mv_view = li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_view
                                         iv_default = `ALL` ).
+    ro_app->mv_overview = li_settings->get( iv_key = zif_ag2ui5_settings=>c_key-status_overview
+                                            iv_default = `FILES` ).
     ro_app->mv_sort = li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_sort
                                         iv_default = `OBJECT` ).
     ro_app->mv_changes_first = xsdbool( li_settings->get( iv_key     = zif_ag2ui5_settings=>c_key-status_changes_first
@@ -211,6 +226,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       view_display( ).
     ELSEIF client->check_on_navigated( ).
       view_display( ).
+      IF mv_files_open = abap_true.
+        popup_files_display( ).
+      ENDIF.
     ELSEIF client->check_on_event( ).
       on_event( ).
     ENDIF.
@@ -248,18 +266,30 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `shrinkable` v = `true` ).
     header_content->tag( `ToolbarSpacer` ).
     header_content->ele( `SegmentedButton`
+        )->a( n = `selectedKey` v = client->_bind( mv_overview )
+        )->a( n = `selectionChange` v = client->_event( `OVERVIEW` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key` v = `FILES`
+                )->a( n = `text` v = `Files`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key` v = `OBJECTS`
+                )->a( n = `text` v = `Objects` ).
+    header_content->ele( `SegmentedButton`
         )->a( n = `selectedKey`     v = client->_bind( mv_view )
         )->a( n = `selectionChange` v = client->_event( `VIEW` )
         )->ele( `items`
             )->tag( `SegmentedButtonItem`
                 )->a( n = `key`  v = `ALL`
-                )->a( n = `text` v = `All files`
+                )->a( n = `text` v = `All`
             )->tag( `SegmentedButtonItem`
                 )->a( n = `key`  v = `CHANGES`
                 )->a( n = `text` v = `Changes only` ).
     header_content->tag( `Label`
+        )->a( n = `visible` b = xsdbool( mv_overview = `FILES` )
         )->a( n = `text` v = `Sort by` ).
     header_content->ele( `Select`
+        )->a( n = `visible` b = xsdbool( mv_overview = `FILES` )
         )->a( n = `selectedKey` v = client->_bind( mv_sort )
         )->a( n = `change`      v = client->_event( `VIEW` )
         )->ele( `items`
@@ -362,7 +392,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
-            )->a( n = `text` v = `File` ).
+            )->a( n = `text` v = COND #( WHEN mv_overview = `OBJECTS` THEN `Files` ELSE `File` ) ).
     columns->ele( `Column`
         )->tag( `Text`
             )->a( n = `text` v = `Local` ).
@@ -375,11 +405,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Inactive` ).
 
+    DATA(lt_row_args) = COND string_table( WHEN mv_overview = `OBJECTS`
+      THEN VALUE #( ( `${OBJ_TYPE}` ) ( `${OBJ_NAME}` ) )
+      ELSE VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ).
     DATA(item) = table->ele( `items`
         )->ele( `ColumnListItem`
-            )->a( n = `type`      v = client->_bind( mv_row_type )
+            )->a( n = `type` v = client->_bind( mv_overview_row_type )
             )->a( n = `highlight` v = `{HIGHLIGHT}`
-            )->a( n = `press`     v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
+            )->a( n = `press` v = client->_event(
+                val = COND #( WHEN mv_overview = `OBJECTS` THEN `OBJECT` ELSE `DIFF` ) t_arg = lt_row_args ) ).
     " data-change="<highlight>" on the row, for the style block above
     item->ele( `customData`
         )->tag( n = `CustomData` ns = `core`
@@ -392,15 +426,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     cells->ele( `HBox`
         )->ele( `items`
             )->tag( `Link`
-                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `text`    v = `{OBJECT_DISPLAY}`
                 )->a( n = `href`    v = `{OBJECT_LINK}`
                 )->a( n = `visible` v = `{= ${OBJECT_LINK} !== '' }`
                 )->a( n = `tooltip` v = `Open object in ADT`
             )->tag( `Text`
-                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `text`    v = `{OBJECT_DISPLAY}`
                 )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
-        )->a( n = `text` v = `{FILENAME}` ).
+        )->a( n = `text` v = COND #( WHEN mv_overview = `OBJECTS` THEN `{FILES_TEXT}` ELSE `{FILENAME}` ) ).
     cells->tag( `Text`
         )->a( n = `text` v = `{LOCAL}` ).
     cells->tag( `Text`
@@ -498,37 +532,138 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD file_rows.
+
+    LOOP AT it_rows INTO DATA(ls_file).
+      INSERT VALUE #( obj_type = ls_file-obj_type obj_name = ls_file-obj_name
+        object_display = ls_file-obj_name object_link = ls_file-object_link
+        path = ls_file-path filename = ls_file-filename
+        local = state_text( ls_file-lstate ) remote = state_text( ls_file-rstate )
+        lstate = ls_file-lstate rstate = ls_file-rstate
+        inactive = COND #( WHEN ls_file-inactive = abap_true THEN `inactive` )
+        changed = ls_file-changed
+        highlight = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate = ls_file-lstate
+          iv_rstate = ls_file-rstate iv_inactive = ls_file-inactive ) ) INTO TABLE rt_rows.
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD rows_build.
 
+    mv_overview_row_type = COND #( WHEN mv_overview = `OBJECTS` THEN `Navigation` ELSE mv_row_type ).
     CLEAR mt_rows.
-    LOOP AT zcl_ag2ui5_repo_service=>sort_status_rows( it_rows          = mt_status
-                                                      iv_by            = mv_sort
-                                                      iv_changes_first = mv_changes_first ) INTO DATA(ls_status_row).
-      IF mv_view = `CHANGES` AND ls_status_row-changed = abap_false.
-        CONTINUE.
+    IF mv_overview = `OBJECTS`.
+      LOOP AT zcl_ag2ui5_repo_service=>object_status_rows(
+          it_rows = mt_status iv_changes_first = mv_changes_first ) INTO DATA(ls_object).
+        IF mv_view = `CHANGES` AND ls_object-changed = abap_false.
+          CONTINUE.
+        ENDIF.
+        INSERT VALUE #( obj_type = ls_object-obj_type obj_name = ls_object-obj_name
+          object_display = COND #( WHEN ls_object-obj_name IS INITIAL THEN `Repository files` ELSE ls_object-obj_name )
+          object_link = ls_object-object_link
+          files_text = |{ ls_object-changed_count } of { ls_object-file_count } changed|
+          local = state_text( ls_object-lstate ) remote = state_text( ls_object-rstate )
+          lstate = ls_object-lstate rstate = ls_object-rstate
+          inactive = COND #( WHEN ls_object-inactive = abap_true THEN `inactive` )
+          changed = ls_object-changed
+          highlight = COND #( WHEN ls_object-changed = abap_true THEN `Indication03` ELSE `None` ) ) INTO TABLE mt_rows.
+      ENDLOOP.
+    ELSE.
+      mt_rows = file_rows( zcl_ag2ui5_repo_service=>sort_status_rows(
+        it_rows = mt_status iv_by = mv_sort iv_changes_first = mv_changes_first ) ).
+      IF mv_view = `CHANGES`.
+        DELETE mt_rows WHERE changed = abap_false.
       ENDIF.
-      INSERT VALUE #( obj_type  = ls_status_row-obj_type
-                      obj_name  = ls_status_row-obj_name
-                      object_link = ls_status_row-object_link
-                      path      = ls_status_row-path
-                      filename  = ls_status_row-filename
-                      local     = state_text( ls_status_row-lstate )
-                      remote    = state_text( ls_status_row-rstate )
-                      lstate    = ls_status_row-lstate
-                      rstate    = ls_status_row-rstate
-                      inactive  = COND #( WHEN ls_status_row-inactive = abap_true THEN `inactive` )
-                      changed   = ls_status_row-changed
-                      highlight = zcl_ag2ui5_repo_service=>change_highlight( iv_lstate   = ls_status_row-lstate
-                                                                             iv_rstate   = ls_status_row-rstate
-                                                                             iv_inactive = ls_status_row-inactive ) )
-        INTO TABLE mt_rows.
-    ENDLOOP.
+    ENDIF.
     IF mv_loaded = abap_true.
       mv_no_data = COND #( WHEN mv_view = `CHANGES` THEN `Local and remote match` ELSE `The repository has no files` ).
       IF mv_offline = abap_true AND mv_zip IS INITIAL.
         mv_no_data = `Choose a ZIP to compare with the local files`.
       ENDIF.
     ENDIF.
+
+  ENDMETHOD.
+
+  METHOD open_object_files.
+
+    IF mv_overview <> `OBJECTS`.
+      RETURN.
+    ENDIF.
+    READ TABLE mt_rows INTO DATA(ls_object)
+      WITH KEY obj_type = client->get_event_arg( ) obj_name = client->get_event_arg( 2 ).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA lt_files TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+    LOOP AT mt_status INTO DATA(ls_file).
+      IF ( ls_object-obj_type IS INITIAL AND ls_object-obj_name IS INITIAL
+          AND ( ls_file-obj_type IS INITIAL OR ls_file-obj_name IS INITIAL ) )
+          OR ( ls_file-obj_type = ls_object-obj_type AND ls_file-obj_name = ls_object-obj_name ).
+        INSERT ls_file INTO TABLE lt_files.
+      ENDIF.
+    ENDLOOP.
+    mt_object_files = file_rows( zcl_ag2ui5_repo_service=>sort_status_rows(
+      it_rows = lt_files iv_by = `FILE` iv_changes_first = mv_changes_first ) ).
+    mv_files_title = |Files - { ls_object-object_display }|.
+    mv_files_open = abap_true.
+    popup_files_display( ).
+
+  ENDMETHOD.
+
+  METHOD popup_files_display.
+
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns` v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title` v = client->_bind( mv_files_title )
+            )->a( n = `contentWidth` v = `48rem` ).
+    DATA(table) = dialog->ele( `content`
+        )->ele( `Table`
+            )->a( n = `items` v = client->_bind( mt_object_files )
+            )->a( n = `growing` v = `true`
+            )->a( n = `growingThreshold` v = `200` ).
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `55%`
+        )->tag( `Text`
+            )->a( n = `text` v = `File` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Local` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = client->_bind( mv_remote_label ) ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin` v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Inactive` ).
+    DATA(item) = table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->a( n = `type` v = client->_bind( mv_row_type )
+            )->a( n = `highlight` v = `{HIGHLIGHT}`
+            )->a( n = `press` v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
+    item->ele( `customData`
+        )->tag( n = `CustomData` ns = `core`
+            )->a( n = `key` v = `change`
+            )->a( n = `value` v = `{HIGHLIGHT}`
+            )->a( n = `writeToDom` v = `true` ).
+    DATA(cells) = item->ele( `cells` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{PATH}{FILENAME}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{LOCAL}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{REMOTE}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{INACTIVE}` ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Close`
+            )->a( n = `press` v = client->_event( `FILES_CLOSE` ) ).
+    client->popup_display( popup->stringify( ) ).
 
   ENDMETHOD.
 
@@ -780,13 +915,26 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
-        CLEAR: mv_zip, mv_upload, mv_upload_path.
+        CLEAR: mv_zip, mv_upload, mv_upload_path, mv_files_open, mt_object_files, mv_files_title.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
       WHEN `VIEW`.
         save_view_settings( ).
         rows_build( ).
+      WHEN `OVERVIEW`.
+        IF mv_overview <> `FILES` AND mv_overview <> `OBJECTS`.
+          mv_overview = `FILES`.
+        ENDIF.
+        zcl_ag2ui5_settings=>get_instance( )->set(
+          iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_value = mv_overview ).
+        rows_build( ).
+        view_display( ).
+      WHEN `OBJECT`.
+        open_object_files( ).
+      WHEN `FILES_CLOSE`.
+        CLEAR: mv_files_open, mt_object_files, mv_files_title.
+        client->popup_destroy( ).
       WHEN `STAGE`.
         IF mv_offline = abap_true.
           RETURN.
@@ -798,6 +946,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         ENDIF.
         READ TABLE mt_rows INTO DATA(ls_row)
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        IF sy-subrc <> 0.
+          READ TABLE mt_object_files INTO ls_row
+            WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        ENDIF.
         IF sy-subrc = 0.
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
                                                              iv_zip      = mv_zip
@@ -862,6 +1014,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD load_status.
 
+    CLEAR: mv_files_open, mt_object_files, mv_files_title.
     TRY.
         DATA(ls_status) = service( )->get_status( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
@@ -1095,7 +1248,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     rv_text = SWITCH #( iv_state
                         WHEN `A` THEN `added`
                         WHEN `M` THEN `modified`
-                        WHEN `D` THEN `deleted` ).
+                        WHEN `D` THEN `deleted`
+                        WHEN `MIXED` THEN `mixed` ).
 
   ENDMETHOD.
 

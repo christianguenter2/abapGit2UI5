@@ -18,7 +18,7 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   GitHub source ZIP through the same pull decision dialog, or export the
   current local files as a ZIP. Status and diff compare the uploaded ZIP
   with the system; branches and staging are available for online repositories.
-- **Settings:** every toggle (list or tiles, the status page's filter, sort
+- **Settings:** every toggle (list or tiles, the status page's overview, filter, sort
   and "changes on top", the diff's layout and "show all") is remembered per
   SAP user.
 - **Status:** every file of the repository. Changed files (in the system, in
@@ -26,6 +26,10 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   background; the Local and Remote columns tell which side changed. "Changes
   only" hides the rest. Sort by object, file or type; "Changes on top" (on by
   default) lists the changed files first.
+- **Object overview:** switch from Files to Objects for one row per ABAP
+  object, with changed/total file counts and combined Local/Remote states.
+  Press the row to see all its files and open a diff; Back returns to that
+  file list. Files without an object appear under "Repository files".
 - **Diff:** pressing a file in the status list shows its line diff, inline or
   side by side, with changes in context or the whole file. As in abapGit, the
   side that changed is the "new" one, in green. Side by side keeps the system

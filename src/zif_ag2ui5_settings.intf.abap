@@ -6,6 +6,7 @@ INTERFACE zif_ag2ui5_settings
     BEGIN OF c_key,
       repos_layout         TYPE string VALUE `REPOS_LAYOUT`,
       status_view          TYPE string VALUE `STATUS_VIEW`,
+      status_overview      TYPE string VALUE `STATUS_OVERVIEW`,
       status_sort          TYPE string VALUE `STATUS_SORT`,
       status_changes_first TYPE string VALUE `STATUS_CHANGES_FIRST`,
       diff_layout          TYPE string VALUE `DIFF_LAYOUT`,

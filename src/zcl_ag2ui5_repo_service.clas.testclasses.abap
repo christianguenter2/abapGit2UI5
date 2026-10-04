@@ -2160,3 +2160,71 @@ CLASS ltcl_object_links IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lines( lt_links ) exp = 2 ).
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_object_status DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS counts_and_states FOR TESTING.
+    METHODS mixed_states FOR TESTING.
+    METHODS repository_files FOR TESTING.
+    METHODS distinct_types FOR TESTING.
+    METHODS changes_first FOR TESTING.
+    METHODS empty_status FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_object_status IMPLEMENTATION.
+  METHOD counts_and_states.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.abap` lstate = `M` changed = abap_true object_link = `adt://A4H/a` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.xml` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.testclasses.abap` inactive = abap_true changed = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-file_count exp = 3 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-changed_count exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-lstate exp = `M` ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-rstate ).
+    cl_abap_unit_assert=>assert_true( lt_rows[ 1 ]-inactive ).
+    cl_abap_unit_assert=>assert_true( lt_rows[ 1 ]-changed ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-object_link exp = `adt://A4H/a` ).
+  ENDMETHOD.
+  METHOD mixed_states.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` lstate = `A` rstate = `M` changed = abap_true )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` lstate = `D` rstate = `A` changed = abap_true )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` lstate = `M` rstate = `M` changed = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-lstate exp = `MIXED` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-rstate exp = `MIXED` ).
+  ENDMETHOD.
+  METHOD repository_files.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( filename = `.abapgit.xml` )
+      ( filename = `README.md` lstate = `A` changed = abap_true )
+      ( obj_type = `CLAS` filename = `unmapped.abap` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-obj_type ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-obj_name ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-object_link ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-file_count exp = 3 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-changed_count exp = 1 ).
+  ENDMETHOD.
+  METHOD distinct_types.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZTEST` )
+      ( obj_type = `INTF` obj_name = `ZTEST` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 2 ).
+  ENDMETHOD.
+  METHOD changes_first.
+    DATA(lt_files) = VALUE zif_ag2ui5_repo_service=>ty_status_rows(
+      ( obj_type = `CLAS` obj_name = `ZA` filename = `a.xml` )
+      ( obj_type = `CLAS` obj_name = `ZB` filename = `b.xml` )
+      ( obj_type = `CLAS` obj_name = `ZB` filename = `b.abap` changed = abap_true lstate = `M` ) ).
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( lt_files ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-obj_name exp = `ZB` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-file_count exp = 2 ).
+    lt_rows = zcl_ag2ui5_repo_service=>object_status_rows( it_rows = lt_files iv_changes_first = abap_false ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-obj_name exp = `ZA` ).
+  ENDMETHOD.
+  METHOD empty_status.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>object_status_rows( VALUE #( ) ) ).
+  ENDMETHOD.
+ENDCLASS.
