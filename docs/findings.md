@@ -718,9 +718,35 @@ ZIP through the pull dialog, export a ZIP).
   was retained. The repository's last-pull timestamp moved as expected.
 - Final dump check: only three historical dumps dated September 30 to
   October 2, none from the completed offline smoke tests.
-- Browser file selection/upload, phone-width layout and large ZIPs were not
-  exercised. Binary decoding, preview/pull handoff, invalid-upload retry,
+- Browser file selection/upload was verified in the follow-up below;
+  phone-width layout and large ZIPs were not exercised. Binary decoding, preview/pull handoff, invalid-upload retry,
   cancellation and ZIP download arguments are covered by native app tests.
+
+### File picker follow-up (2026-10-03)
+
+- Reproduced: selecting a file updated the native input but left the visible
+  filename unchanged and Upload disabled. The abap2UI5 FileUploader rendered
+  an unowned HBox without a DOM root for the wrapper. Inner controls could not
+  propagate invalidation through the wrapper's control tree.
+- Framework fix is isolated in `/tmp/abap2ui5-file-uploader`, branch
+  `fix/file-uploader-rendering`: a hidden HBox aggregation and a wrapper DOM
+  root. The main abap2UI5 checkout is unchanged. Fifteen focused uploader tests
+  and `npm run verify:full` passed, including generated-code drift and frontend
+  checks. No app-code change was needed.
+- Activated only Z2UI5_CL_UI5F_UPLOADER_JS and the regenerated
+  Z2UI5_CL_UI5F_PRELOAD on A4H25. The deployment hash was generated separately
+  in `/tmp/abap2ui5-picker-deploy` from sources preserving the installed
+  Server/AppState round-trip timing additions. All other installed frontend
+  classes were backed up and compared; none needed deployment.
+- Chrome/SAP: selecting a ZIP shows its filename and enables Upload. An
+  invalid file reaches server validation, and retrying with the current
+  1,332-byte, four-file export gives matching status. A comparison-only ZIP
+  changing one class comment opens exactly one overwrite decision for
+  ZCL_TEST_OFFLINE; canceled without pulling. The user's class is unchanged.
+- abapGit refuses import preview in German when the repository's main
+  language is English. Retested successfully with `sap-language=EN`.
+  File-URL access was required only for the browser automation's local test
+  uploads; it did not fix the uploader rendering defect.
 
 ## Open points (as of 2026-10-03)
 
@@ -729,6 +755,11 @@ branches, all files on the status page (sorted, changes on top, yellow),
 diff colours, search field focus, URLs as links.
 
 Next slices:
+
+Potential distinguishing features are collected in
+[Feature ideas](feature-ideas.md): named change sets, semantic ABAP diff,
+pull impact preview, recovery checkpoints and a repository cockpit. These
+are candidates for discussion, not committed slices.
 
 1. **A per-object view** of the status, with a switch to the per-file view.
 2. **Ignore and `.gitignore`** on the staging page.
