@@ -236,10 +236,19 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
   TYPES:
     BEGIN OF ty_stage,
       items TYPE ty_stage_items,
+      ignore_rules TYPE string_table,
       "! The committer abapGit remembers for this repository
       name  TYPE string,
       email TYPE string,
     END OF ty_stage.
+
+  TYPES:
+    BEGIN OF ty_ignore_preview,
+      rule TYPE string,
+      remove TYPE abap_bool,
+      rules TYPE string_table,
+      files TYPE ty_stage_items,
+    END OF ty_ignore_preview.
 
   TYPES:
     BEGIN OF ty_commit,
@@ -396,6 +405,20 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       VALUE(rs_stage) TYPE ty_stage
     RAISING
       zcx_abapgit_exception.
+
+  "! Preview native .abapgit.xml ignore changes against fresh staging data
+  METHODS preview_ignore
+    IMPORTING iv_key TYPE string
+              iv_rule TYPE string
+              iv_remove TYPE abap_bool DEFAULT abap_false
+    RETURNING VALUE(rs_preview) TYPE ty_ignore_preview
+    RAISING zcx_abapgit_exception.
+
+  "! Recompute the preview before persisting; refuse stale client data
+  METHODS save_ignore
+    IMPORTING iv_key TYPE string
+              is_preview TYPE ty_ignore_preview
+    RAISING zcx_abapgit_exception.
 
   "! Commits the selected files and pushes them. The credentials are used for
   "! this call only and never stored. Outcome changed, and nothing is pushed,

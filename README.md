@@ -39,6 +39,15 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   message, then push with a Git user and token. The credentials are used for
   that one push only and never stored. "Pick lines" commits only some changes
   of a file: both halves of a changed line go together, as in abapGit.
+- **Ignore:** staging respects abapGit's ignore rules and starting folder.
+  A file's Ignore button opens its full path as an editable rule; use `*`
+  for any sequence or `+` for one character. Preview the affected staging
+  files, then save locally. **Ignore rules** lists existing rules and lets
+  you preview/remove them. Commit `.abapgit.xml` to share the change.
+  These are abapGit's native rules, not a conventional `.gitignore` file.
+  Ignoring a tracked file leaves its remote version in place. Saving a rule
+  reloads staging and clears file selections and picked lines; commit text
+  and committer details stay.
 - **Branches:** on the status page, switch to another branch of the remote
   (only the branch the repository follows changes; the status then shows what
   a pull would bring), create a branch at the current head ("New branch..."),
@@ -50,7 +59,7 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   transportable packages it asks for one of your modifiable transport
   requests.
 
-Not part of it yet: ignore and `.gitignore`,
+Not part of it yet: conventional `.gitignore` interpretation,
 pushing to another branch, and creating a transport request from the dialog.
 
 Object names in status, staging and pull decisions link to the local object

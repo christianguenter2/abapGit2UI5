@@ -27,6 +27,18 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
+    TYPES: BEGIN OF ty_rule,
+             rule TYPE string,
+           END OF ty_rule,
+           ty_rules TYPE STANDARD TABLE OF ty_rule WITH EMPTY KEY.
+    DATA mt_ignore_rules TYPE ty_rules.
+    DATA mt_ignore_files TYPE ty_rows.
+    DATA mv_ignore_rule TYPE string.
+    DATA mv_ignore_ready TYPE abap_bool.
+    DATA mv_ignore_preview_rule TYPE string.
+    DATA mv_ignore_note TYPE string.
+    DATA mv_ignore_title TYPE string.
+    DATA mv_ignore_editable TYPE abap_bool.
     DATA mt_rows   TYPE ty_rows.
     DATA ms_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
     DATA mv_user   TYPE string.
@@ -74,6 +86,13 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
       RETURNING
         VALUE(rv_text) TYPE string.
 
+    DATA ms_ignore_preview TYPE zif_ag2ui5_repo_service=>ty_ignore_preview.
+    DATA mv_ignore_remove TYPE abap_bool.
+    METHODS ignore_display.
+    METHODS rules_display.
+    METHODS preview_ignore.
+    METHODS save_ignore.
+    METHODS clear_ignore.
     METHODS view_display.
     METHODS on_event.
     METHODS load_stage.
@@ -211,6 +230,10 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `text`  v = `Select none`
         )->a( n = `press` v = client->_event( `NONE` ) ).
 
+    header_content->tag( `Button`
+        )->a( n = `text` v = `Ignore rules`
+        )->a( n = `press` v = client->_event( `RULES` ) ).
+
     DATA(content) = page->ele( `content` ).
 
     DATA(table) = content->ele( `Table`
@@ -238,7 +261,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Change` ).
     columns->ele( `Column`
-        )->a( n = `width` v = `9rem` ).
+        )->a( n = `width` v = `13rem` ).
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
@@ -264,11 +287,18 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     cells->tag( `Text`
         )->a( n = `text` v = `{CHANGE}` ).
     " a button press inside the row does not fire the row's press
-    cells->tag( `Button`
+    DATA(actions) = cells->ele( `HBox`
+        )->ele( `items` ).
+    actions->tag( `Button`
         )->a( n = `text`  v = `Pick lines`
         )->a( n = `icon`  v = `sap-icon://multi-select`
         )->a( n = `type`  v = `Transparent`
         )->a( n = `press` v = client->_event( val = `PATCH` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
+
+    actions->tag( `Button`
+        )->a( n = `text` v = `Ignore`
+        )->a( n = `type` v = `Transparent`
+        )->a( n = `press` v = client->_event( val = `IGNORE` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) ) ).
 
     DATA(form) = content->ele( n = `SimpleForm` ns = `form`
         )->a( n = `editable` v = `true`
@@ -315,6 +345,119 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD clear_ignore.
+    CLEAR: ms_ignore_preview, mt_ignore_files, mv_ignore_ready, mv_ignore_rule,
+      mv_ignore_remove, mv_ignore_editable, mv_ignore_note, mv_ignore_title, mv_ignore_preview_rule.
+  ENDMETHOD.
+
+  METHOD ignore_display.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns` v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title` v = client->_bind( mv_ignore_title )
+            )->a( n = `contentWidth` v = `48rem` ).
+    DATA(content) = dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin`
+            )->ele( `items` ).
+    content->tag( `Text` )->a( n = `text` v = client->_bind( mv_ignore_note ) ).
+    content->tag( `Label` )->a( n = `text` v = `Rule` ).
+    content->tag( `Input`
+        )->a( n = `value` v = client->_bind( mv_ignore_rule )
+        )->a( n = `editable` v = client->_bind( mv_ignore_editable )
+        )->a( n = `maxLength` v = `255`
+        )->a( n = `valueLiveUpdate` v = `true` ).
+    content->tag( `Button`
+        )->a( n = `text` v = `Preview`
+        )->a( n = `press` v = client->_event( `IGNORE_PREVIEW` ) ).
+    content->tag( `Text` )->a( n = `text` v = `Currently affected staging files` ).
+    DATA(table) = content->ele( `Table`
+        )->a( n = `items` v = client->_bind( mt_ignore_files )
+        )->a( n = `visible` v = |\{= ${ client->_bind( mv_ignore_rule ) } === ${ client->_bind( mv_ignore_preview_rule ) } \}|
+        )->a( n = `noDataText` v = `No staging files in this preview`
+        )->a( n = `growing` v = `true` ).
+    table->ele( `columns` )->ele( `Column` )->tag( `Text` )->a( n = `text` v = `File` ).
+    table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells`
+                )->tag( `Text`
+                    )->a( n = `text` v = `{PATH}{FILENAME}` ).
+    dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Save rule change`
+            )->a( n = `type` v = `Emphasized`
+            )->a( n = `enabled` v = |\{= ${ client->_bind( mv_ignore_ready ) } && ${ client->_bind( mv_ignore_rule ) } === ${ client->_bind( mv_ignore_preview_rule ) } \}|
+            )->a( n = `press` v = client->_event( `IGNORE_SAVE` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Cancel`
+            )->a( n = `press` v = client->_event( `IGNORE_CANCEL` ) ).
+    client->popup_display( popup->stringify( ) ).
+  ENDMETHOD.
+
+  METHOD rules_display.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns` v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title` v = `Ignore rules in .abapgit.xml`
+            )->a( n = `contentWidth` v = `48rem` ).
+    DATA(table) = dialog->ele( `content`
+        )->ele( `Table`
+            )->a( n = `items` v = client->_bind( mt_ignore_rules )
+            )->a( n = `noDataText` v = `No explicit ignore rules`
+            )->a( n = `growing` v = `true` ).
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column` )->tag( `Text` )->a( n = `text` v = `Rule` ).
+    columns->ele( `Column` )->a( n = `width` v = `8rem` ).
+    DATA(cells) = table->ele( `items` )->ele( `ColumnListItem` )->ele( `cells` ).
+    cells->tag( `Text` )->a( n = `text` v = `{RULE}` ).
+    cells->tag( `Button`
+        )->a( n = `text` v = `Remove`
+        )->a( n = `press` v = client->_event( val = `RULE_REMOVE` arg = `${RULE}` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Close`
+            )->a( n = `press` v = client->_event( `IGNORE_CANCEL` ) ).
+    client->popup_display( popup->stringify( ) ).
+  ENDMETHOD.
+
+  METHOD preview_ignore.
+    CLEAR: ms_ignore_preview, mt_ignore_files, mv_ignore_ready.
+    TRY.
+        ms_ignore_preview = service( )->preview_ignore(
+          iv_key = mv_key iv_rule = mv_ignore_rule iv_remove = mv_ignore_remove ).
+        mt_ignore_files = CORRESPONDING #( ms_ignore_preview-files ).
+        mv_ignore_preview_rule = mv_ignore_rule.
+        mv_ignore_ready = abap_true.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD save_ignore.
+    IF mv_ignore_ready = abap_false OR ms_ignore_preview-rule <> mv_ignore_rule
+        OR ms_ignore_preview-remove <> mv_ignore_remove.
+      CLEAR mv_ignore_ready.
+      client->message_toast_display( `Preview the rule change before saving` ).
+      RETURN.
+    ENDIF.
+    TRY.
+        service( )->save_ignore( iv_key = mv_key is_preview = ms_ignore_preview ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        CLEAR: ms_ignore_preview, mt_ignore_files, mv_ignore_ready.
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+    clear_ignore( ).
+    client->popup_destroy( ).
+    load_stage( ).
+    client->message_toast_display( `Ignore rules saved locally; commit .abapgit.xml to share them` ).
+  ENDMETHOD.
+
   METHOD on_event.
 
     " a typed token arrives with whatever button is pressed next, and abap2UI5
@@ -357,6 +500,36 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             iv_patch    = abap_true
             it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
+      WHEN `RULES`.
+        rules_display( ).
+      WHEN `IGNORE`.
+        READ TABLE mt_rows INTO ls_row
+          WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
+        IF sy-subrc = 0.
+          clear_ignore( ).
+          mv_ignore_rule = ls_row-path && ls_row-filename.
+          mv_ignore_title = `Ignore file or pattern`.
+          mv_ignore_editable = abap_true.
+          mv_ignore_note = `Rules are saved in .abapgit.xml. Use * for any sequence and + for one character. Preview before saving.`.
+          ignore_display( ).
+        ENDIF.
+      WHEN `RULE_REMOVE`.
+        READ TABLE mt_ignore_rules INTO DATA(ls_rule) WITH KEY rule = client->get_event_arg( ).
+        IF sy-subrc = 0.
+          clear_ignore( ).
+          mv_ignore_rule = ls_rule-rule.
+          mv_ignore_remove = abap_true.
+          mv_ignore_title = `Remove ignore rule`.
+          mv_ignore_note = `Preview before removing this rule. Previously ignored objects will be considered again.`.
+          ignore_display( ).
+        ENDIF.
+      WHEN `IGNORE_PREVIEW`.
+        preview_ignore( ).
+      WHEN `IGNORE_SAVE`.
+        save_ignore( ).
+      WHEN `IGNORE_CANCEL`.
+        clear_ignore( ).
+        client->popup_destroy( ).
       WHEN `PUSH`.
         push( lv_token ).
     ENDCASE.
@@ -372,6 +545,10 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
+    CLEAR mt_ignore_rules.
+    LOOP AT ls_stage-ignore_rules INTO DATA(lv_rule).
+      APPEND VALUE #( rule = lv_rule ) TO mt_ignore_rules.
+    ENDLOOP.
     " after a reload the fingerprints are stale anyway
     CLEAR: mt_rows, mt_patches.
     LOOP AT ls_stage-items INTO DATA(ls_item).
@@ -380,7 +557,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       INSERT ls_row INTO TABLE mt_rows.
     ENDLOOP.
     IF ms_commit-name IS INITIAL.
-      ms_commit-name  = ls_stage-name.
+      ms_commit-name = ls_stage-name.
+    ENDIF.
+    IF ms_commit-email IS INITIAL.
       ms_commit-email = ls_stage-email.
     ENDIF.
 

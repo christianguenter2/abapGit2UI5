@@ -217,8 +217,29 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
     CLASS-METHODS stage_candidates
       IMPORTING
         it_results      TYPE zif_abapgit_definitions=>ty_results_tt
+        is_dot TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit OPTIONAL
       RETURNING
         VALUE(rt_items) TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+
+    CLASS-METHODS change_ignore_rules
+      IMPORTING is_dot TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit
+                iv_rule TYPE string
+                iv_remove TYPE abap_bool DEFAULT abap_false
+      RETURNING VALUE(rs_dot) TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit
+      RAISING zcx_abapgit_exception.
+
+    CLASS-METHODS assert_ignore_preview
+      IMPORTING is_expected TYPE zif_ag2ui5_repo_service=>ty_ignore_preview
+                is_fresh TYPE zif_ag2ui5_repo_service=>ty_ignore_preview
+      RAISING zcx_abapgit_exception.
+
+    CLASS-METHODS ignore_preview
+      IMPORTING it_results TYPE zif_abapgit_definitions=>ty_results_tt
+                is_dot TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit
+                iv_rule TYPE string
+                iv_remove TYPE abap_bool DEFAULT abap_false
+      RETURNING VALUE(rs_preview) TYPE zif_ag2ui5_repo_service=>ty_ignore_preview
+      RAISING zcx_abapgit_exception.
 
     "! Raises when a selected file is no longer changed locally as it was
     CLASS-METHODS check_selection
@@ -318,6 +339,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
+    CLASS-METHODS ignore_repo_preview
+      IMPORTING ii_repo TYPE REF TO zif_abapgit_repo_online
+                iv_rule TYPE string
+                iv_remove TYPE abap_bool
+      RETURNING VALUE(rs_preview) TYPE zif_ag2ui5_repo_service=>ty_ignore_preview
+      RAISING zcx_abapgit_exception.
     TYPES:
       BEGIN OF ty_object_link,
         obj_type TYPE string,
@@ -1282,10 +1309,20 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD stage_candidates.
 
+    IF is_dot IS SUPPLIED.
+      DATA(lo_dot) = NEW zcl_abapgit_dot_abapgit( is_dot ).
+    ENDIF.
     LOOP AT it_results INTO DATA(ls_result)
         WHERE lstate = zif_abapgit_definitions=>c_state-added
            OR lstate = zif_abapgit_definitions=>c_state-modified
            OR lstate = zif_abapgit_definitions=>c_state-deleted.
+      IF lo_dot IS BOUND AND lo_dot->is_ignored(
+          iv_path = ls_result-path iv_filename = ls_result-filename ) = abap_true.
+        CONTINUE.
+      ENDIF.
+      IF ls_result-path = `/` AND ls_result-filename = `.abapgit.xml` AND ls_result-lstate = `D`.
+        CONTINUE.
+      ENDIF.
       INSERT VALUE #( path     = ls_result-path
                       filename = ls_result-filename
                       obj_type = ls_result-obj_type
@@ -1298,6 +1335,97 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         INTO TABLE rt_items.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD assert_ignore_preview.
+    IF is_expected <> is_fresh.
+      zcx_abapgit_exception=>raise( `The files or ignore rules changed; preview again before saving` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD change_ignore_rules.
+    rs_dot = is_dot.
+    IF iv_remove = abap_true.
+      IF NOT line_exists( rs_dot-ignore[ table_line = iv_rule ] ).
+        zcx_abapgit_exception=>raise( `The ignore rule no longer exists; reload the rules` ).
+      ENDIF.
+      DELETE rs_dot-ignore WHERE table_line = iv_rule.
+      RETURN.
+    ENDIF.
+    IF iv_remove <> abap_false OR iv_rule IS INITIAL OR strlen( iv_rule ) > 255 OR iv_rule(1) <> `/`.
+      zcx_abapgit_exception=>raise( `Enter a rule beginning with / (maximum 255 characters)` ).
+    ENDIF.
+    DO 33 TIMES.
+      DATA(lv_code) = COND i( WHEN sy-index = 33 THEN 127 ELSE sy-index - 1 ).
+      IF iv_rule CS cl_abap_conv_in_ce=>uccpi( lv_code ).
+        zcx_abapgit_exception=>raise( `An ignore rule must be a single line without control characters` ).
+      ENDIF.
+    ENDDO.
+    IF iv_rule = `/.abapgit.xml` OR iv_rule = `/.apack-manifest.xml`.
+      zcx_abapgit_exception=>raise( `Repository metadata cannot be ignored` ).
+    ENDIF.
+    IF line_exists( rs_dot-ignore[ table_line = iv_rule ] ).
+      zcx_abapgit_exception=>raise( `This ignore rule already exists` ).
+    ENDIF.
+    APPEND iv_rule TO rs_dot-ignore.
+  ENDMETHOD.
+
+  METHOD ignore_preview.
+    DATA(ls_after) = change_ignore_rules( is_dot = is_dot iv_rule = iv_rule iv_remove = iv_remove ).
+    rs_preview = VALUE #( rule = iv_rule remove = iv_remove rules = is_dot-ignore ).
+    DATA(lt_before) = stage_candidates( it_results = it_results is_dot = is_dot ).
+    DATA(lt_after) = stage_candidates( it_results = it_results is_dot = ls_after ).
+    DATA(lt_source) = COND #( WHEN iv_remove = abap_true THEN lt_after ELSE lt_before ).
+    DATA(lt_other) = COND #( WHEN iv_remove = abap_true THEN lt_before ELSE lt_after ).
+    LOOP AT lt_source INTO DATA(ls_item).
+      IF NOT line_exists( lt_other[ path = ls_item-path filename = ls_item-filename ] ).
+        APPEND ls_item TO rs_preview-files.
+      ENDIF.
+    ENDLOOP.
+    SORT rs_preview-files BY path filename.
+    IF iv_remove = abap_false AND rs_preview-files IS INITIAL.
+      zcx_abapgit_exception=>raise( `This rule does not exclude any current staging files` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD ignore_repo_preview.
+    DATA(ls_dot) = ii_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ).
+    DATA lt_results TYPE zif_abapgit_definitions=>ty_results_tt.
+    IF iv_remove = abap_true.
+      " Serialize previously hidden objects on an unregistered copy. No
+      " setter, listener or persistence call is involved in this preview.
+      DATA(ls_data) = ii_repo->zif_abapgit_repo~ms_data.
+      ls_data-dot_abapgit = change_ignore_rules( is_dot = ls_dot iv_rule = iv_rule iv_remove = abap_true ).
+      DATA(lo_copy) = NEW zcl_abapgit_repo_online( ls_data ).
+      lo_copy->set_files_remote( ii_repo->zif_abapgit_repo~get_files_remote( ) ).
+      lt_results = zcl_abapgit_repo_status=>calculate( lo_copy ).
+    ELSE.
+      lt_results = zcl_abapgit_repo_status=>calculate( ii_repo ).
+    ENDIF.
+    rs_preview = ignore_preview( it_results = lt_results is_dot = ls_dot iv_rule = iv_rule iv_remove = iv_remove ).
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~preview_ignore.
+    assert_authorized( ).
+    silence_progress( ).
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    rs_preview = ignore_repo_preview( ii_repo = li_repo iv_rule = iv_rule iv_remove = iv_remove ).
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~save_ignore.
+    assert_authorized( ).
+    silence_progress( ).
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    DATA(ls_dot) = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ).
+    DATA(ls_fresh) = ignore_repo_preview( ii_repo = li_repo
+      iv_rule = is_preview-rule iv_remove = is_preview-remove ).
+    assert_ignore_preview( is_expected = is_preview is_fresh = ls_fresh ).
+    DATA(ls_after) = change_ignore_rules( is_dot = ls_dot iv_rule = is_preview-rule iv_remove = is_preview-remove ).
+    li_repo->zif_abapgit_repo~set_dot_abapgit( NEW zcl_abapgit_dot_abapgit( ls_after ) ).
+    COMMIT WORK AND WAIT.
+    li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
   ENDMETHOD.
 
   METHOD check_selection.
@@ -1354,7 +1482,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(li_repo) = get_online_repo( iv_key ).
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
 
-    rs_stage-items = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+    rs_stage-items = stage_candidates( it_results = zcl_abapgit_repo_status=>calculate( li_repo )
+      is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
+    rs_stage-ignore_rules = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( )-ignore.
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
@@ -1395,7 +1525,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         ENDIF.
 
         li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
-        DATA(lt_fresh) = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+        DATA(lt_fresh) = stage_candidates( it_results = zcl_abapgit_repo_status=>calculate( li_repo )
+          is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
 
         " check again - the system or the remote may have changed since the page loaded
         TRY.

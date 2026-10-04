@@ -70,7 +70,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
-    "! Stage is offered only online, when something changed locally
+    "! Stage is offered online, including rule management with no local changes
     DATA mv_can_stage    TYPE abap_bool.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
@@ -1029,9 +1029,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     mv_remote_label = COND #( WHEN mv_offline = abap_true THEN `ZIP` ELSE `Remote` ).
     mv_pull_text = COND #( WHEN mv_offline = abap_true THEN `Import ZIP` ELSE `Pull` ).
     mv_row_type = COND #( WHEN mv_offline = abap_true AND mv_zip IS INITIAL THEN `Inactive` ELSE `Navigation` ).
-    mv_can_stage = xsdbool( mv_offline = abap_false AND ( line_exists( ls_status-rows[ lstate = `A` ] )
-                         OR line_exists( ls_status-rows[ lstate = `M` ] )
-                         OR line_exists( ls_status-rows[ lstate = `D` ] ) ) ).
+    " Rule removal must stay reachable after all ignored files were committed
+    mv_can_stage = xsdbool( mv_offline = abap_false ).
     ms_head = CORRESPONDING #( ls_status ).
     ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
                                     THEN substring( val = ls_status-remote_commit len = 7 )

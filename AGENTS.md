@@ -26,6 +26,8 @@ present. It is Git-ignored.
   - `merge_decisions` for pull decisions (object **and** group)
   - `effective_transport` / `assert_transport` for transport requests
   - `check_selection` / `check_push_allowed` for staged files
+  - `ignore_repo_preview` / `assert_ignore_preview` for saving ignore rules:
+    fresh rules and affected files must match; previews never persist settings
   - `assert_branch` for a branch to switch to, against a fresh branch list
   - `assert_branch_name` / `assert_new_branch` for a new branch, after
     `branch_name` normalized it
@@ -66,7 +68,7 @@ present. It is Git-ignored.
 | Pull | `preview`, `merge_decisions`, `apply_decisions`, `effective_transport`, `assert_transport` |
 | Status | `status_rows`, `sort_status_rows`, `object_status_rows`, `change_highlight`, `format_timestamp` |
 | Diff | `map_diff`, `compact`, `to_side_by_side`, `remote_is_new`, `code_html`, `tinted_html`, `counts_text`, `visible` |
-| Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message` |
+| Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message`, `change_ignore_rules`, `ignore_preview`, `assert_ignore_preview` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
 | New repository | `normalize_new_repo`, `new_repo_errors` |

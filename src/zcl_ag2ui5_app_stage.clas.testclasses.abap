@@ -1,8 +1,9 @@
+CLASS ltcl_ignore DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_push DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch ltcl_header ltcl_object_links.
+CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_ignore ltcl_push ltcl_patch ltcl_header ltcl_object_links.
 
 "! Settings double: always the default, nothing stored - so a diff app the
 "! stage app creates does not read the tester's own settings
@@ -28,6 +29,10 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_message TYPE string.
     DATA mv_called TYPE REF TO z2ui5_if_app.
     DATA mv_view TYPE string.
+    DATA mv_popup TYPE string.
+    DATA mv_closed TYPE abap_bool.
+    DATA mv_arg1 TYPE string VALUE `/src/`.
+    DATA mv_arg2 TYPE string VALUE `zcl_a.clas.abap`.
 ENDCLASS.
 
 
@@ -57,7 +62,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event_arg.
-    result = SWITCH #( v WHEN 1 THEN `/src/` ELSE `zcl_a.clas.abap` ).
+    result = SWITCH #( v WHEN 1 THEN mv_arg1 ELSE mv_arg2 ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_call.
@@ -67,6 +72,12 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~nav_app_leave ##NEEDED.
   ENDMETHOD.
 
+  METHOD z2ui5_if_client~popup_display.
+    mv_popup = val.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popup_destroy.
+    mv_closed = abap_true.
+  ENDMETHOD.
   METHOD z2ui5_if_client~view_display.
     mv_view = val.
   ENDMETHOD.
@@ -85,6 +96,12 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA mv_received_token TYPE string.
     DATA mv_fail TYPE abap_bool.
     DATA mt_received_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+    DATA ms_stage TYPE zif_ag2ui5_repo_service=>ty_stage.
+    DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_ignore_preview.
+    DATA ms_saved TYPE zif_ag2ui5_repo_service=>ty_ignore_preview.
+    DATA mv_preview_rule TYPE string.
+    DATA mv_preview_remove TYPE abap_bool.
+    DATA mv_save_fail TYPE abap_bool.
 ENDCLASS.
 
 
@@ -99,7 +116,24 @@ CLASS ltd_service IMPLEMENTATION.
     rs_result-commit  = `abc1234`.
   ENDMETHOD.
 
-  METHOD zif_ag2ui5_repo_service~get_stage ##NEEDED.
+  METHOD zif_ag2ui5_repo_service~get_stage.
+    rs_stage = ms_stage.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~preview_ignore.
+    mv_preview_rule = iv_rule.
+    mv_preview_remove = iv_remove.
+    IF mv_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Preview failed` ).
+    ENDIF.
+    rs_preview = ms_preview.
+    rs_preview-rule = iv_rule.
+    rs_preview-remove = iv_remove.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~save_ignore.
+    IF mv_save_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Preview is stale` ).
+    ENDIF.
+    ms_saved = is_preview.
   ENDMETHOD.
 ENDCLASS.
 
@@ -191,7 +225,8 @@ CLASS ltcl_push IMPLEMENTATION.
   METHOD token_cleared_on_other_events.
     " abap2UI5 saves the draft after every event, and a typed token arrives
     " with whatever button is pressed next
-    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `PATCH` ) ( `BACK` ) ) INTO DATA(lv_event).
+    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `PATCH` ) ( `BACK` )
+      ( `RULES` ) ( `IGNORE` ) ( `RULE_REMOVE` ) ( `IGNORE_PREVIEW` ) ( `IGNORE_SAVE` ) ( `IGNORE_CANCEL` ) ) INTO DATA(lv_event).
       mo_app->mv_token = `secret-token`.
       mo_client->mv_event = lv_event.
 
@@ -386,5 +421,127 @@ CLASS ltcl_object_links IMPLEMENTATION.
     lo_app->on_event( ).
     lo_diff = CAST zcl_ag2ui5_app_diff( lo_client->mv_called ).
     cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_ignore DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_stage.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_service.
+    METHODS setup.
+    METHODS start FOR TESTING.
+    METHODS unknown_row FOR TESTING.
+    METHODS edit_refuses_save FOR TESTING.
+    METHODS preview_error FOR TESTING.
+    METHODS save_needs_preview FOR TESTING.
+    METHODS save_reloads FOR TESTING.
+    METHODS stale_save FOR TESTING.
+    METHODS remove_rule FOR TESTING.
+    METHODS cancel_clears FOR TESTING.
+ENDCLASS.
+CLASS ltcl_ignore IMPLEMENTATION.
+  METHOD setup.
+    mo_app = zcl_ag2ui5_app_stage=>create( iv_key = `1` iv_title = `test` ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app->client = mo_client.
+    mo_app->mi_service = mo_service.
+    mo_app->mt_rows = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` ) ).
+    mo_service->ms_preview-files = CORRESPONDING #( mo_app->mt_rows ).
+  ENDMETHOD.
+  METHOD start.
+    mo_client->mv_event = `IGNORE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_ignore_rule exp = `/src/zcl_a.clas.abap` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_ready ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_popup ).
+    mo_client->mv_event = `IGNORE_PREVIEW`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_ignore_ready ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_ignore_files ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_preview_rule exp = `/src/zcl_a.clas.abap` ).
+  ENDMETHOD.
+  METHOD unknown_row.
+    mo_client->mv_arg2 = `forged.abap`.
+    mo_client->mv_event = `IGNORE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+  ENDMETHOD.
+  METHOD edit_refuses_save.
+    start( ).
+    mo_app->mv_ignore_rule = `/src/other.abap`.
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_ready ).
+    cl_abap_unit_assert=>assert_initial( mo_service->ms_saved ).
+  ENDMETHOD.
+  METHOD preview_error.
+    start( ).
+    mo_service->mv_fail = abap_true.
+    mo_client->mv_event = `IGNORE_PREVIEW`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_ready ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_ignore_files ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Preview failed` ).
+  ENDMETHOD.
+  METHOD save_needs_preview.
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_service->ms_saved ).
+    start( ).
+    mo_app->mv_ignore_rule = `/src/other.abap`.
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_service->ms_saved ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_ready ).
+  ENDMETHOD.
+  METHOD save_reloads.
+    start( ).
+    mo_app->ms_commit-title = `Keep my title`.
+    mo_app->ms_commit-email = `tester@example.com`.
+    mo_app->mt_patches = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` ids = VALUE #( ( `N1` ) ) ) ).
+    mo_service->ms_stage-items = VALUE #( ( path = `/` filename = `.abapgit.xml` lstate = `M` ) ).
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_not_initial( mo_service->ms_saved ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_closed ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_ignore_preview ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_patches ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-filename exp = `.abapgit.xml` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_commit-title exp = `Keep my title` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_commit-email exp = `tester@example.com` ).
+  ENDMETHOD.
+  METHOD stale_save.
+    start( ).
+    mo_service->mv_save_fail = abap_true.
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_ready ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_closed ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_ignore_files ).
+  ENDMETHOD.
+  METHOD remove_rule.
+    mo_app->mt_ignore_rules = VALUE #( ( rule = `/src/*.abap` ) ).
+    mo_client->mv_arg1 = `/src/*.abap`.
+    mo_client->mv_event = `RULE_REMOVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_ignore_remove ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_ignore_editable ).
+    mo_client->mv_event = `IGNORE_PREVIEW`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_service->mv_preview_remove ).
+    mo_client->mv_event = `IGNORE_SAVE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_service->ms_saved-remove ).
+  ENDMETHOD.
+  METHOD cancel_clears.
+    start( ).
+    mo_client->mv_event = `IGNORE_CANCEL`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_ignore_files ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_ignore_preview ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_closed ).
   ENDMETHOD.
 ENDCLASS.

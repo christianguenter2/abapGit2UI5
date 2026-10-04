@@ -825,6 +825,53 @@ See [the design](superpowers/specs/2026-10-04-object-overview-design.md) and
   The compact browser viewport exposed a cramped filename
   column; the file dialog now gives filenames 55% of its width.
 
+## Staging ignore rules (2026-10-04)
+
+See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
+[implementation plan](superpowers/plans/2026-10-04-stage-ignore.md).
+
+- Staging and fresh push validation now use abapGit's native ignore matcher,
+  including starting-folder exclusions and ordered negation rules. Root
+  `.abapgit.xml` cannot be removed. The matcher lives only in the service;
+  app state contains plain data.
+- Per-file Ignore opens an exact path that can be edited into a pattern.
+  Preview lists affected staging files before Save. Ignore rules lists
+  existing rules and previews their removal. Saving persists the local
+  `.abapgit.xml` configuration and commits the SAP persistence, so the rule
+  change can be staged/shared normally; it never pushes or deletes the
+  ignored remote file. Saving reloads selections and patches while retaining
+  commit text and committer details. Online staging stays reachable without
+  local changes so rule management remains available.
+- Every save recomputes the preview against fresh rules and files. A stale
+  or forged preview is refused before writing. Removal uses an unregistered
+  repository copy to serialize files hidden by the old rule; previewing
+  never calls a settings setter or persists the simulated configuration.
+- abapGit does not read conventional `.gitignore` files. This slice uses its
+  `.abapgit.xml` rules instead, including `*`/`+` syntax, to keep behavior
+  consistent between clients. Conventional Git pattern interpretation is
+  still outside this slice.
+- ABAP Unit on A4H25: service 153/153, staging 23/23, status 29/29,
+  settings 10/10, diff 19/19, repositories 6/6, new repository 8/8:
+  **248/248 passed**. New coverage includes exclusions, negations, namespace
+  escapes, metadata protection, invalid/duplicate/missing rules, affected
+  files, stale previews, cancellation, removal, committer preservation and
+  token clearing on every new event.
+- Lint/render passes with no errors or warnings and only the existing
+  MessageStrip hint. Seven deployed sources/test includes match the working
+  tree on readback. Backups are under `/tmp/ag2ui5-stage-ignore-backup`.
+- Reversible `$UMLAUT` smoke test: one temporary source comment supplied a
+  staging candidate. A forged preview was refused, saving its exact ignore
+  hid the source and made `.abapgit.xml` a candidate, removal preview listed
+  the returning source, and removal restored it. No fixture remote push.
+- Chrome/SAP confirmed clean-repository Stage access, Ignore, preview/Save,
+  configuration staging, rule listing/removal, returning-file preview, and
+  pattern editing. Live testing exposed an Input change event consuming the
+  first Preview click; valueLiveUpdate and root-bound expressions now hide
+  stale results and disable Save immediately without that extra round trip.
+  A new unit test also caught reload overwriting an entered email; each
+  committer field is now defaulted independently. The final compact-viewport
+  dialog renders correctly. All temporary fixture changes were restored.
+
 ## Open points (as of 2026-10-04)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
@@ -838,10 +885,11 @@ Potential distinguishing features are collected in
 pull impact preview, recovery checkpoints and a repository cockpit. These
 are candidates for discussion, not committed slices.
 
-1. **Ignore and `.gitignore`** on the staging page.
-2. **Pushing to another branch** (creating one exists now).
-3. **Creating a transport request** from the pull dialog. Today the user is
+1. **Pushing to another branch** (creating one exists now).
+2. **Creating a transport request** from the pull dialog. Today the user is
    pointed to SE09.
+3. **Conventional `.gitignore` interpretation**, if desired beyond abapGit's
+   native `.abapgit.xml` rules.
 
 Upstream work (abapGit, abap2UI5, abapgit-agent): see
 `docs/upstream-notes.md`, which has the agreed order. The abapGit PR for the
@@ -865,7 +913,6 @@ Minor points left open by the reviews:
   - The request text is shown only in the logon language.
   - The newest request is preselected, not the user's default request.
 - Stage:
-  - Ignored files from `.abapgit.xml` are offered as candidates.
   - The status and staging pages read private repositories without
     credentials, so they work there only through the abapGit user exit.
 - Per slice, the minor points of the reviews are listed in their sections

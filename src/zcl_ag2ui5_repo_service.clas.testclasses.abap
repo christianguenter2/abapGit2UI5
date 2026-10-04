@@ -2228,3 +2228,125 @@ CLASS ltcl_object_status IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>object_status_rows( VALUE #( ) ) ).
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_ignore DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS native_filter FOR TESTING.
+    METHODS metadata_removal FOR TESTING.
+    METHODS ordered_negation FOR TESTING.
+    METHODS namespace_literal FOR TESTING.
+    METHODS add_remove FOR TESTING RAISING cx_static_check.
+    METHODS invalid_rules FOR TESTING.
+    METHODS preview_scope FOR TESTING RAISING cx_static_check.
+    METHODS no_match FOR TESTING.
+    METHODS stale_preview FOR TESTING RAISING cx_static_check.
+    METHODS results RETURNING VALUE(rt_rows) TYPE zif_abapgit_definitions=>ty_results_tt.
+ENDCLASS.
+CLASS ltcl_ignore IMPLEMENTATION.
+  METHOD results.
+    rt_rows = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` )
+      ( path = `/src/` filename = `zcl_b.clas.abap` lstate = `D` )
+      ( path = `/src/` filename = `zcl_a.clas.xml` lstate = `M` )
+      ( path = `/` filename = `.abapgit.xml` lstate = `M` )
+      ( path = `/` filename = `README.md` lstate = `D` ) ).
+  ENDMETHOD.
+  METHOD native_filter.
+    DATA(ls_dot) = VALUE zif_abapgit_dot_abapgit=>ty_dot_abapgit(
+      starting_folder = `/src/` ignore = VALUE #( ( `/src/*.clas.abap` ) ) ).
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>stage_candidates( it_results = results( ) is_dot = ls_dot ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 2 ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_rows[ filename = `.abapgit.xml` ] ) ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_rows[ filename = `zcl_b.clas.abap` ] ) ) ).
+  ENDMETHOD.
+  METHOD metadata_removal.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>stage_candidates(
+      VALUE #( ( path = `/` filename = `.abapgit.xml` lstate = `D` ) ) ).
+    cl_abap_unit_assert=>assert_initial( lt_rows ).
+  ENDMETHOD.
+  METHOD ordered_negation.
+    DATA(ls_dot) = VALUE zif_abapgit_dot_abapgit=>ty_dot_abapgit( starting_folder = `/src/`
+      ignore = VALUE #( ( `/src/*.abap` ) ( `!/src/zcl_a.clas.abap` ) ) ).
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>stage_candidates( it_results = results( ) is_dot = ls_dot ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_rows[ filename = `zcl_a.clas.abap` ] ) ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( lt_rows[ filename = `zcl_b.clas.abap` ] ) ) ).
+  ENDMETHOD.
+  METHOD namespace_literal.
+    DATA(ls_dot) = VALUE zif_abapgit_dot_abapgit=>ty_dot_abapgit( starting_folder = `/src/`
+      ignore = VALUE #( ( `/src/#test#cl_a.clas.+bap` ) ) ).
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>stage_candidates( is_dot = ls_dot
+      it_results = VALUE #( ( path = `/src/` filename = `#test#cl_a.clas.abap` lstate = `A` )
+        ( path = `/src/` filename = `testcl_a.clas.abap` lstate = `A` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ 1 ]-filename exp = `testcl_a.clas.abap` ).
+  ENDMETHOD.
+  METHOD add_remove.
+    DATA(ls_dot) = VALUE zif_abapgit_dot_abapgit=>ty_dot_abapgit( starting_folder = `/src/` ).
+    DATA(ls_added) = zcl_ag2ui5_repo_service=>change_ignore_rules( is_dot = ls_dot iv_rule = `/src/*.abap` ).
+    cl_abap_unit_assert=>assert_initial( ls_dot-ignore ).
+    cl_abap_unit_assert=>assert_equals( act = ls_added-starting_folder exp = `/src/` ).
+    DATA(ls_removed) = zcl_ag2ui5_repo_service=>change_ignore_rules(
+      is_dot = ls_added iv_rule = `/src/*.abap` iv_remove = abap_true ).
+    cl_abap_unit_assert=>assert_equals( act = ls_removed exp = ls_dot ).
+  ENDMETHOD.
+  METHOD invalid_rules.
+    LOOP AT VALUE string_table( ( `` ) ( `*.abap` ) ( `/.abapgit.xml` ) ( `/.apack-manifest.xml` )
+        ( |/src/a{ cl_abap_char_utilities=>newline }b| ) ( |/src/a{ cl_abap_char_utilities=>horizontal_tab }b| )
+        ( repeat( val = `/` occ = 256 ) ) ) INTO DATA(lv_rule).
+      TRY.
+          zcl_ag2ui5_repo_service=>change_ignore_rules( is_dot = VALUE #( ) iv_rule = lv_rule ).
+          cl_abap_unit_assert=>fail( `Invalid rule accepted` ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
+    TRY.
+        zcl_ag2ui5_repo_service=>change_ignore_rules( is_dot = VALUE #( ignore = VALUE #( ( `/src/a` ) ) )
+          iv_rule = `/src/a` ).
+        cl_abap_unit_assert=>fail( `Duplicate accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+    TRY.
+        zcl_ag2ui5_repo_service=>change_ignore_rules( is_dot = VALUE #( ) iv_rule = `/src/a` iv_remove = abap_true ).
+        cl_abap_unit_assert=>fail( `Missing rule removed` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD preview_scope.
+    DATA(ls_preview) = zcl_ag2ui5_repo_service=>ignore_preview( it_results = results( )
+      is_dot = VALUE #( starting_folder = `/src/` ) iv_rule = `/src/*.clas.abap` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_preview-files ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_preview-files[ 1 ]-filename exp = `zcl_a.clas.abap` ).
+    cl_abap_unit_assert=>assert_initial( ls_preview-rules ).
+    DATA(ls_remove) = zcl_ag2ui5_repo_service=>ignore_preview( it_results = results( )
+      is_dot = VALUE #( starting_folder = `/src/` ignore = VALUE #( ( `/src/*.clas.abap` ) ) )
+      iv_rule = `/src/*.clas.abap` iv_remove = abap_true ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_remove-files ) exp = 2 ).
+  ENDMETHOD.
+  METHOD no_match.
+    TRY.
+        zcl_ag2ui5_repo_service=>ignore_preview( it_results = results( )
+          is_dot = VALUE #( starting_folder = `/src/` ) iv_rule = `/src/no-such-file` ).
+        cl_abap_unit_assert=>fail( `Empty preview accepted` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD stale_preview.
+    DATA(ls_preview) = zcl_ag2ui5_repo_service=>ignore_preview( it_results = results( )
+      is_dot = VALUE #( starting_folder = `/src/` ) iv_rule = `/src/*.abap` ).
+    zcl_ag2ui5_repo_service=>assert_ignore_preview( is_expected = ls_preview is_fresh = ls_preview ).
+    DO 4 TIMES.
+      DATA(ls_changed) = ls_preview.
+      CASE sy-index.
+        WHEN 1. APPEND `/src/other` TO ls_changed-rules.
+        WHEN 2. DELETE ls_changed-files INDEX 1.
+        WHEN 3. ls_changed-files[ 1 ]-rstate = `M`.
+        WHEN 4. ls_changed-rule = `/src/*`.
+      ENDCASE.
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_ignore_preview( is_expected = ls_preview is_fresh = ls_changed ).
+          cl_abap_unit_assert=>fail( `Stale preview accepted` ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+ENDCLASS.

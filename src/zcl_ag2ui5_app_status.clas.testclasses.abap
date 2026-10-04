@@ -268,6 +268,7 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS start_loads_offline FOR TESTING.
     METHODS offline_controls FOR TESTING.
     METHODS online_controls FOR TESTING.
+    METHODS clean_online_can_manage_rules FOR TESTING.
     METHODS upload_preview FOR TESTING RAISING zcx_abapgit_exception.
     METHODS invalid_keeps_previous FOR TESTING.
     METHODS cancel_keeps_previous FOR TESTING.
@@ -330,6 +331,14 @@ CLASS ltcl_offline IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="true" text="Export ZIP"` ) ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Branches"` ) ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Stage"` ) ).
+  ENDMETHOD.
+
+  METHOD clean_online_can_manage_rules.
+    mo_service->ms_status-offline = abap_false.
+    mo_service->ms_status-rows = VALUE #( ( path = `/src/` filename = `ztest.abap` changed = abap_false ) ).
+    mo_client->mv_init = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_can_stage ).
   ENDMETHOD.
 
   METHOD online_controls.
