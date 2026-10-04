@@ -2,6 +2,10 @@
 
 Design: [Object links to ADT](../specs/2026-10-04-object-links-design.md).
 
+Completed and pushed as `51fcf82`; deployed on A4H25. Browser checks passed
+for link placement and file navigation. Final Eclipse editor opening remains
+unverified. Results: [findings](../../findings.md#object-links-to-adt-2026-10-04).
+
 1. Check SAP's URI mapper with representative native and legacy object types.
 2. Add optional link strings to service results and request-local resolution
    after existing authorization checks, keeping pure mapping methods pure.

@@ -876,7 +876,16 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
-diff colours, search field focus, URLs as links.
+diff colours, search field focus, URLs as links, object links to ADT,
+Files / Objects overview and native staging ignore rules.
+
+Session handoff (2026-10-04): `main` contains object links (`51fcf82`), object
+overview (`12b4a37`) and staging ignore rules (`8125509`), all pushed and
+deployed through ADT on A4H25. Latest verification: 248/248 SAP unit tests,
+lint/render checks and browser workflows passed; temporary `$UMLAUT`
+changes were restored. Final editor opening in Eclipse remains unverified.
+The next suitable feature discussed is pushing to another branch; it has
+not been started.
 
 Next slices:
 
@@ -892,8 +901,8 @@ are candidates for discussion, not committed slices.
    native `.abapgit.xml` rules.
 
 Upstream work (abapGit, abap2UI5, abapgit-agent): see
-`docs/upstream-notes.md`, which has the agreed order. The abapGit PR for the
-form feed in a partial push is open.
+`docs/upstream-notes.md`, which has the agreed order. The abapGit form-feed
+fix in PR #7922 was merged on 2026-10-02, as recorded there.
 
 Minor points left open by the reviews:
 

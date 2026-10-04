@@ -52,9 +52,10 @@ Example for `ZCL_INVOICE`:
 
 Example for `ZINVOICE`: field `CURRENCY` added; field `AMOUNT` changed.
 
-First slice: the planned per-object status view, followed by structural
-summaries for classes/interfaces and supported metadata. Link each summary
-to its source diff. Other object types can fall back to the raw diff.
+The per-object status view is implemented (2026-10-04). A next slice could
+add structural summaries for classes/interfaces and supported metadata.
+Link each summary to its source diff. Other object types can fall back to
+the raw diff.
 
 Structural observations must be distinguished from claims about behavior.
 Parsing support, method boundaries, renames and metadata format differences
@@ -111,7 +112,7 @@ ordinary repository listing should remain quick.
 
 Named change sets are the strongest candidate for a flagship workflow.
 Semantic object review is the suggested smaller first slice: it extends the
-planned per-object view and makes the benefit visible immediately.
+available per-object view and makes the benefit visible immediately.
 
 Together: understand what changed, organize it by task, and publish precisely
 that work. This is a recommendation from the discussion; prioritization and

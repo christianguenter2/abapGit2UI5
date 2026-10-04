@@ -2,6 +2,9 @@
 
 Design: [Object overview](../specs/2026-10-04-object-overview-design.md).
 
+Completed and pushed as `12b4a37`; deployed and browser-verified on A4H25.
+Results: [findings](../../findings.md#object-overview-2026-10-04).
+
 1. Add plain object summary types and a pure grouping method; native tests
    exercise counts, states, keys and ordering before implementation.
 2. Add the allow-listed per-user overview setting, preserving Files as the

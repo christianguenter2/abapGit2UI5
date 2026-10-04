@@ -47,6 +47,13 @@ present. It is Git-ignored.
   login manager for the one call and clears them in `CLEANUP`.
 - After `push( )` the service calls `COMMIT WORK AND WAIT`, as abapGit does.
   abap2UI5 rolls back after `main( )`.
+- **Ignore rules:** use abapGit's `.abapgit.xml` matcher, including starting
+  folder exclusions and ordered negations; conventional `.gitignore` is not
+  interpreted. `save_ignore` commits local configuration persistence too.
+  Removal previews use an unregistered repository copy, never persist its
+  settings. Keep online Stage reachable with no local changes so rules can
+  still be removed after a commit. Saving rules clears stale selections and
+  patches while retaining commit text and committer details.
 - **Offline ZIPs:** the status and diff apps retain the original ZIP bytes
   in PROTECTED attributes. `get_repo` restores the offline remote files on
   every status, diff, preview and pull call; without a ZIP it clears them.
@@ -101,6 +108,12 @@ row of abapGit's four check tables needs a decision, or abapGit's
   `get( )-r_event_data`.
 - Event arguments arrive as abap2UI5 sends them: a boolean is `X` or space,
   not `true`. App tests with a client double must send the same values.
+- `ObjectAttribute.customContent` accepts a Link or Text, not an HBox. Use
+  a direct Link when an ADT URI exists and ordinary attribute text otherwise.
+- For an editable rule with Preview/Save, an Input `change` server event can
+  consume the next button click while its round trip runs. Use
+  `valueLiveUpdate` and expressions built with `client->_bind` to hide stale
+  previews and disable Save; compare the rule again on the server.
 - Code reaches the browser through `sap.m.FormattedText` (`code_html`): it is
   escaped in ABAP, and UI5 sanitizes it too. Control characters must be
   replaced before they reach the model (`visible`): abap2UI5's JSON escaping
