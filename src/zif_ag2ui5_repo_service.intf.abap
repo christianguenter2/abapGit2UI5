@@ -56,6 +56,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     BEGIN OF ty_status_row,
       obj_type TYPE string,
       obj_name TYPE string,
+      "! Local object in ADT; empty when unavailable
+      object_link TYPE string,
       path     TYPE string,
       filename TYPE string,
       lstate   TYPE string,
@@ -92,6 +94,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     BEGIN OF ty_decision_item,
       obj_type   TYPE string,
       obj_name   TYPE string,
+      "! Local object in ADT; empty when unavailable
+      object_link TYPE string,
       group      TYPE ty_group,
       reason     TYPE string,
       selected   TYPE abap_bool,
@@ -201,6 +205,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       filename TYPE string,
       obj_type TYPE string,
       obj_name TYPE string,
+      "! Local object in ADT; empty when unavailable
+      object_link TYPE string,
       lstate   TYPE string,
       "! Set when Git changed the file too - it must be pulled first
       rstate   TYPE string,

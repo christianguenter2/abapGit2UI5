@@ -309,6 +309,24 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_object_link,
+        obj_type TYPE string,
+        obj_name TYPE string,
+        href     TYPE string,
+      END OF ty_object_link,
+      ty_object_links TYPE HASHED TABLE OF ty_object_link WITH UNIQUE KEY obj_type obj_name.
+
+    "! Request-local cache, including objects that cannot be opened
+    CLASS-METHODS object_link
+      IMPORTING
+        iv_obj_type TYPE string
+        iv_obj_name TYPE string
+      CHANGING
+        ct_links TYPE ty_object_links
+      RETURNING
+        VALUE(rv_link) TYPE string.
+
     "! abapGit's own checks for a normalized form; adds to ct_errors. A
     "! field that already has an error is not checked again
     METHODS check_new_repo
@@ -1328,6 +1346,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
 
     rs_stage-items = stage_candidates( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+    DATA lt_links TYPE ty_object_links.
+    LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
+                                                   iv_obj_name = <ls_row>-obj_name
+                                         CHANGING ct_links = lt_links ).
+    ENDLOOP.
 
     " the committer abapGit remembers for this repository, else the user's default
     DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
@@ -1563,6 +1587,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       rs_status-remote_commit = li_online->get_current_remote( ).
     ENDIF.
     rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+    DATA lt_links TYPE ty_object_links.
+    LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
+                                                   iv_obj_name = <ls_row>-obj_name
+                                         CHANGING ct_links = lt_links ).
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1579,6 +1609,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     li_repo->refresh( iv_drop_cache = abap_true ).
 
     rs_preview = preview( li_repo->deserialize_checks( ) ).
+    DATA lt_links TYPE ty_object_links.
+    LOOP AT rs_preview-items ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
+                                                   iv_obj_name = <ls_row>-obj_name
+                                         CHANGING ct_links = lt_links ).
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1723,6 +1759,55 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                  is_checks = ls_delete_checks
                                  ii_log    = ii_log ).
     ii_repo->refresh( iv_drop_log = abap_false ).
+
+  ENDMETHOD.
+
+  METHOD object_link.
+
+    READ TABLE ct_links INTO DATA(ls_link)
+      WITH TABLE KEY obj_type = iv_obj_type obj_name = iv_obj_name.
+    IF sy-subrc = 0.
+      rv_link = ls_link-href.
+      RETURN.
+    ENDIF.
+
+    DATA lo_factory TYPE REF TO object.
+    DATA lo_mapper TYPE REF TO object.
+    DATA lo_ref TYPE REF TO object.
+    DATA lo_wb TYPE REF TO cl_wb_object.
+    FIELD-SYMBOLS <lv_uri> TYPE string.
+
+    " Never invent a URI for a remote-only object or truncate a transport key
+    IF iv_obj_type IS NOT INITIAL AND strlen( iv_obj_type ) <= 4
+        AND iv_obj_name IS NOT INITIAL AND strlen( iv_obj_name ) <= 40.
+      TRY.
+          DATA(ls_item) = VALUE zif_abapgit_definitions=>ty_item(
+            obj_type = iv_obj_type obj_name = iv_obj_name ).
+          IF zcl_abapgit_objects=>exists( ls_item ) = abap_true.
+            cl_wb_object=>create_from_transport_key(
+              EXPORTING p_object = CONV trobjtype( iv_obj_type )
+                        p_obj_name = CONV trobj_name( iv_obj_name )
+              RECEIVING p_wb_object = lo_wb
+              EXCEPTIONS OTHERS = 1 ).
+            IF sy-subrc = 0.
+              CALL METHOD ('CL_ADT_TOOLS_CORE_FACTORY')=>('GET_INSTANCE')
+                RECEIVING result = lo_factory.
+              CALL METHOD lo_factory->('IF_ADT_TOOLS_CORE_FACTORY~GET_URI_MAPPER')
+                RECEIVING result = lo_mapper.
+              CALL METHOD lo_mapper->('IF_ADT_URI_MAPPER~MAP_WB_OBJECT_TO_OBJREF')
+                EXPORTING wb_object = lo_wb RECEIVING result = lo_ref.
+              ASSIGN ('LO_REF->REF_DATA-URI') TO <lv_uri>.
+              IF sy-subrc = 0 AND <lv_uri> CP '/sap/bc/adt/*'.
+                rv_link = |adt://{ sy-sysid }{ <lv_uri> }|.
+              ENDIF.
+            ENDIF.
+          ENDIF.
+        CATCH cx_root.
+          " A navigation failure must not prevent status, staging or pull
+          CLEAR rv_link.
+      ENDTRY.
+    ENDIF.
+    INSERT VALUE #( obj_type = iv_obj_type obj_name = iv_obj_name href = rv_link ) INTO TABLE ct_links.
 
   ENDMETHOD.
 

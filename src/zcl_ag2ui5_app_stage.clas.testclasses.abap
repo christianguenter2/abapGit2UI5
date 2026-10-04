@@ -1,7 +1,8 @@
+CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_push DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch ltcl_header.
+CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_push ltcl_patch ltcl_header ltcl_object_links.
 
 "! Settings double: always the default, nothing stored - so a diff app the
 "! stage app creates does not read the tester's own settings
@@ -354,4 +355,36 @@ CLASS ltcl_header IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS setup.
+    METHODS teardown.
+    METHODS link_handoff FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_object_links IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD link_handoff.
+    DATA(lo_app) = zcl_ag2ui5_app_stage=>create( iv_key = `1` iv_title = `test` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->mt_rows = VALUE #( ( obj_type = `CLAS` obj_name = `ZCL_A`
+      path = `/src/` filename = `zcl_a.clas.abap` object_link = `adt://A4H/example` ) ).
+    lo_client->mv_event = `DIFF`.
+    lo_app->on_event( ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( lo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+    lo_client->mv_event = `PATCH`.
+    lo_app->on_event( ).
+    lo_diff = CAST zcl_ag2ui5_app_diff( lo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+  ENDMETHOD.
 ENDCLASS.

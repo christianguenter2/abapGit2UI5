@@ -1,8 +1,9 @@
+CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_columns DEFINITION DEFERRED.
 CLASS ltcl_settings DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns ltcl_settings ltcl_header.
+CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns ltcl_settings ltcl_header ltcl_object_links.
 
 "! abap2UI5 client for one event with its arguments
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -473,4 +474,38 @@ CLASS ltcl_header IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS setup.
+    METHODS teardown.
+    METHODS link_handoff FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_object_links IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD link_handoff.
+    DATA(lo_app) = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/`
+      iv_filename = `zcl_a.clas.abap` iv_obj_type = `CLAS` iv_obj_name = `ZCL_A`
+      iv_object_link = `adt://A4H/example` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->view_display( ).
+    " The link must belong to ObjectAttribute customContent, not its siblings.
+    FIND REGEX `<ObjectAttribute title="Object">\s*<customContent>\s*<Link`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+    CLEAR lo_app->ms_head-object_link.
+    lo_app->view_display( ).
+    FIND REGEX `<ObjectAttribute title="Object" text="[^"]*"/>`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+  ENDMETHOD.
 ENDCLASS.

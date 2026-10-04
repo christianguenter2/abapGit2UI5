@@ -748,7 +748,51 @@ ZIP through the pull dialog, export a ZIP).
   File-URL access was required only for the browser automation's local test
   uploads; it did not fix the uploader rendering defect.
 
-## Open points (as of 2026-10-03)
+## Object links to ADT (2026-10-04)
+
+See [the design](superpowers/specs/2026-10-04-object-links-design.md) and
+[implementation plan](superpowers/plans/2026-10-04-object-links.md).
+
+- Object names link to the local object in status, staging and pull
+  decisions; the diff page has an Object attribute with the same link,
+  including patch mode. Missing or unresolved objects use normal text.
+- The service checks local existence and uses SAP's Workbench object/ADT
+  URI mapper. Its authorized calls return plain link strings and cache each
+  distinct object, including unsuccessful lookups, within the call. Pure
+  mapping and decision helpers remain unchanged. Diff navigation carries
+  the already resolved link.
+- Native mapper probe: all 13 representative types returned a URI: CLAS,
+  INTF, PROG, TABL, DOMA, DTEL, DEVC, TRAN, FUGR, DDLS, MSAG, SHLP, ENHO.
+  TRAN and SHLP returned legacy Workbench navigation URIs; opening their
+  editors through ADT is not verified.
+- ABAP Unit on A4H25: service 138/138, status 20/20, stage 14/14,
+  diff 19/19 (191 affected-suite tests). New tests cover existing/missing
+  objects, invalid keys, cache keys, navigation handoff and diff placement.
+- Service smoke tests: `$UMLAUT` returned 3 linked files of 5 in 542 ms;
+  `$ABAPGIT` returned 1,389 linked files of 1,404 in 8,161 ms. Repository
+  metadata files have no object link. This repository's staging returned
+  9 candidates with 9 links. Offline export/status and a comparison-only
+  ZIP edit returned links to `ZCL_TEST_OFFLINE`; its preview had exactly
+  one decision. Nothing was imported, committed or pushed by these tests.
+- Local lint/render gate passed with no errors or warnings and the existing
+  MessageStrip hint. A headless screenshot with an existing and remote-only
+  object exposed the faint disabled-link styling; fallback now uses Text.
+- Existing objects and test includes were backed up under
+  `/tmp/ag2ui5-object-links-backup` and activated through ADT. All nine
+  deployed source files matched the working tree on readback; the three
+  app suites passed again after the final normal-text fallback change.
+- Browser follow-up after Chris signed in: status links on
+  `$ABAP-OPENAPI-UI` carry the expected ADT URIs, including legacy object
+  types. Clicking the object leaves status in place; clicking its file
+  opens the diff. The real browser found that ObjectAttribute accepts only
+  Link/Text in customContent: the fallback HBox hid the diff's Object
+  attribute. Fixed with a direct Link or the attribute's text; the diff
+  link now appears and its native regression test passes.
+- External-protocol clicks detach browser automation while leaving the
+  page intact. Eclipse is registered as the ADT handler, but the final
+  editor opening cannot be confirmed through this browser session.
+
+## Open points (as of 2026-10-04)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),

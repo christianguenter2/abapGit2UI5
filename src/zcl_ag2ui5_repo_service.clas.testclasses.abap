@@ -1,3 +1,6 @@
+CLASS ltcl_object_links DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_object_links.
+
 CLASS ltcl_pull_internals DEFINITION DEFERRED.
 CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_pull_internals.
 
@@ -2094,4 +2097,66 @@ CLASS ltcl_zip IMPLEMENTATION.
     rejects( lo_zip->save( ) ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS existing_interface FOR TESTING.
+    METHODS missing_object FOR TESTING.
+    METHODS invalid_key FOR TESTING.
+    METHODS cache_by_object FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_object_links IMPLEMENTATION.
+  METHOD existing_interface.
+    DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
+    DATA(lv_link) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTF` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICE`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_link exp = |adt://{ sy-sysid }/sap/bc/adt/oo/interfaces/zif_ag2ui5_repo_service| ).
+  ENDMETHOD.
+
+  METHOD missing_object.
+    DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
+    DATA(lv_link) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `CLAS` iv_obj_name = `ZCL_AG2UI5_LINK_DOES_NOT_EXIST`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_initial( lv_link ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_links ) exp = 1 ).
+  ENDMETHOD.
+
+  METHOD invalid_key.
+    DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
+    DATA(lv_link) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTFX` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICE`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_initial( lv_link ).
+    lv_link = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTF` iv_obj_name = ``
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_initial( lv_link ).
+    lv_link = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTF` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICEXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_initial( lv_link ).
+  ENDMETHOD.
+
+  METHOD cache_by_object.
+    DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
+    DATA(lv_first) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTF` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICE`
+      CHANGING ct_links = lt_links ).
+    DATA(lv_second) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `INTF` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICE`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_equals( act = lv_second exp = lv_first ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_links ) exp = 1 ).
+    lv_second = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `CLAS` iv_obj_name = `ZIF_AG2UI5_REPO_SERVICE`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_initial( lv_second ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_links ) exp = 2 ).
+  ENDMETHOD.
 ENDCLASS.

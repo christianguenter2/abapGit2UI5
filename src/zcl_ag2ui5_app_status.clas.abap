@@ -20,6 +20,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       BEGIN OF ty_row,
         obj_type TYPE string,
         obj_name TYPE string,
+        object_link TYPE string,
         path     TYPE string,
         filename TYPE string,
         local    TYPE string,
@@ -388,8 +389,16 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     DATA(cells) = item->ele( `cells` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{OBJ_NAME}` ).
+    cells->ele( `HBox`
+        )->ele( `items`
+            )->tag( `Link`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `href`    v = `{OBJECT_LINK}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} !== '' }`
+                )->a( n = `tooltip` v = `Open object in ADT`
+            )->tag( `Text`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{FILENAME}` ).
     cells->tag( `Text`
@@ -500,6 +509,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       ENDIF.
       INSERT VALUE #( obj_type  = ls_status_row-obj_type
                       obj_name  = ls_status_row-obj_name
+                      object_link = ls_status_row-object_link
                       path      = ls_status_row-path
                       filename  = ls_status_row-filename
                       local     = state_text( ls_status_row-lstate )
@@ -751,8 +761,16 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `enabled`  v = `{SELECTABLE}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{OBJ_NAME}` ).
+    cells->ele( `HBox`
+        )->ele( `items`
+            )->tag( `Link`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `href`    v = `{OBJECT_LINK}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} !== '' }`
+                )->a( n = `tooltip` v = `Open object in ADT`
+            )->tag( `Text`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{REASON}` ).
 
@@ -787,6 +805,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
                                                              iv_obj_name = ls_row-obj_name
+                                                             iv_object_link = ls_row-object_link
                                                              iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
                                                                                   iv_lstate = ls_row-lstate
                                                                                   iv_rstate = ls_row-rstate ) ) ).

@@ -1,5 +1,6 @@
+CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline.
+CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -449,4 +450,35 @@ CLASS ltcl_offline IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( xsdbool( lo_diff->ms_head-legend CS `Git` ) ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    METHODS setup.
+    METHODS teardown.
+    METHODS link_handoff FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_object_links IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD link_handoff.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->mt_status = VALUE #( ( obj_type = `CLAS` obj_name = `ZCL_A`
+      path = `/src/` filename = `zcl_a.clas.abap` object_link = `adt://A4H/example` ) ).
+    lo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = lo_app->mt_rows[ 1 ]-object_link exp = `adt://A4H/example` ).
+    lo_client->mv_event = `DIFF`.
+    lo_client->mt_args = VALUE #( ( `/src/` ) ( `zcl_a.clas.abap` ) ).
+    lo_app->on_event( ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( lo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+  ENDMETHOD.
 ENDCLASS.

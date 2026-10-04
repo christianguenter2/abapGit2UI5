@@ -49,6 +49,11 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 Not part of it yet: ignore and `.gitignore`,
 pushing to another branch, and creating a transport request from the dialog.
 
+Object names in status, staging and pull decisions link to the local object
+in Eclipse/ADT. The diff page offers the same link. Objects that are missing
+locally or cannot be resolved stay as plain text. Enable the `adt` link
+handler in Eclipse under **General > Link Handlers** to open these links.
+
 | Repositories | Status | Diff |
 |---|---|---|
 | ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Diff of one file](docs/screenshots/diff.png) |

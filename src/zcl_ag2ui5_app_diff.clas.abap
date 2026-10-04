@@ -10,6 +10,8 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     TYPES:
       BEGIN OF ty_head,
         title     TYPE string,
+        object_name TYPE string,
+        object_link TYPE string,
         file      TYPE string,
         counts    TYPE string,
         direction TYPE string,
@@ -83,6 +85,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         iv_filename   TYPE string
         iv_obj_type   TYPE string
         iv_obj_name   TYPE string
+        iv_object_link TYPE string OPTIONAL
         iv_remote_is_new TYPE abap_bool DEFAULT abap_false
         iv_patch      TYPE abap_bool DEFAULT abap_false
         it_picked     TYPE string_table OPTIONAL
@@ -156,6 +159,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     ro_app->ms_head-remote_label = `Remote`.
     ro_app->ms_head-legend = `Local: the version in this system. Remote: the version in Git. Green (+) is the side that changed.`.
     ro_app->ms_head-title = |{ iv_obj_type } { iv_obj_name }|.
+    ro_app->ms_head-object_name = iv_obj_name.
+    ro_app->ms_head-object_link = iv_object_link.
     ro_app->ms_head-file  = |{ iv_path }{ iv_filename }|.
     " a patch is made on local changes: the system is always the new side
     ro_app->mv_remote_is_new = xsdbool( iv_remote_is_new = abap_true AND iv_patch = abap_false ).
@@ -320,15 +325,26 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     DATA(content) = page->ele( `content` ).
 
-    content->ele( `ObjectHeader`
+    DATA(attributes) = content->ele( `ObjectHeader`
         )->a( n = `title` v = client->_bind( ms_head-file )
-        )->ele( `attributes`
-            )->tag( `ObjectAttribute`
-                )->a( n = `title` v = `Lines`
-                )->a( n = `text`  v = client->_bind( ms_head-counts )
-            )->tag( `ObjectAttribute`
-                )->a( n = `title` v = `Direction`
-                )->a( n = `text`  v = client->_bind( ms_head-direction ) ).
+        )->ele( `attributes` ).
+    DATA(object_attribute) = attributes->ele( `ObjectAttribute`
+        )->a( n = `title` v = `Object` ).
+    IF ms_head-object_link IS NOT INITIAL.
+      object_attribute->ele( `customContent`
+          )->tag( `Link`
+              )->a( n = `text` v = client->_bind( ms_head-object_name )
+              )->a( n = `href` v = client->_bind( ms_head-object_link )
+              )->a( n = `tooltip` v = `Open object in ADT` ).
+    ELSE.
+      object_attribute->a( n = `text` v = client->_bind( ms_head-object_name ) ).
+    ENDIF.
+    attributes->tag( `ObjectAttribute`
+        )->a( n = `title` v = `Lines`
+        )->a( n = `text`  v = client->_bind( ms_head-counts ) ).
+    attributes->tag( `ObjectAttribute`
+        )->a( n = `title` v = `Direction`
+        )->a( n = `text`  v = client->_bind( ms_head-direction ) ).
 
     content->tag( `MessageStrip`
         )->a( n = `text`     v = client->_bind( ms_head-legend )

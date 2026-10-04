@@ -15,6 +15,7 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         filename TYPE string,
         obj_type TYPE string,
         obj_name TYPE string,
+        object_link TYPE string,
         lstate   TYPE string,
         rstate   TYPE string,
         action   TYPE string,
@@ -248,8 +249,16 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `selected` v = `{SELECTED}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{OBJ_TYPE}` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{OBJ_NAME}` ).
+    cells->ele( `HBox`
+        )->ele( `items`
+            )->tag( `Link`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `href`    v = `{OBJECT_LINK}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} !== '' }`
+                )->a( n = `tooltip` v = `Open object in ADT`
+            )->tag( `Text`
+                )->a( n = `text`    v = `{OBJ_NAME}`
+                )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{FILENAME}` ).
     cells->tag( `Text`
@@ -331,7 +340,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                                              iv_path     = ls_row-path
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
-                                                             iv_obj_name = ls_row-obj_name ) ).
+                                                             iv_obj_name = ls_row-obj_name
+                                                             iv_object_link = ls_row-object_link ) ).
         ENDIF.
       WHEN `PATCH`.
         READ TABLE mt_rows INTO ls_row
@@ -343,6 +353,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             iv_filename = ls_row-filename
             iv_obj_type = ls_row-obj_type
             iv_obj_name = ls_row-obj_name
+            iv_object_link = ls_row-object_link
             iv_patch    = abap_true
             it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
