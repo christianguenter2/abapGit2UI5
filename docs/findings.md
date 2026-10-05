@@ -971,6 +971,13 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
 
 ## Open points (as of 2026-10-05)
 
+End-of-day handoff: pull Mark all / Unmark all is committed and pushed as
+`ff4228a`, deployed on A4H25 and confirmed working by Chris. The status suite
+passed 34/34; the latest results across unchanged suites total 282/282.
+Lint/render and Chrome toggle/cancel checks passed. No pull was performed
+during this verification. No implementation work is pending; choose the next
+slice with Chris when resuming.
+
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
 diff colours, search field focus, URLs as links, object links to ADT,
