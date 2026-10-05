@@ -319,6 +319,14 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         is_repo          TYPE zif_ag2ui5_repo_service=>ty_new_repo
       RETURNING
         VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+    CLASS-METHODS normalize_new_package
+      IMPORTING is_package TYPE zif_ag2ui5_repo_service=>ty_new_package
+      RETURNING VALUE(rs_package) TYPE zif_ag2ui5_repo_service=>ty_new_package.
+
+    CLASS-METHODS new_package_errors
+      IMPORTING is_package TYPE zif_ag2ui5_repo_service=>ty_new_package
+      RETURNING VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+
     "! Binary upload, validated before the app replaces its previous ZIP
     CLASS-METHODS decode_zip
       IMPORTING
@@ -2139,6 +2147,199 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       obj_name = ls_message-obj_name ) INTO TABLE rt_messages.
     ENDLOOP.
 
+  ENDMETHOD.
+
+  METHOD normalize_new_package.
+    rs_package = is_package.
+    rs_package-package = to_upper( condense( is_package-package ) ).
+    rs_package-description = shift_right( shift_left( is_package-description ) ).
+    rs_package-software_component = to_upper( condense( is_package-software_component ) ).
+    rs_package-transport_layer = to_upper( condense( is_package-transport_layer ) ).
+    rs_package-super_package = to_upper( condense( is_package-super_package ) ).
+    rs_package-transport = to_upper( condense( is_package-transport ) ).
+    rs_package-abap_lang_vers = condense( is_package-abap_lang_vers ).
+  ENDMETHOD.
+
+  METHOD new_package_errors.
+    TYPES: BEGIN OF ty_limit,
+             field TYPE string,
+             length TYPE i,
+           END OF ty_limit.
+    DATA lt_limits TYPE STANDARD TABLE OF ty_limit WITH EMPTY KEY.
+    lt_limits = VALUE #( ( field = `package` length = 30 ) ( field = `description` length = 60 )
+      ( field = `software_component` length = 20 ) ( field = `transport_layer` length = 4 )
+      ( field = `super_package` length = 30 ) ( field = `transport` length = 20 ) ).
+    LOOP AT lt_limits INTO DATA(ls_limit).
+      ASSIGN COMPONENT to_upper( ls_limit-field ) OF STRUCTURE is_package TO FIELD-SYMBOL(<lv_value>).
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+      IF strlen( <lv_value> ) > ls_limit-length.
+        INSERT VALUE #( field = ls_limit-field text = |Maximum length is { ls_limit-length } characters| ) INTO TABLE rt_errors.
+      ELSE.
+        FIND REGEX `[[:cntrl:]]` IN <lv_value>.
+        IF sy-subrc = 0.
+          INSERT VALUE #( field = ls_limit-field text = `Control characters are not allowed` ) INTO TABLE rt_errors.
+        ENDIF.
+      ENDIF.
+    ENDLOOP.
+    IF is_package-package IS INITIAL.
+      INSERT VALUE #( field = `package` text = `Enter a package` ) INTO TABLE rt_errors.
+    ENDIF.
+    IF is_package-description IS INITIAL.
+      INSERT VALUE #( field = `description` text = `Enter a description` ) INTO TABLE rt_errors.
+    ENDIF.
+    IF is_package-software_component IS INITIAL.
+      INSERT VALUE #( field = `software_component` text = `Enter a software component` ) INTO TABLE rt_errors.
+    ENDIF.
+    IF is_package-package CP '$*'.
+      IF is_package-software_component <> `LOCAL` AND is_package-software_component <> `ZLOCAL`.
+        INSERT VALUE #( field = `software_component` text = `A local package needs LOCAL or ZLOCAL` ) INTO TABLE rt_errors.
+      ENDIF.
+      IF is_package-transport IS NOT INITIAL OR is_package-transport_layer IS NOT INITIAL.
+        INSERT VALUE #( field = `transport` text = `A local package does not use a transport request or layer` ) INTO TABLE rt_errors.
+      ENDIF.
+    ELSEIF is_package-package IS NOT INITIAL.
+      IF is_package-software_component = `LOCAL` OR is_package-software_component = `ZLOCAL`.
+        INSERT VALUE #( field = `software_component` text = `Use a transportable software component, for example HOME` ) INTO TABLE rt_errors.
+      ENDIF.
+      IF is_package-transport IS INITIAL.
+        INSERT VALUE #( field = `transport` text = `Choose a workbench transport request` ) INTO TABLE rt_errors.
+      ENDIF.
+    ENDIF.
+    IF is_package-abap_lang_vers IS NOT INITIAL AND is_package-abap_lang_vers <> `ignore`
+        AND is_package-abap_lang_vers <> `standard` AND is_package-abap_lang_vers <> `keyUser`
+        AND is_package-abap_lang_vers <> `cloudDevelopment`.
+      INSERT VALUE #( text = `Unknown ABAP language version` ) INTO TABLE rt_errors.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~package_defaults.
+    silence_progress( ).
+    assert_authorized( ).
+    rs_package-package = to_upper( condense( iv_package ) ).
+    rs_package-description = rs_package-package.
+    rs_package-abap_lang_vers = iv_abap_lang_vers.
+    IF rs_package-package CP '$*'.
+      rs_package-software_component = COND #( WHEN iv_abap_lang_vers = `cloudDevelopment` THEN `ZLOCAL` ELSE `LOCAL` ).
+      rs_package-super_package = COND #( WHEN iv_abap_lang_vers = `cloudDevelopment` THEN `ZLOCAL` ELSE `$TMP` ).
+    ELSE.
+      rs_package-software_component = COND #( WHEN iv_abap_lang_vers = `cloudDevelopment` THEN `ZCUSTOM_DEVELOPMENT` ELSE `HOME` ).
+      rs_package-super_package = COND #( WHEN iv_abap_lang_vers = `cloudDevelopment` THEN `ZCUSTOM_DEVELOPMENT` ).
+      rs_package-transport_layer = zcl_abapgit_factory=>get_sap_package( 'DUMMY' )->get_default_transport_layer( ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~create_package.
+    silence_progress( ).
+    assert_authorized( ).
+    rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-invalid.
+    DATA(ls_form) = normalize_new_package( is_package ).
+    rs_result-errors = new_package_errors( ls_form ).
+    IF zcl_abapgit_auth=>is_allowed( zif_abapgit_auth=>c_authorization-create_repo ) = abap_false.
+      INSERT VALUE #( text = `You are not authorized to create repositories` ) INTO TABLE rs_result-errors.
+    ENDIF.
+    IF rs_result-errors IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+
+    TRY.
+        DATA(li_sap_package) = zcl_abapgit_factory=>get_sap_package( CONV #( ls_form-package ) ).
+        li_sap_package->validate_name( ).
+        IF li_sap_package->exists( ) = abap_true.
+          zcx_abapgit_exception=>raise( |Package { ls_form-package } already exists| ).
+        ENDIF.
+        zcl_abapgit_repo_srv=>get_instance( )->validate_package( CONV #( ls_form-package ) ).
+        assert_pull_allowed( CONV #( ls_form-package ) ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        INSERT VALUE #( field = `package` text = lx_error->get_text( ) ) INTO TABLE rs_result-errors.
+    ENDTRY.
+
+    IF ls_form-super_package IS NOT INITIAL.
+      TRY.
+          DATA(li_parent) = zcl_abapgit_factory=>get_sap_package( CONV #( ls_form-super_package ) ).
+          IF li_parent->exists( ) = abap_false OR ls_form-super_package = ls_form-package.
+            zcx_abapgit_exception=>raise( `Choose an existing, different superpackage` ).
+          ENDIF.
+          " $TMP and ZLOCAL are containers, not repository roots to pull into
+          IF ls_form-super_package <> `$TMP` AND ls_form-super_package <> `ZLOCAL`.
+            assert_pull_allowed( CONV #( ls_form-super_package ) ).
+            zcl_abapgit_repo_srv=>get_instance( )->validate_package(
+              iv_package = CONV #( ls_form-super_package ) iv_ign_subpkg = abap_true ).
+          ENDIF.
+          DATA(ls_parent) = li_parent->get( ).
+          IF ls_parent-dlvunit <> ls_form-software_component.
+            zcx_abapgit_exception=>raise( `The software component must match the superpackage` ).
+          ENDIF.
+          IF ls_form-package CP '$*' AND li_parent->are_changes_recorded_in_tr_req( ) = abap_true.
+            zcx_abapgit_exception=>raise( `A local package needs a local superpackage` ).
+          ELSEIF ls_form-package NP '$*' AND li_parent->are_changes_recorded_in_tr_req( ) = abap_false.
+            zcx_abapgit_exception=>raise( `A transportable package needs a transportable superpackage` ).
+          ENDIF.
+        CATCH zcx_abapgit_exception INTO lx_error.
+          INSERT VALUE #( field = `super_package` text = lx_error->get_text( ) ) INTO TABLE rs_result-errors.
+      ENDTRY.
+    ENDIF.
+    IF ls_form-package NP '$*'.
+      TRY.
+          assert_transport( iv_transport = ls_form-transport
+            it_transports = zif_ag2ui5_repo_service~list_transports( `K` ) ).
+        CATCH zcx_abapgit_exception INTO lx_error.
+          INSERT VALUE #( field = `transport` text = lx_error->get_text( ) ) INTO TABLE rs_result-errors.
+      ENDTRY.
+    ENDIF.
+    IF rs_result-errors IS NOT INITIAL.
+      RETURN.
+    ENDIF.
+
+    DATA ls_data TYPE scompkdtln.
+    DATA li_package TYPE REF TO if_package.
+    ls_data-devclass = ls_form-package.
+    ls_data-ctext = ls_form-description.
+    ls_data-dlvunit = ls_form-software_component.
+    ls_data-pdevclass = ls_form-transport_layer.
+    ls_data-parentcl = ls_form-super_package.
+    ls_data-as4user = sy-uname.
+    ls_data-korrflag = xsdbool( ls_form-package NP '$*' ).
+    ls_data-packkind = SWITCH #( ls_form-abap_lang_vers WHEN `keyUser` THEN '2' WHEN `cloudDevelopment` THEN '5' ELSE space ).
+
+    cl_package_factory=>create_new_package(
+      EXPORTING i_reuse_deleted_object = abap_true i_suppress_dialog = abap_true
+      IMPORTING e_package = li_package
+      CHANGING c_package_data = ls_data
+      EXCEPTIONS object_already_existing = 1 object_just_created = 2 not_authorized = 3
+        wrong_name_prefix = 4 undefined_name = 5 reserved_local_name = 6 invalid_package_name = 7
+        short_text_missing = 8 software_component_invalid = 9 layer_invalid = 10 author_not_existing = 11
+        component_not_existing = 12 component_missing = 13 prefix_in_use = 14 unexpected_error = 15 intern_err = 16
+        OTHERS = 17 ).
+    IF sy-subrc <> 0.
+      zcx_abapgit_exception=>raise_t100( ).
+    ENDIF.
+    li_package->save(
+      EXPORTING i_transport_request = CONV #( ls_form-transport ) i_suppress_dialog = abap_true
+      EXCEPTIONS object_invalid = 1 object_not_changeable = 2 cancelled_in_corr = 3 permission_failure = 4
+        unexpected_error = 5 intern_err = 6 OTHERS = 7 ).
+    IF sy-subrc <> 0.
+      DATA lv_error TYPE string.
+      MESSAGE ID sy-msgid TYPE 'S' NUMBER sy-msgno WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4 INTO lv_error.
+      li_package->delete( EXPORTING i_suppress_dialog = abap_true
+        EXCEPTIONS object_not_empty = 1 object_not_changeable = 2 object_invalid = 3 intern_err = 4 OTHERS = 5 ).
+      IF sy-subrc <> 0.
+        lv_error = |{ lv_error } (The failed package could not be discarded; retry in a new session.)|.
+      ENDIF.
+      ROLLBACK WORK.
+      zcx_abapgit_exception=>raise( lv_error ).
+    ENDIF.
+    li_package->set_changeable( EXPORTING i_changeable = abap_false i_suppress_dialog = abap_true
+      EXCEPTIONS OTHERS = 1 ).
+    IF sy-subrc <> 0.
+      " Creation succeeded; commit it even if SAP could not release its lock
+      COMMIT WORK AND WAIT.
+      zcx_abapgit_exception=>raise( |Package { ls_form-package } was created, but SAP could not release its lock| ).
+    ENDIF.
+    COMMIT WORK AND WAIT.
+    rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-created.
+    rs_result-package = ls_form-package.
   ENDMETHOD.
 
   METHOD normalize_new_repo.

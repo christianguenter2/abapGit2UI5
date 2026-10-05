@@ -28,6 +28,10 @@ CLASS zcl_ag2ui5_app_new_repo DEFINITION
     DATA ms_error_text TYPE ty_error_texts.
     "! an error that belongs to no field
     DATA mv_message TYPE string.
+    DATA ms_package TYPE zif_ag2ui5_repo_service=>ty_new_package.
+    DATA ms_package_error TYPE zif_ag2ui5_repo_service=>ty_new_package.
+    DATA mv_package_message TYPE string.
+    DATA mt_package_transports TYPE zif_ag2ui5_repo_service=>ty_transports.
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
@@ -37,6 +41,9 @@ CLASS zcl_ag2ui5_app_new_repo DEFINITION
     METHODS view_display.
     METHODS on_event.
     METHODS create_repo.
+    METHODS package_open.
+    METHODS package_display.
+    METHODS package_create.
     METHODS show_errors
       IMPORTING
         it_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors.
@@ -78,6 +85,13 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
         client->nav_app_leave( ).
       WHEN `CREATE`.
         create_repo( ).
+      WHEN `PACKAGE_OPEN`.
+        package_open( ).
+      WHEN `PACKAGE_CREATE`.
+        package_create( ).
+      WHEN `PACKAGE_CANCEL`.
+        client->popup_destroy( ).
+        CLEAR: ms_package, ms_package_error, mv_package_message, mt_package_transports.
     ENDCASE.
 
   ENDMETHOD.
@@ -238,6 +252,10 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
         )->a( n = `valueState`     v = |\{= $\{{ client->_bind( val = ms_error_text-package path = abap_true ) }\} ? 'Error' : 'None' \}|
         )->a( n = `valueStateText` v = client->_bind( ms_error_text-package ) ).
 
+    form->tag( `Link`
+        )->a( n = `text` v = `Create package...`
+        )->a( n = `press` v = client->_event( `PACKAGE_OPEN` ) ).
+
     form->tag( `Label`
         )->a( n = `text`    v = `Display name`
         )->a( n = `visible` v = |\{= $\{{ client->_bind( val = ms_repo-kind path = abap_true ) }\} === 'ONLINE' \}| ).
@@ -319,6 +337,142 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
 
     client->view_display( view->stringify( ) ).
 
+  ENDMETHOD.
+
+  METHOD package_open.
+    CLEAR: ms_package_error, mv_package_message.
+    TRY.
+        ms_package = service( )->package_defaults( iv_package = ms_repo-package iv_abap_lang_vers = ms_repo-abap_lang_vers ).
+        mt_package_transports = service( )->list_transports( `K` ).
+        INSERT VALUE #( text = `Choose a request` ) INTO mt_package_transports INDEX 1.
+        package_display( ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        mv_message = lx_error->get_text( ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD package_create.
+    CLEAR: ms_package_error, mv_package_message.
+    TRY.
+        DATA(ls_result) = service( )->create_package( ms_package ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        mv_package_message = lx_error->get_text( ).
+        RETURN.
+    ENDTRY.
+    IF ls_result-outcome = zif_ag2ui5_repo_service=>c_outcome-created.
+      ms_repo-package = ls_result-package.
+      CLEAR ms_error_text-package.
+      client->popup_destroy( ).
+      client->message_toast_display( |Package { ls_result-package } created| ).
+      CLEAR: ms_package, ms_package_error, mv_package_message, mt_package_transports.
+      RETURN.
+    ENDIF.
+    FIELD-SYMBOLS <lv_text> TYPE string.
+    LOOP AT ls_result-errors INTO DATA(ls_error).
+      UNASSIGN <lv_text>.
+      IF ls_error-field IS NOT INITIAL.
+        ASSIGN COMPONENT to_upper( ls_error-field ) OF STRUCTURE ms_package_error TO <lv_text>.
+      ENDIF.
+      IF <lv_text> IS ASSIGNED.
+        <lv_text> = ls_error-text.
+      ELSE.
+        mv_package_message = COND #( WHEN mv_package_message IS INITIAL THEN ls_error-text
+                                    ELSE |{ mv_package_message } { ls_error-text }| ).
+      ENDIF.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD package_display.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns` v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->a( n = `xmlns:form` v = `sap.ui.layout.form`
+        )->ele( `Dialog`
+            )->a( n = `title` v = `Create package`
+            )->a( n = `contentWidth` v = `38rem` ).
+    DATA(content) = dialog->ele( `content` )->ele( `VBox` )->a( n = `class` v = `sapUiSmallMargin` ).
+    content->tag( `Text`
+        )->a( n = `text` v = `The package is created separately and remains if repository creation later fails.` ).
+    content->tag( `MessageStrip`
+        )->a( n = `text` v = client->_bind( mv_package_message )
+        )->a( n = `type` v = `Error`
+        )->a( n = `showIcon` v = `true`
+        )->a( n = `visible` v = |\{= !!${ client->_bind( mv_package_message ) } \}| ).
+    DATA(form) = content->ele( n = `SimpleForm` ns = `form`
+        )->a( n = `editable` v = `true`
+        )->a( n = `layout` v = `ResponsiveGridLayout`
+        )->ele( n = `content` ns = `form` ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Package`
+        )->a( n = `required` v = `true` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_package-package )
+        )->a( n = `maxLength` v = `30`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-package ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-package ) ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Description`
+        )->a( n = `required` v = `true` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_package-description )
+        )->a( n = `maxLength` v = `60`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-description ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-description ) ).
+    form->tag( `Label`
+        )->a( n = `text` v = `Software component`
+        )->a( n = `required` v = `true` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_package-software_component )
+        )->a( n = `maxLength` v = `20`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-software_component ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-software_component ) ).
+    form->tag( `Label` )->a( n = `text` v = `Transport layer` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_package-transport_layer )
+        )->a( n = `maxLength` v = `4`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-transport_layer ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-transport_layer ) ).
+    form->tag( `Label` )->a( n = `text` v = `Superpackage` ).
+    form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_package-super_package )
+        )->a( n = `maxLength` v = `30`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-super_package ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-super_package ) ).
+    form->tag( `Label` )->a( n = `text` v = `Workbench transport request` ).
+    form->ele( `Select`
+        )->a( n = `selectedKey` v = client->_bind( ms_package-transport )
+        )->a( n = `forceSelection` v = `false`
+        )->a( n = `width` v = `100%`
+        )->a( n = `items` v = client->_bind( mt_package_transports )
+        )->a( n = `valueState` v = |\{= ${ client->_bind( ms_package_error-transport ) } ? 'Error' : 'None' \}|
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-transport )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key` v = `{TRKORR}`
+                )->a( n = `text` v = `{TRKORR} {TEXT}` ).
+    form->tag( `Text` )->a( n = `text` v = `Required for transportable packages. Leave empty for local $ packages.` ).
+    form->tag( `Label` )->a( n = `text` v = `ABAP language version` ).
+    form->tag( `Input`
+        )->a( n = `value` v = |\{= ${ client->_bind( ms_package-abap_lang_vers ) } ? ${ client->_bind( ms_package-abap_lang_vers ) } : 'Standard' \}|
+        )->a( n = `editable` v = `false`
+        )->a( n = `placeholder` v = `Standard (from repository settings)`
+        )->a( n = `valueStateText` v = client->_bind( ms_package_error-abap_lang_vers ) ).
+    dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Create package`
+            )->a( n = `type` v = `Emphasized`
+            )->a( n = `press` v = client->_event( `PACKAGE_CREATE` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Cancel`
+            )->a( n = `press` v = client->_event( `PACKAGE_CANCEL` ) ).
+    client->popup_display( popup->stringify( ) ).
   ENDMETHOD.
 
   METHOD service.

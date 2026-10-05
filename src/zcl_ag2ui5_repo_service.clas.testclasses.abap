@@ -2350,3 +2350,85 @@ CLASS ltcl_ignore IMPLEMENTATION.
     ENDDO.
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_new_package DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS normalization FOR TESTING.
+    METHODS required_fields FOR TESTING.
+    METHODS no_truncation FOR TESTING.
+    METHODS local_has_no_transport FOR TESTING.
+    METHODS transport_required FOR TESTING.
+    METHODS invalid_does_not_create FOR TESTING RAISING cx_static_check.
+    METHODS existing_is_refused FOR TESTING RAISING cx_static_check.
+    METHODS local_defaults FOR TESTING RAISING cx_static_check.
+ENDCLASS.
+
+CLASS ltcl_new_package IMPLEMENTATION.
+  METHOD normalization.
+    DATA(ls_form) = zcl_ag2ui5_repo_service=>normalize_new_package( VALUE #(
+      package = `  $test_new ` description = `  Keep   inner blanks  `
+      software_component = ` local ` super_package = ` $tmp ` transport = ` a4hk900148 ` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `$TEST_NEW` act = ls_form-package ).
+    cl_abap_unit_assert=>assert_equals( exp = `Keep   inner blanks` act = ls_form-description ).
+    cl_abap_unit_assert=>assert_equals( exp = `LOCAL` act = ls_form-software_component ).
+    cl_abap_unit_assert=>assert_equals( exp = `$TMP` act = ls_form-super_package ).
+    cl_abap_unit_assert=>assert_equals( exp = `A4HK900148` act = ls_form-transport ).
+  ENDMETHOD.
+  METHOD required_fields.
+    DATA(lt_errors) = zcl_ag2ui5_repo_service=>new_package_errors( VALUE #( ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `package` ] ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `description` ] ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `software_component` ] ) ) ).
+  ENDMETHOD.
+  METHOD no_truncation.
+    DATA(lt_errors) = zcl_ag2ui5_repo_service=>new_package_errors( VALUE #(
+      package = repeat( val = `Z` occ = 31 ) description = repeat( val = `X` occ = 61 )
+      software_component = repeat( val = `X` occ = 21 ) transport_layer = `ABCDE`
+      super_package = repeat( val = `X` occ = 31 ) transport = repeat( val = `X` occ = 21 ) ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 6 act = lines( lt_errors ) ).
+  ENDMETHOD.
+  METHOD local_has_no_transport.
+    DATA(ls_form) = VALUE zif_ag2ui5_repo_service=>ty_new_package(
+      package = `$NEW` description = `Local` software_component = `LOCAL` super_package = `$TMP` ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_package_errors( ls_form ) ).
+    ls_form-transport = `A4HK900148`.
+    DATA(lt_errors) = zcl_ag2ui5_repo_service=>new_package_errors( ls_form ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `transport` ] ) ) ).
+    CLEAR ls_form-transport.
+    ls_form-software_component = `HOME`.
+    lt_errors = zcl_ag2ui5_repo_service=>new_package_errors( ls_form ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `software_component` ] ) ) ).
+  ENDMETHOD.
+  METHOD transport_required.
+    DATA(ls_form) = VALUE zif_ag2ui5_repo_service=>ty_new_package(
+      package = `ZNEW` description = `Transportable` software_component = `HOME` transport_layer = `ZDEV` ).
+    DATA(lt_errors) = zcl_ag2ui5_repo_service=>new_package_errors( ls_form ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( lt_errors[ field = `transport` ] ) ) ).
+    ls_form-transport = `A4HK900148`.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_package_errors( ls_form ) ).
+  ENDMETHOD.
+  METHOD invalid_does_not_create.
+    DATA(li_service) = CAST zif_ag2ui5_repo_service( NEW zcl_ag2ui5_repo_service( ) ).
+    DATA(ls_result) = li_service->create_package( VALUE #( package = `$AG2UI5_NEVER_CREATE` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `INVALID` act = ls_result-outcome ).
+    cl_abap_unit_assert=>assert_false( zcl_abapgit_factory=>get_sap_package( '$AG2UI5_NEVER_CREATE' )->exists( ) ).
+  ENDMETHOD.
+  METHOD existing_is_refused.
+    DATA(li_service) = CAST zif_ag2ui5_repo_service( NEW zcl_ag2ui5_repo_service( ) ).
+    DATA(ls_result) = li_service->create_package( VALUE #( package = `$TMP` description = `Existing`
+      software_component = `LOCAL` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `INVALID` act = ls_result-outcome ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( ls_result-errors[ field = `package` ] ) ) ).
+  ENDMETHOD.
+  METHOD local_defaults.
+    DATA(li_service) = CAST zif_ag2ui5_repo_service( NEW zcl_ag2ui5_repo_service( ) ).
+    DATA(ls_form) = li_service->package_defaults( ` $new ` ).
+    cl_abap_unit_assert=>assert_equals( exp = `$NEW` act = ls_form-package ).
+    cl_abap_unit_assert=>assert_equals( exp = `LOCAL` act = ls_form-software_component ).
+    cl_abap_unit_assert=>assert_equals( exp = `$TMP` act = ls_form-super_package ).
+    ls_form = li_service->package_defaults( iv_package = `$NEW` iv_abap_lang_vers = `cloudDevelopment` ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZLOCAL` act = ls_form-super_package ).
+    cl_abap_unit_assert=>assert_equals( exp = `ZLOCAL` act = ls_form-software_component ).
+  ENDMETHOD.
+ENDCLASS.

@@ -18,7 +18,9 @@ Date: 2026-10-03. Status: approved in chat.
   login.
 - **No pull.** abapGit does not pull after creating a repository either.
   An online repository opens on its status page, where Pull imports.
-- **No package creation.** The package must exist, or (online only) the
+- **Original slice: no package creation.** Superseded by the
+  [package creation slice](2026-10-05-create-package-design.md).
+  In the original slice, the package must exist, or (online only) the
   remote must contain a package file, which abapGit's rule allows: the
   first pull creates the package then.
 

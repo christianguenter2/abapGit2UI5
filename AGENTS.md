@@ -40,6 +40,9 @@ present. It is Git-ignored.
   - `create_repo` for a new repository: `normalize_new_repo`,
     `new_repo_errors`, then abapGit's own checks and the self-update guard
     for the package. Nothing is written while one fails
+  - `create_package`: normalize and validate lengths before converting to SAP
+    fields, refuse existing packages, check the parent and repository hierarchy,
+    and validate the transport against a fresh workbench request list
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
@@ -47,6 +50,12 @@ present. It is Git-ignored.
   login manager for the one call and clears them in `CLEANUP`.
 - After `push( )` the service calls `COMMIT WORK AND WAIT`, as abapGit does.
   abap2UI5 rolls back after `main( )`.
+- **Package creation:** this is a separate action from repository registration.
+  abapGit's package `create` leaves dialog suppression unset, so the service
+  uses SAP's factory/save with `i_suppress_dialog = abap_true` and passes the
+  checked transport explicitly. Commit after success; discard a new in-memory
+  package after a failed save. `$TMP` and `ZLOCAL` are permitted as local
+  containers, not as repository roots to bypass the self-update guard.
 - **Ignore rules:** use abapGit's `.abapgit.xml` matcher, including starting
   folder exclusions and ordered negations; conventional `.gitignore` is not
   interpreted. `save_ignore` commits local configuration persistence too.
@@ -79,6 +88,7 @@ present. It is Git-ignored.
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
 | New repository | `normalize_new_repo`, `new_repo_errors` |
+| New package | `normalize_new_package`, `new_package_errors` |
 | Offline ZIP | `decode_zip`, `zip_files` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every

@@ -13,6 +13,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mo_left_to TYPE REF TO z2ui5_if_app.
     "! what the page handed over when it left
     DATA mv_left_data TYPE string.
+    DATA mv_popup TYPE string.
+    DATA mv_popup_closed TYPE abap_bool.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -30,6 +32,12 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_toast_display.
     mv_toast = text.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popup_display.
+    mv_popup = val.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popup_destroy.
+    mv_popup_closed = abap_true.
   ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_leave.
     mv_left = abap_true.
@@ -53,9 +61,25 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA ms_result TYPE zif_ag2ui5_repo_service=>ty_new_repo_result.
     DATA mv_fail TYPE abap_bool.
     DATA ms_received TYPE zif_ag2ui5_repo_service=>ty_new_repo.
+    DATA ms_package_result TYPE zif_ag2ui5_repo_service=>ty_package_result.
+    DATA ms_package_received TYPE zif_ag2ui5_repo_service=>ty_new_package.
 ENDCLASS.
 
 CLASS ltd_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~package_defaults.
+    rs_package = VALUE #( package = to_upper( iv_package ) description = `New package`
+      software_component = `LOCAL` super_package = `$TMP` abap_lang_vers = iv_abap_lang_vers ).
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~list_transports.
+    rt_transports = VALUE #( ( trkorr = `A4HK900148` text = `Test request` ) ).
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~create_package.
+    ms_package_received = is_package.
+    IF mv_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Package permission denied` ).
+    ENDIF.
+    rs_result = ms_package_result.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~create_repo.
     ms_received = is_repo.
     IF mv_fail = abap_true.
@@ -88,6 +112,10 @@ CLASS ltcl_app DEFINITION FINAL FOR TESTING
     METHODS exception_to_message FOR TESTING.
     METHODS back_leaves FOR TESTING.
     METHODS back_never_overflows FOR TESTING.
+    METHODS package_cancel_keeps_form FOR TESTING.
+    METHODS package_created_keeps_form FOR TESTING.
+    METHODS package_errors_and_retry FOR TESTING.
+    METHODS package_exception_keeps_inputs FOR TESTING.
 ENDCLASS.
 
 
@@ -177,6 +205,63 @@ CLASS ltcl_app IMPLEMENTATION.
     fire( `BACK` ).
     cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
     cl_abap_unit_assert=>assert_not_bound( mo_client->mo_left_to ).
+  ENDMETHOD.
+
+  METHOD package_cancel_keeps_form.
+    DATA(ls_before) = mo_app->ms_repo.
+    fire( `PACKAGE_OPEN` ).
+    cl_abap_unit_assert=>assert_equals( exp = ls_before-package act = mo_app->ms_package-package ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*Create package*` act = mo_client->mv_popup ).
+    mo_app->ms_package-package = `$OTHER`.
+    fire( `PACKAGE_CANCEL` ).
+    cl_abap_unit_assert=>assert_equals( exp = ls_before act = mo_app->ms_repo ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_package ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_popup_closed ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_left ).
+  ENDMETHOD.
+
+  METHOD package_created_keeps_form.
+    mo_app->ms_repo-labels = `keep labels`.
+    mo_app->ms_repo-branch = `feature/test`.
+    DATA(ls_expected) = mo_app->ms_repo.
+    ls_expected-package = `$NEW_PACKAGE`.
+    fire( `PACKAGE_OPEN` ).
+    mo_app->ms_package-package = `$new_package`.
+    mo_app->ms_error_text-package = `old error`.
+    mo_service->ms_package_result = VALUE #( outcome = `CREATED` package = `$NEW_PACKAGE` ).
+    fire( `PACKAGE_CREATE` ).
+    cl_abap_unit_assert=>assert_equals( exp = ls_expected act = mo_app->ms_repo ).
+    cl_abap_unit_assert=>assert_equals( exp = `$new_package` act = mo_service->ms_package_received-package ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_error_text-package ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_popup_closed ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_left ).
+  ENDMETHOD.
+
+  METHOD package_errors_and_retry.
+    fire( `PACKAGE_OPEN` ).
+    mo_service->ms_package_result = VALUE #( outcome = `INVALID`
+      errors = VALUE #( ( field = `description` text = `Enter a description` ) ( text = `Denied` ) ) ).
+    DATA(ls_before) = mo_app->ms_package.
+    fire( `PACKAGE_CREATE` ).
+    cl_abap_unit_assert=>assert_equals( exp = ls_before act = mo_app->ms_package ).
+    cl_abap_unit_assert=>assert_equals( exp = `Enter a description` act = mo_app->ms_package_error-description ).
+    cl_abap_unit_assert=>assert_equals( exp = `Denied` act = mo_app->mv_package_message ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_popup_closed ).
+    mo_service->ms_package_result-errors = VALUE #( ( field = `transport` text = `Choose a request` ) ).
+    fire( `PACKAGE_CREATE` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_package_error-description ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_package_message ).
+    cl_abap_unit_assert=>assert_equals( exp = `Choose a request` act = mo_app->ms_package_error-transport ).
+  ENDMETHOD.
+
+  METHOD package_exception_keeps_inputs.
+    fire( `PACKAGE_OPEN` ).
+    DATA(ls_before) = mo_app->ms_package.
+    mo_service->mv_fail = abap_true.
+    fire( `PACKAGE_CREATE` ).
+    cl_abap_unit_assert=>assert_equals( exp = ls_before act = mo_app->ms_package ).
+    cl_abap_unit_assert=>assert_equals( exp = `Package permission denied` act = mo_app->mv_package_message ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_popup_closed ).
   ENDMETHOD.
 
   METHOD back_never_overflows.

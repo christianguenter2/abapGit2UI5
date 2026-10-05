@@ -872,20 +872,54 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
   committer field is now defaulted independently. The final compact-viewport
   dialog renders correctly. All temporary fixture changes were restored.
 
-## Open points (as of 2026-10-04)
+## Create package from New repository (2026-10-05)
+
+- The package field now has **Create package...**. Its dialog prepopulates
+  the entered name and local/transportable defaults. Cancel retains the form;
+  success fills the normalized package name, clears its old error and retains
+  every other repository field. Errors retain dialog inputs and clear on retry.
+- The service returns plain data, rejects oversized fields before SAP type
+  conversion, checks startup/create authorization, refuses existing packages,
+  checks the parent/component/hierarchy and self-update protection, and checks
+  the selected transport against a fresh workbench request list. SAP enforces
+  package naming, components, layers and development authorizations.
+- abapGit's package create API leaves dialog suppression unset. We use SAP
+  factory/create and save directly inside the service, with suppression on both
+  and the checked transport passed explicitly. Success commits; a failed save
+  discards the new package in memory and rolls back.
+- Native SAP smoke tests created `$AG2UI5_CPKG_TEST` and
+  `ZAG2UI5_CPKG_TEST` (request `A4HK900148`). A separate request confirmed their
+  TDEVC persistence, correct LOCAL/HOME component and change recording.
+  Duplicate creation and forged transport were refused. The new local package
+  worked with both online (`abapGit-tests/CLAS`) and offline repository
+  registration. Temporary registrations and both empty packages were removed.
+  No objects were imported and no fixture remote was changed.
+- **260/260 native tests passed:** service 161, settings 10, stage 23, diff 19,
+  status 29, repository list 6, new repository 12. Lint/render checks pass with
+  the existing status MessageStrip hint. Desktop (1280x900) and phone (390x844)
+  screenshots of the form and dialog were inspected using the UI5 renderer.
+- Sources deployed via ADT; all five production/test source readbacks match
+  the local files byte for byte. Live Chrome interaction remains unverified because
+  browser control is unavailable in this session. Cloud defaults are covered
+  by tests; actual cloud package creation and authorization-denial paths were
+  not exercised on A4H25.
+
+## Open points (as of 2026-10-05)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
 diff colours, search field focus, URLs as links, object links to ADT,
-Files / Objects overview and native staging ignore rules.
+Files / Objects overview, native staging ignore rules and package creation
+from New repository.
 
 Session handoff (2026-10-04): `main` contains object links (`51fcf82`), object
 overview (`12b4a37`) and staging ignore rules (`8125509`), all pushed and
 deployed through ADT on A4H25. Latest verification: 248/248 SAP unit tests,
 lint/render checks and browser workflows passed; temporary `$UMLAUT`
 changes were restored. Final editor opening in Eclipse remains unverified.
-The next suitable feature discussed is pushing to another branch; it has
-not been started.
+The 2026-10-05 package-creation slice is deployed, with 260/260 native tests.
+Its SAP smoke fixtures were removed; a live Chrome check remains open.
+Pushing to another branch has not been started.
 
 Next slices:
 

@@ -326,6 +326,40 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       errors  TYPE ty_field_errors,
     END OF ty_new_repo_result.
 
+  TYPES:
+    BEGIN OF ty_new_package,
+      package            TYPE string,
+      description        TYPE string,
+      software_component TYPE string,
+      transport_layer    TYPE string,
+      super_package      TYPE string,
+      transport          TYPE string,
+      abap_lang_vers     TYPE string,
+    END OF ty_new_package,
+    BEGIN OF ty_package_result,
+      outcome TYPE ty_outcome,
+      package TYPE string,
+      errors  TYPE ty_field_errors,
+    END OF ty_package_result.
+
+  METHODS package_defaults
+    IMPORTING
+      iv_package       TYPE string
+      iv_abap_lang_vers TYPE string OPTIONAL
+    RETURNING
+      VALUE(rs_package) TYPE ty_new_package
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Creates only a new package; repository creation remains a separate step
+  METHODS create_package
+    IMPORTING
+      is_package TYPE ty_new_package
+    RETURNING
+      VALUE(rs_result) TYPE ty_package_result
+    RAISING
+      zcx_abapgit_exception.
+
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos

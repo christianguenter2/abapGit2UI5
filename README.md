@@ -12,8 +12,12 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   as a table or as tiles (one card per repository).
 - **New repository:** online (from a Git URL) or offline, with abapGit's
   settings and its own checks; each error is shown on its field. No
-  credentials (a private repository needs abapGit's user exit), no package
-  creation (an online repository may bring its package along).
+  credentials (a private repository needs abapGit's user exit).
+  **Create package...** beside the package field creates a local or
+  transportable package and returns its name to the form. Transportable
+  packages need an existing workbench request; the server checks it again.
+  Package creation is a separate step, so the package remains if repository
+  creation later fails. An online repository may also bring its package along.
 - **Offline repositories:** open an offline repository, import an abapGit or
   GitHub source ZIP through the same pull decision dialog, or export the
   current local files as a ZIP. Status and diff compare the uploaded ZIP
