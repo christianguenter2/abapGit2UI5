@@ -177,6 +177,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS rows_build.
     METHODS preview_pull.
     METHODS pull_selected.
+    METHODS mark_decisions IMPORTING iv_selected TYPE abap_bool.
 
     METHODS service
       RETURNING
@@ -458,6 +459,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->a( n = `contentWidth` v = `48rem` ).
 
     DATA(content) = dialog->ele( `content` ).
+
+    content->ele( `OverflowToolbar`
+        )->tag( `ToolbarSpacer`
+        )->tag( `Button`
+            )->a( n = `text` v = `Mark all`
+            )->a( n = `press` v = client->_event( `PULL_MARK_ALL` )
+        )->tag( `Button`
+            )->a( n = `text` v = `Unmark all`
+            )->a( n = `press` v = client->_event( `PULL_UNMARK_ALL` ) ).
 
     IF ms_transport_types-transport IS NOT INITIAL.
       transport_display( io_content         = content
@@ -1008,6 +1018,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->popup_destroy( ).
       WHEN `PULL_SELECTED`.
         pull_selected( ).
+      WHEN `PULL_MARK_ALL`.
+        mark_decisions( abap_true ).
+      WHEN `PULL_UNMARK_ALL`.
+        mark_decisions( abap_false ).
     ENDCASE.
 
   ENDMETHOD.
@@ -1099,6 +1113,25 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDTRY.
 
     popup_decisions_display( ).
+
+  ENDMETHOD.
+
+  METHOD mark_decisions.
+
+    " References are local only; every group holds the same plain row type.
+    DATA lt_groups TYPE STANDARD TABLE OF REF TO zif_ag2ui5_repo_service=>ty_decision_items WITH EMPTY KEY.
+    lt_groups = VALUE #( ( REF #( ms_decisions-data_loss ) ) ( REF #( ms_decisions-delete ) )
+      ( REF #( ms_decisions-overwrite ) ) ( REF #( ms_decisions-package ) )
+      ( REF #( ms_decisions-import ) ) ).
+    LOOP AT lt_groups INTO DATA(lr_group).
+      LOOP AT lr_group->* ASSIGNING FIELD-SYMBOL(<ls_item>).
+        <ls_item>-selected = xsdbool( iv_selected = abap_true AND <ls_item>-selectable = abap_true ).
+      ENDLOOP.
+    ENDLOOP.
+    " Unsupported objects never participate, even if a posted flag was changed.
+    LOOP AT ms_decisions-skipped ASSIGNING <ls_item>.
+      <ls_item>-selected = abap_false.
+    ENDLOOP.
 
   ENDMETHOD.
 

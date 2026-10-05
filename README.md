@@ -68,7 +68,8 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport
-  requests.
+  requests. Mark all and Unmark all apply across the change groups to enabled
+  rows; transport choices and the Pull anyway acknowledgment stay separate.
 
 Not part of it yet: conventional `.gitignore` interpretation,
 pushing to another branch, and creating a transport request from the dialog.

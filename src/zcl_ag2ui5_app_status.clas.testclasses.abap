@@ -275,6 +275,11 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS decisions_cancel_keeps_zip FOR TESTING.
     METHODS pull_uses_zip_and_decisions FOR TESTING.
     METHODS nothing_selected_no_pull FOR TESTING.
+    METHODS mark_all_selectable_groups FOR TESTING.
+    METHODS unmark_all_groups FOR TESTING.
+    METHODS mark_preserves_other_state FOR TESTING.
+    METHODS mark_empty_is_noop FOR TESTING.
+    METHODS mark_controls_in_popup FOR TESTING.
     METHODS refresh_uses_zip FOR TESTING.
     METHODS export_binary_download FOR TESTING.
     METHODS online_export_ignored FOR TESTING.
@@ -412,6 +417,77 @@ CLASS ltcl_offline IMPLEMENTATION.
     fire( `PULL_SELECTED` ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_pull_zip ).
     cl_abap_unit_assert=>assert_equals( exp = `Nothing selected` act = mo_client->mv_toast ).
+  ENDMETHOD.
+
+  METHOD mark_all_selectable_groups.
+    DATA(lt_rows) = VALUE zif_ag2ui5_repo_service=>ty_decision_items(
+      ( obj_name = `SELECTABLE` selectable = abap_true )
+      ( obj_name = `DISABLED` )
+      ( obj_name = `FORGED_TICK` selected = abap_true ) ).
+    mo_app->ms_decisions = VALUE #( data_loss = lt_rows delete = lt_rows overwrite = lt_rows
+      package = lt_rows import = lt_rows skipped = lt_rows ).
+    fire( `PULL_MARK_ALL` ).
+    DO 6 TIMES.
+      ASSIGN COMPONENT sy-index OF STRUCTURE mo_app->ms_decisions TO FIELD-SYMBOL(<lt_rows>).
+      cl_abap_unit_assert=>assert_subrc( ).
+      DATA(lt_actual) = CONV zif_ag2ui5_repo_service=>ty_decision_items( <lt_rows> ).
+      cl_abap_unit_assert=>assert_equals( exp = xsdbool( sy-index <> 6 ) act = lt_actual[ 1 ]-selected ).
+      cl_abap_unit_assert=>assert_false( lt_actual[ 2 ]-selected ).
+      cl_abap_unit_assert=>assert_false( lt_actual[ 3 ]-selected ).
+    ENDDO.
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_destroyed ).
+  ENDMETHOD.
+
+  METHOD unmark_all_groups.
+    DATA(lt_rows) = VALUE zif_ag2ui5_repo_service=>ty_decision_items(
+      ( obj_name = `SELECTABLE` selected = abap_true selectable = abap_true )
+      ( obj_name = `DISABLED` selected = abap_true ) ).
+    mo_app->ms_decisions = VALUE #( data_loss = lt_rows delete = lt_rows overwrite = lt_rows
+      package = lt_rows import = lt_rows skipped = lt_rows ).
+    fire( `PULL_UNMARK_ALL` ).
+    DO 6 TIMES.
+      ASSIGN COMPONENT sy-index OF STRUCTURE mo_app->ms_decisions TO FIELD-SYMBOL(<lt_rows>).
+      cl_abap_unit_assert=>assert_subrc( ).
+      DATA(lt_actual) = CONV zif_ag2ui5_repo_service=>ty_decision_items( <lt_rows> ).
+      cl_abap_unit_assert=>assert_false( lt_actual[ 1 ]-selected ).
+      cl_abap_unit_assert=>assert_false( lt_actual[ 2 ]-selected ).
+    ENDDO.
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+  ENDMETHOD.
+
+  METHOD mark_preserves_other_state.
+    mo_app->ms_decisions-import = mo_service->ms_preview-items.
+    mo_app->mv_transport = `A4HK900148`.
+    mo_app->mv_customizing = `CUSTOMIZING`.
+    mo_app->mv_ack_text = `Requirements warning`.
+    mo_app->mv_acknowledged = abap_true.
+    mo_app->mv_zip = '00FF80'.
+    fire( `PULL_MARK_ALL` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_acknowledged ).
+    mo_app->mv_acknowledged = abap_false.
+    fire( `PULL_UNMARK_ALL` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_acknowledged ).
+    cl_abap_unit_assert=>assert_equals( exp = `Requirements warning` act = mo_app->mv_ack_text ).
+    cl_abap_unit_assert=>assert_equals( exp = `A4HK900148` act = mo_app->mv_transport ).
+    cl_abap_unit_assert=>assert_equals( exp = `CUSTOMIZING` act = mo_app->mv_customizing ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( '00FF80' ) act = mo_app->mv_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+  ENDMETHOD.
+
+  METHOD mark_empty_is_noop.
+    fire( `PULL_MARK_ALL` ).
+    fire( `PULL_UNMARK_ALL` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_decisions ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+  ENDMETHOD.
+
+  METHOD mark_controls_in_popup.
+    mo_app->client = mo_client.
+    mo_app->popup_decisions_display( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Mark all` ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Unmark all` ) ).
   ENDMETHOD.
 
   METHOD refresh_uses_zip.

@@ -951,13 +951,31 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
   A setup snippet initially omitted folder logic and raised an uncaught harness
   exception; setup was corrected to `PREFIX` and resumed after checking identity.
 
+## Pull popup Mark all / Unmark all (2026-10-05)
+
+- Added both actions above the decision groups. Mark all selects enabled rows
+  in Data loss, Delete, Overwrite, Package and Import; disabled and unsupported
+  rows remain unchecked. Unmark all clears every group. Fresh server-side
+  decision validation is unchanged.
+- Five new status tests cover all groups, disabled/unsupported rows, empty
+  decisions, rendered controls and preservation of transports, acknowledgment
+  and offline ZIP data. Neither action starts a pull or closes the popup.
+  Native status tests pass 34/34. Lint/render checks pass with no errors or
+  warnings and the existing MessageStrip hint.
+- Deployed production and test source readbacks match the local files exactly.
+  Chrome verified Mark all, Unmark all and Mark all again on the INTF fixture's
+  Data loss row, then Cancel. No pull ran; fixture objects and data were retained.
+  Other groups and unrelated state are covered by the native tests.
+- Screenshot: `/tmp/ag2ui5-pull-mark-all.png`. Testing used a separate Chrome
+  tab and left the user's active SAP tab untouched.
+
 ## Open points (as of 2026-10-05)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
 diff colours, search field focus, URLs as links, object links to ADT,
 Files / Objects overview, native staging ignore rules and package creation
-from New repository, plus repository Remove / Uninstall.
+from New repository, repository Remove / Uninstall and pull Mark all / Unmark all.
 
 Session handoff (2026-10-04): `main` contains object links (`51fcf82`), object
 overview (`12b4a37`) and staging ignore rules (`8125509`), all pushed and
