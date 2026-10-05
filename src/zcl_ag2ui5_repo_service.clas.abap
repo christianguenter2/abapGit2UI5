@@ -323,6 +323,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       IMPORTING is_package TYPE zif_ag2ui5_repo_service=>ty_new_package
       RETURNING VALUE(rs_package) TYPE zif_ag2ui5_repo_service=>ty_new_package.
 
+    CLASS-METHODS assert_delete_preview
+      IMPORTING is_expected TYPE zif_ag2ui5_repo_service=>ty_delete_preview
+                is_actual TYPE zif_ag2ui5_repo_service=>ty_delete_preview
+                iv_confirmation TYPE string
+      RAISING zcx_abapgit_exception.
+
     CLASS-METHODS new_package_errors
       IMPORTING is_package TYPE zif_ag2ui5_repo_service=>ty_new_package
       RETURNING VALUE(rt_errors) TYPE zif_ag2ui5_repo_service=>ty_field_errors.
@@ -2146,6 +2152,108 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       obj_type = ls_message-obj_type
                       obj_name = ls_message-obj_name ) INTO TABLE rt_messages.
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD assert_delete_preview.
+
+    IF is_actual-key IS INITIAL OR is_actual-key CN `0123456789` OR strlen( is_actual-key ) > 12 OR
+       is_actual-package IS INITIAL OR
+       ( is_actual-action <> `REMOVE` AND is_actual-action <> `UNINSTALL` ).
+      zcx_abapgit_exception=>raise( `Choose Remove or Uninstall for a repository` ).
+    ENDIF.
+    IF is_expected <> is_actual.
+      zcx_abapgit_exception=>raise( `Repository or deletion scope changed. Cancel and open a new preview.` ).
+    ENDIF.
+    IF is_actual-action = `UNINSTALL` AND iv_confirmation <> is_actual-package.
+      zcx_abapgit_exception=>raise( |Type { is_actual-package } to confirm uninstall| ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~preview_delete.
+
+    silence_progress( ).
+    assert_authorized( ).
+    IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12 OR
+       ( iv_action <> `REMOVE` AND iv_action <> `UNINSTALL` ).
+      zcx_abapgit_exception=>raise( `Choose Remove or Uninstall for a repository` ).
+    ENDIF.
+    " Reload persisted metadata, not only an object cached in this session.
+    DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->reload( CONV #( iv_key ) ).
+    rs_preview = VALUE #( key = li_repo->get_key( ) name = li_repo->get_name( )
+      package = li_repo->get_package( ) offline = li_repo->is_offline( ) action = iv_action ).
+    IF li_repo->is_offline( ) = abap_false.
+      rs_preview-url = CAST zif_abapgit_repo_online( li_repo )->get_url( ).
+    ENDIF.
+    IF iv_action = `REMOVE`.
+      RETURN.
+    ENDIF.
+
+    IF zcl_abapgit_auth=>is_allowed( zif_abapgit_auth=>c_authorization-uninstall ) = abap_false.
+      zcx_abapgit_exception=>raise( `You are not authorized to uninstall repositories` ).
+    ENDIF.
+    TRY.
+        assert_pull_allowed( li_repo->get_package( ) ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_guard).
+        zcx_abapgit_exception=>raise( `Cannot uninstall code running in this session. ` && lx_guard->get_text( ) ).
+    ENDTRY.
+    DATA(ls_checks) = li_repo->delete_checks( ).
+    rs_preview-transport_required = ls_checks-transport-required.
+    LOOP AT li_repo->get_tadir_objects( ) INTO DATA(ls_object).
+      INSERT VALUE #( obj_type = ls_object-object obj_name = ls_object-obj_name
+        package = ls_object-devclass ) INTO TABLE rs_preview-objects.
+    ENDLOOP.
+    SORT rs_preview-objects BY obj_type obj_name package.
+    " Never uninstall a nested repository as a side effect of its parent.
+    LOOP AT zcl_abapgit_persist_factory=>get_repo( )->list( ) INTO DATA(ls_other).
+      IF ls_other-key = li_repo->get_key( ).
+        CONTINUE.
+      ENDIF.
+      DATA(lv_other_package) = CONV string( ls_other-package ).
+      IF line_exists( rs_preview-objects[ package = lv_other_package ] ) OR
+         line_exists( rs_preview-objects[ obj_type = `DEVC` obj_name = lv_other_package ] ).
+        zcx_abapgit_exception=>raise( |Deletion scope contains another repository in { lv_other_package }| ).
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~delete_repo.
+
+    silence_progress( ).
+    assert_authorized( ).
+    DATA(ls_fresh) = zif_ag2ui5_repo_service~preview_delete(
+      iv_key = is_preview-key iv_action = is_preview-action ).
+    assert_delete_preview( is_expected = is_preview is_actual = ls_fresh iv_confirmation = iv_confirmation ).
+    DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->get( CONV #( ls_fresh-key ) ).
+    IF ls_fresh-action = `REMOVE`.
+      zcl_abapgit_repo_srv=>get_instance( )->delete( li_repo ).
+      COMMIT WORK AND WAIT.
+      rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-removed.
+      RETURN.
+    ENDIF.
+
+    DATA(ls_checks) = li_repo->delete_checks( ).
+    IF ls_checks-transport-required = abap_true.
+      ls_checks-transport-transport = effective_transport(
+        iv_preset = `` iv_chosen = iv_transport
+        it_transports = zif_ag2ui5_repo_service~list_transports( `K` ) ).
+    ENDIF.
+    " Deletions commit individually inside abapGit; preserve its partial log.
+    TRY.
+        DATA(li_log) = zcl_abapgit_repo_srv=>get_instance( )->purge(
+          ii_repo = li_repo is_checks = ls_checks ).
+        COMMIT WORK AND WAIT.
+        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-uninstalled.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        li_log = li_repo->get_log( ).
+        rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-failed.
+        INSERT VALUE #( type = `E` text = lx_error->get_text( ) ) INTO TABLE rs_result-messages.
+    ENDTRY.
+    IF li_log IS BOUND.
+      INSERT LINES OF map_messages( li_log ) INTO TABLE rs_result-messages.
+    ENDIF.
 
   ENDMETHOD.
 

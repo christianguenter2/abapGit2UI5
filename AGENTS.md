@@ -43,6 +43,10 @@ present. It is Git-ignored.
   - `create_package`: normalize and validate lengths before converting to SAP
     fields, refuse existing packages, check the parent and repository hierarchy,
     and validate the transport against a fresh workbench request list
+  - `delete_repo`: reload metadata, recompute the preview and compare identity,
+    action, objects and transport requirement with `assert_delete_preview`;
+    validate keys before fixed-length conversion and require the exact package
+    name for Uninstall
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
@@ -63,6 +67,14 @@ present. It is Git-ignored.
   settings. Keep online Stage reachable with no local changes so rules can
   still be removed after a commit. Saving rules clears stale selections and
   patches while retaining commit text and committer details.
+- **Remove / Uninstall:** use repository-service `delete` / `purge`, never GUI
+  services. Uninstall checks authorization, write protection, language, the
+  running-code hierarchy guard and other registered repositories in scope.
+  Validate transports against a fresh workbench request list. abapGit commits
+  each object deletion: partial failures cannot be rolled back, so retain
+  registration and return its log. Commit registration removal on success.
+  Nonempty packages or pending transport entries may keep a package in SAP
+  after its objects and registration have been removed.
 - **Offline ZIPs:** the status and diff apps retain the original ZIP bytes
   in PROTECTED attributes. `get_repo` restores the offline remote files on
   every status, diff, preview and pull call; without a ZIP it clears them.
@@ -89,6 +101,7 @@ present. It is Git-ignored.
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
 | New repository | `normalize_new_repo`, `new_repo_errors` |
 | New package | `normalize_new_package`, `new_package_errors` |
+| Remove / Uninstall | `assert_delete_preview` |
 | Offline ZIP | `decode_zip`, `zip_files` |
 
 The table in `README.md` ("How a pull decides") must match `preview`. Every

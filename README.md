@@ -10,6 +10,13 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
 
 - **Repository list:** all abapGit repositories of the system, with a search,
   as a table or as tiles (one card per repository).
+- **Remove / Uninstall:** available in both layouts, online and offline.
+  Remove unregisters the repository and keeps its SAP objects. Uninstall
+  previews the objects to delete, requires the package name to be typed, and
+  asks for a workbench request when needed. The server checks the scope again
+  and protects running code and other registered repositories. Partial failures
+  retain registration and show the deletion log. SAP may retain packages until
+  deletion transports are released. Neither action changes the remote Git repo.
 - **New repository:** online (from a Git URL) or offline, with abapGit's
   settings and its own checks; each error is shown on its field. No
   credentials (a private repository needs abapGit's user exit).

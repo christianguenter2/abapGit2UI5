@@ -909,13 +909,55 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
   Cloud defaults are covered by tests; actual cloud package creation and
   authorization-denial paths were not exercised on A4H25.
 
+## Remove and uninstall repositories (2026-10-05)
+
+- Both layouts offer Remove and Uninstall, online and offline. Remove explains
+  that SAP objects remain. Uninstall lists the object/type/package scope, warns
+  about table data and irreversible deletion, requires the exact package name,
+  and starts a required workbench transport unselected.
+- Only the service calls non-UI `delete` / `purge`. It reloads persisted metadata
+  and compares a fresh preview before deleting. Malformed/overlong keys, changed
+  identity or scope, missing confirmation and forged transports are refused.
+  Uninstall checks authorization, write protection and language; its hierarchy
+  guard protects running code. Fresh persistence prevents deleting another
+  registered repository in the scanned scope.
+- Partial failures return abapGit's log and retain registration. The dialog
+  blocks repeat submission after failure and asks for a new preview. Deletions
+  commit individually inside abapGit; success commits registration removal.
+  No remote Git mutation is performed.
+- **277/277 native tests passed:** service 171, settings 10, stage 23, diff 19,
+  status 29, repository list 13, new repository 12. Lint/render checks pass with
+  no errors or warnings and the existing status MessageStrip hint. All five
+  deployed production/test source readbacks match local files.
+- Chrome verified both layouts, online/offline previews, Remove cancellation and
+  success, required-name and missing-transport errors, and selection of test
+  request `A4HK900148`. Adding a program after opening an online preview produced
+  the changed-scope error; native verification confirmed all objects remained.
+  Completed Uninstall deletions were exercised through the native service,
+  then the browser list was refreshed to verify registrations disappeared.
+- Disposable fixtures: Remove retained `ZAG2UI5_REMOVE_TEST` and its package.
+  Native Uninstall deleted local and transportable programs and registrations;
+  running-code uninstall, missing confirmation, altered preview and forged
+  request were refused. Final online Uninstall cleaned the retained Remove
+  fixture and concurrent-change program. No test programs or registrations
+  remain. `$AG2UI5_REMOVE_TEST` and `$AG2UI5_UNINST_TEST` were deleted. The empty
+  `ZAG2UI5_UNINST_TEST` package remains until transport release: SAP's normal
+  package factory also refused deletion. The test request was not released.
+- The original Tiles setting and `offline` filter were restored. Screenshot
+  `/tmp/ag2ui5-uninstall-preview.png` shows the final dialog on the existing
+  offline fixture; that preview was canceled and its objects retained.
+  Native authorization denial, cloud execution and a real partial deletion
+  failure were not exercised; partial-failure UI behavior is unit-tested.
+  A setup snippet initially omitted folder logic and raised an uncaught harness
+  exception; setup was corrected to `PREFIX` and resumed after checking identity.
+
 ## Open points (as of 2026-10-05)
 
 Done since 2026-10-01: patch (single lines), switch, create and delete
 branches, all files on the status page (sorted, changes on top, yellow),
 diff colours, search field focus, URLs as links, object links to ADT,
 Files / Objects overview, native staging ignore rules and package creation
-from New repository.
+from New repository, plus repository Remove / Uninstall.
 
 Session handoff (2026-10-04): `main` contains object links (`51fcf82`), object
 overview (`12b4a37`) and staging ignore rules (`8125509`), all pushed and
@@ -924,6 +966,9 @@ lint/render checks and browser workflows passed; temporary `$UMLAUT`
 changes were restored. Final editor opening in Eclipse remains unverified.
 The 2026-10-05 package-creation slice is deployed, with 260/260 native tests.
 Its live Chrome workflows passed, and all SAP smoke fixtures were removed.
+Remove / Uninstall is deployed with 277/277 native tests and Chrome checks.
+The empty transportable lifecycle test package awaits release of `A4HK900148`;
+its programs and registration are gone. Do not release that request as cleanup.
 Pushing to another branch has not been started.
 
 Next slices:

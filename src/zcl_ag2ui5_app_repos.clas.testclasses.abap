@@ -1,5 +1,6 @@
 CLASS ltcl_offline DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline.
+CLASS ltcl_delete DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline ltcl_delete.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -53,6 +54,9 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
     DATA mv_toast TYPE string.
     DATA mv_arg TYPE string.
+    DATA mv_popup TYPE string.
+    DATA mv_closed TYPE abap_bool.
+    DATA mv_error TYPE string.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -69,7 +73,14 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~follow_up_action ##NEEDED.
   ENDMETHOD.
-  METHOD z2ui5_if_client~message_box_display ##NEEDED.
+  METHOD z2ui5_if_client~message_box_display.
+    mv_error = text.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popup_display.
+    mv_popup = val.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popup_destroy.
+    mv_closed = abap_true.
   ENDMETHOD.
   "! the view is built but not checked here
   METHOD z2ui5_if_client~_bind ##NEEDED.
@@ -87,6 +98,137 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_toast_display.
     mv_toast = text.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltd_delete_service DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
+    DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
+    DATA ms_received TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
+    DATA ms_result TYPE zif_ag2ui5_repo_service=>ty_delete_result.
+    DATA mv_calls TYPE i.
+    DATA mv_confirmation TYPE string.
+    DATA mv_transport TYPE string.
+    DATA mv_raise TYPE abap_bool.
+ENDCLASS.
+
+CLASS ltd_delete_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~preview_delete.
+    rs_preview = ms_preview.
+    rs_preview-key = iv_key.
+    rs_preview-action = iv_action.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~delete_repo.
+    mv_calls = mv_calls + 1.
+    ms_received = is_preview.
+    mv_confirmation = iv_confirmation.
+    mv_transport = iv_transport.
+    IF mv_raise = abap_true.
+      zcx_abapgit_exception=>raise( `Test rejection` ).
+    ENDIF.
+    rs_result = ms_result.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~list_repos ##NEEDED.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~list_transports.
+    rt_transports = VALUE #( ( trkorr = `A4HK900148` text = `Test request` ) ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_delete DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_repos.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_delete_service.
+    METHODS setup.
+    METHODS event IMPORTING iv_event TYPE string.
+    METHODS cancel_never_deletes FOR TESTING.
+    METHODS uninstall_requires_preview FOR TESTING.
+    METHODS remove_success_clears FOR TESTING.
+    METHODS transport_starts_unselected FOR TESTING.
+    METHODS server_error_retains_dialog FOR TESTING.
+    METHODS partial_failure_blocks_retry FOR TESTING.
+    METHODS sends_original_scope FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_delete IMPLEMENTATION.
+  METHOD setup.
+    mo_app = NEW #( ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app->mi_service = mo_service.
+    mo_client->mv_arg = `42`.
+    mo_service->ms_preview = VALUE #( name = `Fixture` package = `$FIXTURE`
+      objects = VALUE #( ( obj_type = `DEVC` obj_name = `$FIXTURE` package = `$FIXTURE` ) ) ).
+  ENDMETHOD.
+  METHOD event.
+    mo_client->mv_event = iv_event.
+    mo_app->z2ui5_if_app~main( mo_client ).
+  ENDMETHOD.
+  METHOD cancel_never_deletes.
+    event( `UNINSTALL` ).
+    mo_app->mv_delete_confirmation = `$FIXTURE`.
+    event( `DELETE_CANCEL` ).
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = mo_service->mv_calls ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_delete_preview ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_confirmation ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_closed ).
+  ENDMETHOD.
+  METHOD uninstall_requires_preview.
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = mo_service->mv_calls ).
+  ENDMETHOD.
+  METHOD remove_success_clears.
+    mo_service->ms_result-outcome = zif_ag2ui5_repo_service=>c_outcome-removed.
+    event( `REMOVE` ).
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = `REMOVE` act = mo_service->ms_received-action ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_closed ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_delete_preview ).
+    cl_abap_unit_assert=>assert_equals( exp = `Repository registration removed; SAP objects retained`
+      act = mo_client->mv_toast ).
+  ENDMETHOD.
+  METHOD transport_starts_unselected.
+    mo_service->ms_preview-transport_required = abap_true.
+    event( `UNINSTALL` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_transport ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_delete_transports[ 1 ]-trkorr ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( mo_app->mt_delete_transports ) ).
+  ENDMETHOD.
+  METHOD server_error_retains_dialog.
+    mo_service->mv_raise = abap_true.
+    event( `UNINSTALL` ).
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = `Test rejection` act = mo_app->mv_delete_error ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_closed ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_delete_failed ).
+    cl_abap_unit_assert=>assert_equals( exp = `42` act = mo_app->ms_delete_preview-key ).
+  ENDMETHOD.
+  METHOD partial_failure_blocks_retry.
+    mo_service->ms_result = VALUE #( outcome = zif_ag2ui5_repo_service=>c_outcome-failed
+      messages = VALUE #( ( type = `E` text = `Object is locked` ) ) ).
+    event( `UNINSTALL` ).
+    event( `DELETE_CONFIRM` ).
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_service->mv_calls ).
+    cl_abap_unit_assert=>assert_equals( exp = `Object is locked` act = mo_app->mt_delete_messages[ 1 ]-text ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_delete_failed ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_closed ).
+  ENDMETHOD.
+  METHOD sends_original_scope.
+    mo_service->ms_result-outcome = zif_ag2ui5_repo_service=>c_outcome-uninstalled.
+    event( `UNINSTALL` ).
+    " Bound display rows cannot replace the server preview retained by the app.
+    CLEAR mo_app->mt_delete_objects.
+    mo_app->mv_delete_confirmation = `$FIXTURE`.
+    mo_app->mv_delete_transport = `A4HK900148`.
+    event( `DELETE_CONFIRM` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_service->ms_received-objects ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `$FIXTURE` act = mo_service->mv_confirmation ).
+    cl_abap_unit_assert=>assert_equals( exp = `A4HK900148` act = mo_service->mv_transport ).
+    cl_abap_unit_assert=>assert_equals( exp = `Repository uninstalled` act = mo_client->mv_toast ).
   ENDMETHOD.
 ENDCLASS.
 

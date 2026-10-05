@@ -1,3 +1,101 @@
+CLASS ltcl_delete_preview DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
+    METHODS setup.
+    METHODS unchanged_is_allowed FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS remove_needs_no_typed_name FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS confirmation_is_exact FOR TESTING.
+    METHODS changed_objects_refused FOR TESTING.
+    METHODS changed_identity_refused FOR TESTING.
+    METHODS changed_transport_refused FOR TESTING.
+    METHODS invalid_action_refused FOR TESTING.
+    METHODS empty_key_refused FOR TESTING.
+    METHODS malformed_key_refused FOR TESTING.
+    METHODS empty_package_refused FOR TESTING.
+    METHODS rejected IMPORTING is_actual TYPE zif_ag2ui5_repo_service=>ty_delete_preview
+      iv_confirmation TYPE string DEFAULT `$FIXTURE`.
+ENDCLASS.
+
+CLASS ltcl_delete_preview IMPLEMENTATION.
+  METHOD setup.
+    ms_preview = VALUE #( key = `42` name = `Fixture` package = `$FIXTURE` action = `UNINSTALL`
+      objects = VALUE #( ( obj_type = `CLAS` obj_name = `ZFIXTURE` package = `$FIXTURE` ) ) ).
+  ENDMETHOD.
+  METHOD rejected.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_delete_preview(
+          is_expected = ms_preview is_actual = is_actual iv_confirmation = iv_confirmation ).
+        cl_abap_unit_assert=>fail( `Deletion should have been refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD unchanged_is_allowed.
+    zcl_ag2ui5_repo_service=>assert_delete_preview(
+      is_expected = ms_preview is_actual = ms_preview iv_confirmation = `$FIXTURE` ).
+  ENDMETHOD.
+  METHOD remove_needs_no_typed_name.
+    ms_preview-action = `REMOVE`.
+    CLEAR ms_preview-objects.
+    zcl_ag2ui5_repo_service=>assert_delete_preview(
+      is_expected = ms_preview is_actual = ms_preview iv_confirmation = `` ).
+  ENDMETHOD.
+  METHOD confirmation_is_exact.
+    rejected( is_actual = ms_preview iv_confirmation = `` ).
+    rejected( is_actual = ms_preview iv_confirmation = `$fixture` ).
+    rejected( is_actual = ms_preview iv_confirmation = `$FIXTURE ` ).
+  ENDMETHOD.
+  METHOD changed_objects_refused.
+    DATA(ls_actual) = ms_preview.
+    INSERT VALUE #( obj_type = `TABL` obj_name = `ZNEW` package = `$FIXTURE` ) INTO TABLE ls_actual-objects.
+    rejected( ls_actual ).
+    ls_actual = ms_preview.
+    CLEAR ls_actual-objects.
+    rejected( ls_actual ).
+    ls_actual = ms_preview.
+    ls_actual-objects[ 1 ]-package = `$OTHER`.
+    rejected( ls_actual ).
+  ENDMETHOD.
+  METHOD changed_identity_refused.
+    DATA(ls_actual) = ms_preview.
+    ls_actual-package = `$OTHER`.
+    rejected( ls_actual ).
+    ls_actual = ms_preview.
+    ls_actual-key = `43`.
+    rejected( ls_actual ).
+    ls_actual = ms_preview.
+    ls_actual-url = `https://example.com/changed.git`.
+    rejected( ls_actual ).
+    ls_actual = ms_preview.
+    ls_actual-action = `REMOVE`.
+    rejected( ls_actual ).
+  ENDMETHOD.
+  METHOD changed_transport_refused.
+    DATA(ls_actual) = ms_preview.
+    ls_actual-transport_required = abap_true.
+    rejected( ls_actual ).
+  ENDMETHOD.
+  METHOD invalid_action_refused.
+    ms_preview-action = `FORGED`.
+    rejected( ms_preview ).
+  ENDMETHOD.
+  METHOD empty_key_refused.
+    CLEAR ms_preview-key.
+    rejected( ms_preview ).
+  ENDMETHOD.
+  METHOD malformed_key_refused.
+    ms_preview-key = ` `.
+    rejected( ms_preview ).
+    ms_preview-key = `0000000000201`.
+    rejected( ms_preview ).
+    ms_preview-key = `FORGED`.
+    rejected( ms_preview ).
+  ENDMETHOD.
+  METHOD empty_package_refused.
+    CLEAR ms_preview-package.
+    rejected( ms_preview ).
+  ENDMETHOD.
+ENDCLASS.
+
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_object_links.
 

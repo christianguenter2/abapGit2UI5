@@ -27,10 +27,23 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     "! LIST or TILES; switched on the client, stored per user
     DATA mv_layout TYPE string VALUE `TILES`.
 
+    DATA mv_delete_title TYPE string.
+    DATA mv_delete_text TYPE string.
+    DATA mv_delete_confirmation TYPE string.
+    DATA mv_delete_transport TYPE string.
+    DATA mv_delete_error TYPE string.
+    DATA mt_delete_objects TYPE zif_ag2ui5_repo_service=>ty_delete_objects.
+    DATA mt_delete_transports TYPE zif_ag2ui5_repo_service=>ty_transports.
+    DATA mt_delete_messages TYPE zif_ag2ui5_repo_service=>ty_messages.
+
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
     "! The unfiltered list; mt_repos is what the search leaves of it
     DATA mt_all TYPE ty_rows.
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+    DATA ms_delete_preview TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
+    DATA mv_delete_failed TYPE abap_bool.
+    DATA mv_delete_package TYPE string.
 
     METHODS view_display.
     METHODS tiles_display
@@ -40,6 +53,12 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     METHODS load_repos.
     METHODS apply_search.
     METHODS open_repo.
+    METHODS service RETURNING VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
+    METHODS actions_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
+    METHODS delete_open IMPORTING iv_action TYPE string.
+    METHODS delete_display.
+    METHODS delete_confirm.
+    METHODS delete_clear.
 
   PRIVATE SECTION.
 ENDCLASS.
@@ -158,6 +177,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
             )->a( n = `text` v = `Last pull` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `10rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Actions` ).
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
@@ -177,6 +200,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `text` v = `{BRANCH}` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{DESERIALIZED_AT}` ).
+    actions_display( cells ).
 
     tiles_display( content ).
 
@@ -225,6 +249,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `title`   v = `Last pull`
         )->a( n = `text`    v = `{DESERIALIZED_AT}`
         )->a( n = `visible` v = `{= !!${DESERIALIZED_AT} }` ).
+    actions_display( box ).
 
   ENDMETHOD.
 
@@ -243,6 +268,14 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
                                                    iv_value = mv_layout ).
       WHEN `NEW`.
         client->nav_app_call( zcl_ag2ui5_app_new_repo=>create( ) ).
+      WHEN `REMOVE` OR `UNINSTALL`.
+        delete_open( client->get_event( ) ).
+      WHEN `DELETE_CONFIRM`.
+        delete_confirm( ).
+      WHEN `DELETE_CANCEL`.
+        client->popup_destroy( ).
+        delete_clear( ).
+        load_repos( ).
     ENDCASE.
 
   ENDMETHOD.
@@ -250,7 +283,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
   METHOD load_repos.
 
     TRY.
-        DATA(lt_repos) = NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~list_repos( ).
+        DATA(lt_repos) = service( )->list_repos( ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
@@ -279,6 +312,183 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
                         WHERE ( name CS mv_search OR package CS mv_search OR url CS mv_search )
                         ( ls_row ) ).
 
+  ENDMETHOD.
+
+  METHOD service.
+    ri_service = mi_service.
+    IF ri_service IS NOT BOUND.
+      ri_service = NEW zcl_ag2ui5_repo_service( ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD actions_display.
+    io_parent->ele( `HBox`
+        )->a( n = `justifyContent` v = `End`
+        )->tag( `Button`
+            )->a( n = `text` v = `Remove`
+            )->a( n = `type` v = `Transparent`
+            )->a( n = `tooltip` v = `Remove registration; keep SAP objects`
+            )->a( n = `press` v = client->_event( val = `REMOVE` arg = `${KEY}` )
+        )->tag( `Button`
+            )->a( n = `text` v = `Uninstall`
+            )->a( n = `type` v = `Transparent`
+            )->a( n = `tooltip` v = `Delete SAP objects and remove registration`
+            )->a( n = `press` v = client->_event( val = `UNINSTALL` arg = `${KEY}` ) ).
+  ENDMETHOD.
+
+  METHOD delete_clear.
+    CLEAR: ms_delete_preview, mv_delete_failed, mv_delete_title, mv_delete_text,
+      mv_delete_package, mv_delete_confirmation, mv_delete_transport,
+      mv_delete_error, mt_delete_objects, mt_delete_transports, mt_delete_messages.
+  ENDMETHOD.
+
+  METHOD delete_open.
+    delete_clear( ).
+    TRY.
+        ms_delete_preview = service( )->preview_delete(
+          iv_key = client->get_event_arg( ) iv_action = iv_action ).
+        mv_delete_package = ms_delete_preview-package.
+        mt_delete_objects = ms_delete_preview-objects.
+        IF ms_delete_preview-transport_required = abap_true.
+          mt_delete_transports = service( )->list_transports( `K` ).
+          INSERT VALUE #( text = `Choose a request` ) INTO mt_delete_transports INDEX 1.
+        ENDIF.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        delete_clear( ).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+    IF iv_action = `REMOVE`.
+      mv_delete_title = `Remove repository`.
+      mv_delete_text = |Remove { ms_delete_preview-name } from package { mv_delete_package }? | &&
+        `SAP objects and the remote repository will remain. Local abapGit settings will be removed.`.
+    ELSE.
+      mv_delete_title = `Uninstall repository`.
+      mv_delete_text = |Uninstall { ms_delete_preview-name } from package { mv_delete_package }? | &&
+        |Delete the { lines( mt_delete_objects ) } objects listed below and remove registration. | &&
+        `This can delete table data and cannot be undone. The remote repository will remain. ` &&
+        `Transportable packages may remain until the deletion transport is released.`.
+    ENDIF.
+    delete_display( ).
+  ENDMETHOD.
+
+  METHOD delete_display.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory(
+        )->ele( n = `FragmentDefinition` ns = `core`
+            )->a( n = `xmlns` v = `sap.m`
+            )->a( n = `xmlns:core` v = `sap.ui.core` ).
+    DATA(dialog) = popup->ele( `Dialog`
+        )->a( n = `title` v = client->_bind( mv_delete_title )
+        )->a( n = `contentWidth` v = `45rem`
+        )->a( n = `stretch` v = `{device>/system/phone}` ).
+    DATA(content) = dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin` ).
+    content->tag( `MessageStrip`
+        )->a( n = `text` v = client->_bind( mv_delete_text )
+        )->a( n = `type` v = `Warning`
+        )->a( n = `showIcon` v = `true` ).
+    content->tag( `MessageStrip`
+        )->a( n = `text` v = client->_bind( mv_delete_error )
+        )->a( n = `type` v = `Error`
+        )->a( n = `showIcon` v = `true`
+        )->a( n = `visible` v = |\{= !!$\{{ client->_bind( val = mv_delete_error path = abap_true ) }\} \}| ).
+    IF ms_delete_preview-action = `UNINSTALL`.
+      DATA(table) = content->ele( `Table`
+          )->a( n = `items` v = client->_bind( mt_delete_objects )
+          )->a( n = `noDataText` v = `No SAP objects to delete` ).
+      DATA(columns) = table->ele( `columns` ).
+      columns->ele( `Column`
+          )->a( n = `width` v = `5rem`
+          )->tag( `Text`
+              )->a( n = `text` v = `Type` ).
+      columns->ele( `Column`
+          )->tag( `Text`
+              )->a( n = `text` v = `Object` ).
+      columns->ele( `Column`
+          )->a( n = `minScreenWidth` v = `Tablet`
+          )->a( n = `demandPopin` v = `true`
+          )->tag( `Text`
+              )->a( n = `text` v = `Package` ).
+      table->ele( `items`
+          )->ele( `ColumnListItem`
+              )->ele( `cells`
+                  )->tag( `Text`
+                      )->a( n = `text` v = `{OBJ_TYPE}`
+                  )->tag( `Text`
+                      )->a( n = `text` v = `{OBJ_NAME}`
+                  )->tag( `Text`
+                      )->a( n = `text` v = `{PACKAGE}` ).
+      content->tag( `Label`
+          )->a( n = `text` t = |Type { mv_delete_package } to confirm uninstall|
+          )->a( n = `labelFor` v = `deleteConfirmation` ).
+      content->tag( `Input`
+          )->a( n = `id` v = `deleteConfirmation`
+          )->a( n = `value` v = client->_bind( mv_delete_confirmation )
+          )->a( n = `valueLiveUpdate` v = `true` ).
+    ENDIF.
+    IF ms_delete_preview-transport_required = abap_true.
+      content->tag( `Label`
+          )->a( n = `text` v = `Workbench transport request`
+          )->a( n = `labelFor` v = `deleteTransport` ).
+      content->ele( `Select`
+          )->a( n = `id` v = `deleteTransport`
+          )->a( n = `width` v = `100%`
+          )->a( n = `selectedKey` v = client->_bind( mv_delete_transport )
+          )->a( n = `items` v = client->_bind( mt_delete_transports )
+          )->ele( `items`
+              )->tag( n = `Item` ns = `core`
+                  )->a( n = `key` v = `{TRKORR}`
+                  )->a( n = `text` v = `{= ${TRKORR} ? ${TRKORR} + ' ' + ${TEXT} : ${TEXT} }` ).
+    ENDIF.
+    content->ele( `List`
+        )->a( n = `items` v = client->_bind( mt_delete_messages )
+        )->a( n = `showNoData` v = `false`
+        )->ele( `items`
+            )->ele( `CustomListItem`
+                )->ele( `content`
+                    )->tag( `Text`
+                        )->a( n = `text` v = `{TEXT}` ).
+    DATA(buttons) = dialog->ele( `buttons` ).
+    buttons->tag( `Button`
+        )->a( n = `text` v = `Cancel`
+        )->a( n = `press` v = client->_event( `DELETE_CANCEL` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text` t = COND string( WHEN ms_delete_preview-action = `REMOVE` THEN `Remove` ELSE `Uninstall` )
+        )->a( n = `type` v = `Reject`
+        )->a( n = `enabled` b = xsdbool( mv_delete_failed = abap_false )
+        )->a( n = `press` v = client->_event( `DELETE_CONFIRM` ) ).
+    client->popup_display( popup->stringify( ) ).
+  ENDMETHOD.
+
+  METHOD delete_confirm.
+    IF ms_delete_preview-key IS INITIAL OR mv_delete_failed = abap_true.
+      RETURN.
+    ENDIF.
+    CLEAR: mv_delete_error, mt_delete_messages.
+    TRY.
+        DATA(ls_result) = service( )->delete_repo( is_preview = ms_delete_preview
+          iv_confirmation = mv_delete_confirmation iv_transport = mv_delete_transport ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        mv_delete_error = lx_error->get_text( ).
+        RETURN.
+    ENDTRY.
+    IF ls_result-outcome <> zif_ag2ui5_repo_service=>c_outcome-removed AND
+       ls_result-outcome <> zif_ag2ui5_repo_service=>c_outcome-uninstalled.
+      mv_delete_failed = abap_true.
+      mt_delete_messages = ls_result-messages.
+      mv_delete_error = `Uninstall did not finish. Some objects may already be deleted. ` &&
+        `Registration is retained. Cancel and open a new preview to inspect the remaining objects.`.
+      delete_display( ).
+      RETURN.
+    ENDIF.
+    DATA(lv_message) = COND string( WHEN ls_result-outcome = zif_ag2ui5_repo_service=>c_outcome-removed
+      THEN `Repository registration removed; SAP objects retained`
+      ELSE `Repository uninstalled` ).
+    client->popup_destroy( ).
+    delete_clear( ).
+    load_repos( ).
+    client->message_toast_display( lv_message ).
   ENDMETHOD.
 
   METHOD open_repo.

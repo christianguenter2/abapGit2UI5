@@ -25,6 +25,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       created TYPE ty_outcome VALUE `CREATED`,
       "! A check failed - nothing was created
       invalid TYPE ty_outcome VALUE `INVALID`,
+      removed TYPE ty_outcome VALUE `REMOVED`,
+      uninstalled TYPE ty_outcome VALUE `UNINSTALLED`,
     END OF c_outcome.
 
   TYPES ty_group TYPE string.
@@ -102,6 +104,40 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       obj_name TYPE string,
     END OF ty_message,
     ty_messages TYPE STANDARD TABLE OF ty_message WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_delete_object,
+      obj_type TYPE string,
+      obj_name TYPE string,
+      package TYPE string,
+    END OF ty_delete_object,
+    ty_delete_objects TYPE STANDARD TABLE OF ty_delete_object WITH EMPTY KEY,
+    BEGIN OF ty_delete_preview,
+      key TYPE string,
+      name TYPE string,
+      package TYPE string,
+      url TYPE string,
+      offline TYPE abap_bool,
+      action TYPE string,
+      objects TYPE ty_delete_objects,
+      transport_required TYPE abap_bool,
+    END OF ty_delete_preview,
+    BEGIN OF ty_delete_result,
+      outcome TYPE ty_outcome,
+      messages TYPE ty_messages,
+    END OF ty_delete_result.
+
+  METHODS preview_delete
+    IMPORTING iv_key TYPE string iv_action TYPE string
+    RETURNING VALUE(rs_preview) TYPE ty_delete_preview
+    RAISING zcx_abapgit_exception.
+
+  METHODS delete_repo
+    IMPORTING is_preview TYPE ty_delete_preview
+              iv_confirmation TYPE string OPTIONAL
+              iv_transport TYPE string OPTIONAL
+    RETURNING VALUE(rs_result) TYPE ty_delete_result
+    RAISING zcx_abapgit_exception.
 
   TYPES:
     "! One object in the decision dialog
