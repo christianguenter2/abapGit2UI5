@@ -1,6 +1,6 @@
 # Create package implementation plan
 
-Status: implemented and deployed to A4H25 on 2026-10-05. Results are in
+Status: implemented, deployed and live-tested in Chrome on A4H25 on 2026-10-05. Results are in
 [findings](../../findings.md#create-package-from-new-repository-2026-10-05).
 
 1. Add plain service types, defaults and create methods; pure normalization

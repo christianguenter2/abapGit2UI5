@@ -899,10 +899,15 @@ See [the design](superpowers/specs/2026-10-04-stage-ignore-design.md) and
   the existing status MessageStrip hint. Desktop (1280x900) and phone (390x844)
   screenshots of the form and dialog were inspected using the UI5 renderer.
 - Sources deployed via ADT; all five production/test source readbacks match
-  the local files byte for byte. Live Chrome interaction remains unverified because
-  browser control is unavailable in this session. Cloud defaults are covered
-  by tests; actual cloud package creation and authorization-denial paths were
-  not exercised on A4H25.
+  the local files byte for byte.
+- Live Chrome/SAP verified Cancel and form preservation, required-description
+  retry, duplicate rejection, and the missing-workbench-request error. Local
+  and transportable creation passed using request `A4HK900148`; online
+  registration opened the status page with the original display name, and
+  offline registration returned to the repository list. Both temporary
+  registrations and empty packages were removed and their absence checked.
+  Cloud defaults are covered by tests; actual cloud package creation and
+  authorization-denial paths were not exercised on A4H25.
 
 ## Open points (as of 2026-10-05)
 
@@ -918,7 +923,7 @@ deployed through ADT on A4H25. Latest verification: 248/248 SAP unit tests,
 lint/render checks and browser workflows passed; temporary `$UMLAUT`
 changes were restored. Final editor opening in Eclipse remains unverified.
 The 2026-10-05 package-creation slice is deployed, with 260/260 native tests.
-Its SAP smoke fixtures were removed; a live Chrome check remains open.
+Its live Chrome workflows passed, and all SAP smoke fixtures were removed.
 Pushing to another branch has not been started.
 
 Next slices:
