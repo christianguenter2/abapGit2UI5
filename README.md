@@ -86,10 +86,14 @@ the browser session is running that code.
   review. Summaries follow the diff direction and include local/test classes.
   Comments, formatting, XML metadata and other object types remain in the raw
   diffs. This reports structure, without predicting runtime behavior.
-- **Stage, commit, push:** select the locally changed files, enter a commit
+- **Stage, commit, push:** select files that differ between SAP and Git, enter a commit
   message, then push with a Git user and token. The credentials are used for
   that one push only and never stored. "Pick lines" commits only some changes
   of a file: both halves of a changed line go together, as in abapGit.
+  Staging commits the SAP version: it can also revert a Git-only change,
+  restore a remotely deleted file or remove a file that exists only in Git.
+  Files changed in Git carry an explicit notice before selection; pulling
+  first is optional, as in conventional abapGit.
 - **Ignore:** staging respects abapGit's ignore rules and starting folder.
   A file's Ignore button opens its full path as an editable rule; use `*`
   for any sequence or `+` for one character. Preview the affected staging

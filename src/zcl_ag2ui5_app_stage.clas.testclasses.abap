@@ -265,10 +265,20 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS back_without_apply_keeps_row FOR TESTING.
     METHODS push_sends_patch FOR TESTING.
     METHODS pick_opens_patch_mode FOR TESTING.
+    METHODS remote_change_notice FOR TESTING.
 ENDCLASS.
 
 
 CLASS ltcl_patch IMPLEMENTATION.
+
+  METHOD remote_change_notice.
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_app->change_text( VALUE #( action = `ADD` lstate = `M` rstate = `M` ) )
+      exp = `modify - commit SAP version over Git changes` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_app->change_text( VALUE #( action = `RM` rstate = `A` ) )
+      exp = `delete - commit SAP version over Git changes` ).
+  ENDMETHOD.
 
   METHOD teardown.
     zcl_ag2ui5_settings=>inject( VALUE #( ) ).

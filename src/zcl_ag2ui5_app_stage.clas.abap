@@ -1,4 +1,4 @@
-"! Select locally changed files, commit them and push. The credentials are
+"! Select files differing from Git, commit the SAP version and push. The credentials are
 "! used for the push only: the token is cleared on every event, before
 "! abap2UI5 saves the state
 CLASS zcl_ag2ui5_app_stage DEFINITION
@@ -160,7 +160,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   METHOD change_text.
 
-    rv_text = SWITCH #( is_row-lstate
+    rv_text = SWITCH #( COND string( WHEN is_row-action = `RM` THEN `D` ELSE is_row-lstate )
                         WHEN `A` THEN `add`
                         WHEN `D` THEN `delete`
                         ELSE `modify` ).
@@ -168,7 +168,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       rv_text = |{ rv_text } - { iv_picked } of { iv_total } lines|.
     ENDIF.
     IF is_row-rstate IS NOT INITIAL.
-      rv_text = |{ rv_text } - changed in Git too, pull first|.
+      rv_text = |{ rv_text } - commit SAP version over Git changes|.
     ENDIF.
 
   ENDMETHOD.
@@ -238,7 +238,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     DATA(table) = content->ele( `Table`
         )->a( n = `items`      v = client->_bind( mt_rows )
-        )->a( n = `noDataText` v = `No local changes to commit` ).
+        )->a( n = `noDataText` v = `SAP and Git files match` ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -615,7 +615,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         load_stage( ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
         load_stage( ).
-        client->message_box_display( text = `The local changes changed since the page was loaded - nothing was pushed. Check the selection and push again.`
+        client->message_box_display( text = `The staging files changed since the page was loaded - nothing was pushed. Check the selection and push again.`
                                      type = `error` ).
     ENDCASE.
 

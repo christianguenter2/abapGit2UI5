@@ -491,7 +491,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
-  "! The locally changed files that can be committed
+  "! Files differing between SAP and Git that can be committed
   METHODS get_stage
     IMPORTING
       iv_key          TYPE string

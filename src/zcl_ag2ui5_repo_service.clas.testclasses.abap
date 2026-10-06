@@ -1327,12 +1327,13 @@ CLASS ltcl_stage DEFINITION FINAL FOR TESTING
   DURATION SHORT.
 
   PRIVATE SECTION.
-    METHODS candidates_local_changes_only FOR TESTING.
+    METHODS candidates_both_sides FOR TESTING.
+    METHODS classic_file_candidates FOR TESTING.
     METHODS selection_still_valid FOR TESTING RAISING cx_static_check.
     METHODS selection_file_gone FOR TESTING.
     METHODS selection_action_changed FOR TESTING.
     METHODS selection_remote_changed FOR TESTING.
-    METHODS conflict_refused FOR TESTING.
+    METHODS remote_changes_allowed FOR TESTING RAISING cx_static_check.
     METHODS moved_needs_old_path FOR TESTING.
     METHODS moved_with_old_path FOR TESTING RAISING cx_static_check.
     METHODS moved_partial_removal FOR TESTING.
@@ -1355,20 +1356,20 @@ CLASS ltcl_stage IMPLEMENTATION.
     rs_item = VALUE #( path = `/src/` filename = iv_filename action = iv_action selected = abap_true ).
   ENDMETHOD.
 
-  METHOD candidates_local_changes_only.
+  METHOD candidates_both_sides.
     DATA lt_results TYPE zif_abapgit_definitions=>ty_results_tt.
 
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_A' path = '/src/' filename = 'zcl_a.clas.abap' lstate = 'M' ) INTO TABLE lt_results.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_B' path = '/src/' filename = 'zcl_b.clas.abap' lstate = 'D' ) INTO TABLE lt_results.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_C' path = '/src/' filename = 'zcl_c.clas.abap' lstate = 'A' rstate = 'M' ) INTO TABLE lt_results.
-    " changed only remotely, or not at all: nothing to commit
+    " A remote-only edit can be reverted by committing the SAP version.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_D' path = '/src/' filename = 'zcl_d.clas.abap' rstate = 'M' ) INTO TABLE lt_results.
     INSERT VALUE #( obj_type = 'CLAS' obj_name = 'ZCL_E' path = '/src/' filename = 'zcl_e.clas.abap' match = abap_true ) INTO TABLE lt_results.
 
     DATA(lt_items) = zcl_ag2ui5_repo_service=>stage_candidates( lt_results ).
 
     cl_abap_unit_assert=>assert_equals( act = lines( lt_items )
-                                        exp = 3 ).
+                                        exp = 4 ).
     cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_b.clas.abap` ]-action
                                         exp = zif_ag2ui5_repo_service=>c_stage_action-rm ).
     cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_a.clas.abap` ]-action
@@ -1378,6 +1379,31 @@ CLASS ltcl_stage IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
     cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `zcl_c.clas.abap` ]-rstate
                                         exp = `M` ).
+  ENDMETHOD.
+
+  METHOD classic_file_candidates.
+    DATA(ls_files) = VALUE zif_abapgit_definitions=>ty_stage_files(
+      local = VALUE #( ( file = VALUE #( path = `/src/` filename = `changed.abap` )
+                        item = VALUE #( obj_type = `CLAS` obj_name = `ZCL_A` ) )
+                       ( file = VALUE #( path = `/src/` filename = `restore.abap` ) ) )
+      remote = VALUE #( ( path = `/src/` filename = `remote-only.abap` )
+                        ( path = `/src/` filename = `deleted.abap` )
+                        ( path = `/` filename = `.abapgit.xml` ) ) ).
+    DATA(lt_items) = zcl_ag2ui5_repo_service=>stage_candidates( is_files = ls_files
+      it_results = VALUE #( ( path = `/src/` filename = `changed.abap` rstate = `M` )
+                            ( path = `/src/` filename = `restore.abap` rstate = `D` )
+                            ( path = `/src/` filename = `remote-only.abap` rstate = `A` )
+                            ( path = `/src/` filename = `deleted.abap` lstate = `D` rstate = `M` )
+                            ( path = `/src/` filename = `same.abap` match = abap_true ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_items ) exp = 4 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `changed.abap` ]-action exp = `ADD` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `changed.abap` ]-lstate exp = `M` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `restore.abap` ]-action exp = `ADD` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `restore.abap` ]-lstate exp = `A` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `remote-only.abap` ]-action exp = `RM` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `deleted.abap` ]-action exp = `RM` ).
+    cl_abap_unit_assert=>assert_false( lt_items[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ filename = `changed.abap` ]-obj_name exp = `ZCL_A` ).
   ENDMETHOD.
 
   METHOD selection_still_valid.
@@ -1421,15 +1447,13 @@ CLASS ltcl_stage IMPLEMENTATION.
     ENDTRY.
   ENDMETHOD.
 
-  METHOD conflict_refused.
-    " changed on both sides: pushing would overwrite the remote change
+  METHOD remote_changes_allowed.
+    " Like classic staging, explicitly selected SAP contents can replace Git.
     DATA(ls_item) = item( `zcl_a.clas.abap` ).
     ls_item-rstate = `M`.
-    TRY.
-        zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_item ) ) ).
-        cl_abap_unit_assert=>fail( `A file changed in Git too was accepted` ).
-      CATCH zcx_abapgit_exception ##NO_HANDLER.
-    ENDTRY.
+    zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_item ) ) ).
+    ls_item-lstate = `M`.
+    zcl_ag2ui5_repo_service=>check_push_allowed( VALUE #( ( ls_item ) ) ).
   ENDMETHOD.
 
   METHOD moved_needs_old_path.

@@ -221,11 +221,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
-    "! The files changed locally, and what a commit does with each
+    "! Files differing between SAP and Git, and what a commit does with each
     CLASS-METHODS stage_candidates
       IMPORTING
         it_results      TYPE zif_abapgit_definitions=>ty_results_tt
         is_dot TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit OPTIONAL
+        is_files TYPE zif_abapgit_definitions=>ty_stage_files OPTIONAL
       RETURNING
         VALUE(rt_items) TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 
@@ -246,6 +247,7 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
                 is_dot TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit
                 iv_rule TYPE string
                 iv_remove TYPE abap_bool DEFAULT abap_false
+                is_files TYPE zif_abapgit_definitions=>ty_stage_files OPTIONAL
       RETURNING VALUE(rs_preview) TYPE zif_ag2ui5_repo_service=>ty_ignore_preview
       RAISING zcx_abapgit_exception.
 
@@ -1506,18 +1508,47 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD stage_candidates.
 
+    DATA(lt_results) = it_results.
+    IF is_files IS SUPPLIED.
+      CLEAR lt_results.
+      " Classic staging compares file contents, independently of the baseline.
+      LOOP AT is_files-local INTO DATA(ls_local).
+        DATA(ls_status) = VALUE zif_abapgit_definitions=>ty_result(
+          it_results[ path = ls_local-file-path filename = ls_local-file-filename ] OPTIONAL ).
+        ls_status-path = ls_local-file-path.
+        ls_status-filename = ls_local-file-filename.
+        ls_status-obj_type = ls_local-item-obj_type.
+        ls_status-obj_name = ls_local-item-obj_name.
+        ls_status-match = abap_false.
+        ls_status-lstate = COND #( WHEN ls_status-rstate = `D` THEN `A`
+          WHEN ls_status-lstate IS INITIAL THEN `M` ELSE ls_status-lstate ).
+        INSERT ls_status INTO TABLE lt_results.
+      ENDLOOP.
+      LOOP AT is_files-remote INTO DATA(ls_remote).
+        ls_status = VALUE #( it_results[ path = ls_remote-path filename = ls_remote-filename ] OPTIONAL ).
+        ls_status-path = ls_remote-path.
+        ls_status-filename = ls_remote-filename.
+        ls_status-match = abap_false.
+        ls_status-lstate = `D`.
+        INSERT ls_status INTO TABLE lt_results.
+      ENDLOOP.
+    ENDIF.
     IF is_dot IS SUPPLIED.
       DATA(lo_dot) = NEW zcl_abapgit_dot_abapgit( is_dot ).
     ENDIF.
-    LOOP AT it_results INTO DATA(ls_result)
-        WHERE lstate = zif_abapgit_definitions=>c_state-added
-           OR lstate = zif_abapgit_definitions=>c_state-modified
-           OR lstate = zif_abapgit_definitions=>c_state-deleted.
+    LOOP AT lt_results INTO DATA(ls_result) WHERE match = abap_false.
+      IF ls_result-lstate IS INITIAL AND ls_result-rstate IS INITIAL.
+        CONTINUE.
+      ENDIF.
       IF lo_dot IS BOUND AND lo_dot->is_ignored(
           iv_path = ls_result-path iv_filename = ls_result-filename ) = abap_true.
         CONTINUE.
       ENDIF.
-      IF ls_result-path = `/` AND ls_result-filename = `.abapgit.xml` AND ls_result-lstate = `D`.
+      DATA(lv_remove) = xsdbool( ls_result-lstate = `D` OR ls_result-rstate = `A` ).
+      IF is_files IS SUPPLIED.
+        lv_remove = xsdbool( ls_result-lstate = `D` ).
+      ENDIF.
+      IF ls_result-path = `/` AND ls_result-filename = `.abapgit.xml` AND lv_remove = abap_true.
         CONTINUE.
       ENDIF.
       INSERT VALUE #( path     = ls_result-path
@@ -1526,7 +1557,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                       obj_name = ls_result-obj_name
                       lstate   = ls_result-lstate
                       rstate   = ls_result-rstate
-                      action   = COND #( WHEN ls_result-lstate = zif_abapgit_definitions=>c_state-deleted
+                      action   = COND #( WHEN lv_remove = abap_true
                                          THEN zif_ag2ui5_repo_service=>c_stage_action-rm
                                          ELSE zif_ag2ui5_repo_service=>c_stage_action-add ) )
         INTO TABLE rt_items.
@@ -1570,8 +1601,15 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD ignore_preview.
     DATA(ls_after) = change_ignore_rules( is_dot = is_dot iv_rule = iv_rule iv_remove = iv_remove ).
     rs_preview = VALUE #( rule = iv_rule remove = iv_remove rules = is_dot-ignore ).
-    DATA(lt_before) = stage_candidates( it_results = it_results is_dot = is_dot ).
-    DATA(lt_after) = stage_candidates( it_results = it_results is_dot = ls_after ).
+    DATA lt_before TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+    DATA lt_after TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+    IF is_files IS SUPPLIED.
+      lt_before = stage_candidates( it_results = it_results is_dot = is_dot is_files = is_files ).
+      lt_after = stage_candidates( it_results = it_results is_dot = ls_after is_files = is_files ).
+    ELSE.
+      lt_before = stage_candidates( it_results = it_results is_dot = is_dot ).
+      lt_after = stage_candidates( it_results = it_results is_dot = ls_after ).
+    ENDIF.
     DATA(lt_source) = COND #( WHEN iv_remove = abap_true THEN lt_after ELSE lt_before ).
     DATA(lt_other) = COND #( WHEN iv_remove = abap_true THEN lt_before ELSE lt_after ).
     LOOP AT lt_source INTO DATA(ls_item).
@@ -1587,7 +1625,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD ignore_repo_preview.
     DATA(ls_dot) = ii_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ).
-    DATA lt_results TYPE zif_abapgit_definitions=>ty_results_tt.
+    DATA ls_files TYPE zif_abapgit_definitions=>ty_stage_files.
     IF iv_remove = abap_true.
       " Serialize previously hidden objects on an unregistered copy. No
       " setter, listener or persistence call is involved in this preview.
@@ -1595,11 +1633,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       ls_data-dot_abapgit = change_ignore_rules( is_dot = ls_dot iv_rule = iv_rule iv_remove = abap_true ).
       DATA(lo_copy) = NEW zcl_abapgit_repo_online( ls_data ).
       lo_copy->set_files_remote( ii_repo->zif_abapgit_repo~get_files_remote( ) ).
-      lt_results = zcl_abapgit_repo_status=>calculate( lo_copy ).
+      ls_files = zcl_abapgit_stage_logic=>get_stage_logic( )->get( lo_copy ).
     ELSE.
-      lt_results = zcl_abapgit_repo_status=>calculate( ii_repo ).
+      ls_files = zcl_abapgit_stage_logic=>get_stage_logic( )->get( ii_repo ).
     ENDIF.
-    rs_preview = ignore_preview( it_results = lt_results is_dot = ls_dot iv_rule = iv_rule iv_remove = iv_remove ).
+    rs_preview = ignore_preview( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_dot = ls_dot iv_rule = iv_rule
+      iv_remove = iv_remove is_files = ls_files ).
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~preview_ignore.
@@ -1631,7 +1670,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       READ TABLE it_fresh INTO DATA(ls_fresh)
         WITH KEY path = ls_selected-path filename = ls_selected-filename.
       IF sy-subrc <> 0.
-        zcx_abapgit_exception=>raise( |{ ls_selected-filename } is no longer changed locally| ).
+        zcx_abapgit_exception=>raise( |{ ls_selected-filename } no longer differs between SAP and Git| ).
       ENDIF.
       IF ls_fresh-action <> ls_selected-action OR ls_fresh-rstate <> ls_selected-rstate.
         zcx_abapgit_exception=>raise( |{ ls_selected-filename } changed again since the page was loaded| ).
@@ -1643,10 +1682,6 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD check_push_allowed.
 
     LOOP AT it_items INTO DATA(ls_item) WHERE selected = abap_true.
-      " changed on both sides: pushing would overwrite the change in Git
-      IF ls_item-rstate IS NOT INITIAL.
-        zcx_abapgit_exception=>raise( |{ ls_item-filename } was changed in Git too - pull it first| ).
-      ENDIF.
       " as abapGit's stage page: a file added in one folder while it still
       " exists in another must be removed there in the same commit - wholly,
       " a removal with only some lines picked keeps the file
@@ -1679,7 +1714,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(li_repo) = get_online_repo( iv_key ).
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
 
-    rs_stage-items = stage_candidates( it_results = zcl_abapgit_repo_status=>calculate( li_repo )
+    DATA(ls_files) = zcl_abapgit_stage_logic=>get_stage_logic( )->get( li_repo ).
+    rs_stage-items = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
       is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
     rs_stage-ignore_rules = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( )-ignore.
     DATA lt_links TYPE ty_object_links.
@@ -1722,7 +1758,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         ENDIF.
 
         li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
-        DATA(lt_fresh) = stage_candidates( it_results = zcl_abapgit_repo_status=>calculate( li_repo )
+        DATA(ls_files) = zcl_abapgit_stage_logic=>get_stage_logic( )->get( li_repo ).
+        DATA(lt_fresh) = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
           is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
 
         " check again - the system or the remote may have changed since the page loaded

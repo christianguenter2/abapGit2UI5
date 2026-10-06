@@ -1,5 +1,31 @@
 # PoC findings
 
+## Staging parity with conventional abapGit (2026-10-06)
+
+On `$UMLAUT` / `feature/test1234`, the ABAP source differed only in Git
+(`" patch test 1`), while its XML differed locally. Classic staging offered
+both files and removal of remote-only `x.md`; this frontend excluded the
+source and remote-only file and refused all selected remote changes at push.
+
+Stage loading, fresh push validation and ignore previews now use abapGit's
+stage logic. The pure mapper retains native ignore rules and metadata/move
+guards. Explicit selections can commit SAP contents over remote changes,
+with a notice on each affected row. Patch fingerprints and fresh candidate
+validation remain; no file is selected by default.
+
+Deployed the service and staging app, including their existing test includes,
+via ADT. All four readbacks match. Native suites passed service 181/181,
+stage 24/24 and diff 25/25 (230/230). `npm run check` passes with no errors or
+warnings and the existing unresolved MessageStrip hint. Regression coverage
+includes authoritative stage candidates, remote edits/additions/deletions,
+metadata removal, permitted explicit overwrites and the row notice.
+
+Live service and Chrome staging show the same three candidates as classic
+abapGit. **Pick lines** shows the comment as a selectable deletion; a native
+patch check recreates the SAP source exactly. An ignore preview includes the
+ABAP source. No fixture object, branch, ignore rule or remote commit changed;
+no push ran. Back from Pick lines leaves all candidates unselected.
+
 End-to-end test on A4H25 (abap2UI5 1.146.0, abapGit developer version at
 `main` `0995f4c`), 2026-09-30, in Chrome.
 
