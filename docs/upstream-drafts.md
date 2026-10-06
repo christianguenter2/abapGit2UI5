@@ -27,27 +27,49 @@ Texts ready to paste, one issue each. Background and evidence are in
 > pulls (`assert_pull_allowed`) and could contribute a PR. Is that the
 > direction you would want?
 
-### B. Pull and push for headless callers
+### B. Pull and push for headless callers (discussion first, no code yet)
 
-> **Title:** Move pull and push orchestration out of the UI layer
+> **Title:** Discussion: pull and push without the UI layer
 >
-> Several frontends now drive abapGit without its GUI: the ADT backend,
-> abapgit-agent, abapGit2UI5 (an abap2UI5 frontend). Each has to re-implement
-> steps that live in `ui/routing`:
+> The steps of a pull and a push live in `ui/routing`
+> (`zcl_abapgit_services_repo`, `zcl_abapgit_services_git`). Every entry
+> point that is not the SAP GUI popup flow puts them together itself, and the
+> copies already differ inside abapGit (main at `5c05184a`):
 >
-> - **Pull:** default decisions, `delete_unnecessary_objects` and
->   `real_deserialize` in `zcl_abapgit_services_repo`. Copies drift; for
->   example, deleting objects that were removed from the remote is easy to miss.
-> - **Push:** the exits `validate_before_push` / `after_push`, `COMMIT WORK`
->   and saving the committer in `zcl_abapgit_services_git=>commit`.
->   abapGit2UI5 missed the exits and the `COMMIT WORK` at first.
-> - **Popups:** `ZCL_ABAPGIT_UI_INJECTOR` is `FOR TESTING`, so a headless
->   caller cannot register a non-interactive popup implementation that raises
->   cleanly.
+> | Entry point | Self-update check | Delete removed objects | Push exits |
+> |---|---|---|---|
+> | Pull with popups (`gui_deserialize`) | yes | yes | - |
+> | HTML pull page (Flow, `gui_page_pull`) | **no**, calls `real_deserialize` directly | yes | - |
+> | Background pull | no | yes, via the UI class `zcl_abapgit_services_repo` | - |
+> | Commit page (`services_git=>commit`) | - | - | yes |
+> | Background push (`push_au`, `push_fi`) | - | - | **no**: `validate_before_push` / `validate_after_push` are not called |
 >
-> Proposal: a pull service in the repo layer (checks → decisions as data →
-> execute) and the push steps in the repo layer, with the GUI only showing the
-> popups. Happy to help with PRs if you agree on the shape.
+> Outside abapGit, the ADT backend, abapgit-agent and abapGit2UI5 (an abap2UI5
+> frontend) each have their own copy too. abapGit2UI5, for example, first
+> missed the push exits and the `COMMIT WORK`.
+>
+> **Proposal:** two small classes in the repo layer that hold the steps without
+> any UI, and that every entry point calls:
+>
+> 1. **Pull:** `checks` (as today, `deserialize_checks( )`) → the caller fills
+>    in the decisions → `pull( is_checks )` deletes the removed objects,
+>    deserializes and returns the log. The GUI keeps the popups, the success
+>    message and the restart; the background job keeps its "yes to all".
+> 2. **Push:** `push( is_comment, io_stage )` calls `validate_before_push`,
+>    pushes, commits and calls `validate_after_push`. The commit page keeps
+>    the form checks and saving the committer per user.
+>
+> Each would be one PR, moving code without changing behaviour for the SAP GUI
+> flow, with unit tests for the new classes.
+>
+> **Questions:**
+> - Is this a direction you would accept, and in which package (`src/repo`)?
+> - Should the background push call the push exits? Today it does not. Adding
+>   them changes behaviour for users with an exit, so we would make it an
+>   explicit decision.
+> - The self-update check is GUI specific today (`sy-cprog = 'ZABAPGIT'`,
+>   restart via `SUBMIT`). Leave it in the GUI for now, or move the check
+>   into the pull class? (Related: the separate issue about the guard itself.)
 
 ### C. Form feed marker in diff output
 
