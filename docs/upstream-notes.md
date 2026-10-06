@@ -4,6 +4,12 @@ Collected while building abapGit2UI5 (2026-09-30 to 2026-10-02). Nothing here
 is filed yet. The "likely bugs" are from reading code and code reviews; only
 11 is reproduced so far.
 
+**Status (2026-10-06):** all likely bugs are settled: 1, 11, 12, 13 and 14
+are fixed upstream (#7923, #7922, #7924, #7926, #7927); 3, 4, 5 and 6 are
+dropped. What is left is discussion: 2 and the API proposals 7 to 10, plus
+the abapgit-agent and abap2UI5 points. Texts to post are in
+`upstream-drafts.md`.
+
 **Status (2026-10-02):** 11 (the form feed in a partial push) is fixed in
 abapGit PR #7922, merged on 2026-10-02. The worktree and the branch are
 removed. abapGit2UI5's own removal in `apply_patch` stays until A4H25 runs an
@@ -62,6 +68,16 @@ abapGit with the fix.
      it was deleted counted as non-existent. abapGit hid it (`check_exists`),
      and the next pull removed its TADIR row.
    - To do: find out which `exists( )` check gave the false negative.
+   - **Not reproduced (2026-10-06), dropped:** the only failing run
+     (2026-09-30 19:44) sent the ADT create and the activation of the class
+     11 ms apart, in parallel. The same steps one after the other a minute
+     later showed the class under "Delete" as expected. On A4H25 an inactive
+     new class, a deleted one and one created and activated back to back all
+     gave the right answer (`SEO_CLASS_EXISTENCE_CHECK` 0 / 2,
+     `zcl_abapgit_objects=>exists` X / space), with probe class
+     `ZCL_AG2UI5_EXISTS_PROBE` in `$TMP` (deleted again). Also,
+     `remove_obsolete_tadir` runs only when a package is deleted, so it can
+     not explain a pull removing the class. Most likely a test artifact.
 4. **The diff can stop early.** When `RS_CMP_COMPUTE_DELTA` returns
    `difference_not_found`, the fallback in `zcl_abapgit_diff_std`
    (`compute_diff_extra`) compares only up to the length of the shorter file.
@@ -84,6 +100,9 @@ abapGit with the fix.
      and a text with four tabs per line is not binary.
 6. **The NSPC rule in `popup_decisions` reads only the first NSPC row.** An
    edge case, but inconsistent.
+   - **Dropped (2026-10-06):** with two new namespaces only the first is
+     preselected, and the user is asked about the other. No wrong result,
+     nothing to file.
 
 11. **A partial push writes a form feed into Git (reproduced).** When only
     one side of a file ends in a newline, `zcl_abapgit_diff_std` marks the
