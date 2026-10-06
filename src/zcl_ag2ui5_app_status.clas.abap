@@ -60,6 +60,16 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mt_rows         TYPE ty_rows.
     "! Files of the selected object, bound only while its dialog is open
     DATA mt_object_files TYPE ty_rows.
+    TYPES:
+      BEGIN OF ty_summary,
+        id TYPE string,
+        text TYPE string,
+        path TYPE string,
+        filename TYPE string,
+      END OF ty_summary,
+      ty_summary_rows TYPE STANDARD TABLE OF ty_summary WITH EMPTY KEY.
+    DATA mt_object_summary TYPE ty_summary_rows.
+    DATA mv_object_summary_note TYPE string.
     DATA mv_files_title TYPE string.
     DATA mv_overview TYPE string VALUE `FILES`.
     "! ALL or CHANGES
@@ -110,6 +120,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_files_open TYPE abap_bool.
     METHODS popup_files_display.
     METHODS open_object_files.
+    DATA mt_semantic TYPE zif_ag2ui5_repo_service=>ty_semantic_changes.
     METHODS file_rows
       IMPORTING it_rows TYPE zif_ag2ui5_repo_service=>ty_status_rows
       RETURNING VALUE(rt_rows) TYPE ty_rows.
@@ -614,6 +625,31 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDLOOP.
     mt_object_files = file_rows( zcl_ag2ui5_repo_service=>sort_status_rows(
       it_rows = lt_files iv_by = `FILE` iv_changes_first = mv_changes_first ) ).
+    CLEAR: mt_semantic, mt_object_summary, mv_object_summary_note.
+    IF ( ls_object-obj_type = `CLAS` OR ls_object-obj_type = `INTF` )
+      AND ( mv_offline = abap_false OR mv_zip IS NOT INITIAL ).
+      LOOP AT lt_files INTO DATA(ls_source_file) WHERE changed = abap_true.
+        IF to_lower( ls_source_file-filename ) NP '*.abap'.
+          CONTINUE.
+        ENDIF.
+        TRY.
+            DATA(ls_diff) = service( )->get_diff(
+              iv_key = mv_key iv_zip = mv_zip iv_path = ls_source_file-path iv_filename = ls_source_file-filename
+              iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
+                iv_lstate = ls_source_file-lstate iv_rstate = ls_source_file-rstate ) ).
+            APPEND LINES OF ls_diff-semantic-changes TO mt_semantic.
+            IF ls_diff-semantic-note CP `Structural summary unavailable*`.
+              mv_object_summary_note = `Some source cannot be summarized; review its raw file diff.`.
+            ENDIF.
+          CATCH zcx_abapgit_exception.
+            mv_object_summary_note = `Some source could not be loaded; open its file diff to retry.`.
+        ENDTRY.
+      ENDLOOP.
+      mt_object_summary = CORRESPONDING #( mt_semantic ).
+      IF mv_object_summary_note IS INITIAL.
+        mv_object_summary_note = `Method declarations and implementations only. Comments, formatting and metadata stay in the file diffs.`.
+      ENDIF.
+    ENDIF.
     mv_files_title = |Files - { ls_object-object_display }|.
     mv_files_open = abap_true.
     popup_files_display( ).
@@ -629,11 +665,39 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->ele( `Dialog`
             )->a( n = `title` v = client->_bind( mv_files_title )
             )->a( n = `contentWidth` v = `48rem` ).
-    DATA(table) = dialog->ele( `content`
-        )->ele( `Table`
-            )->a( n = `items` v = client->_bind( mt_object_files )
-            )->a( n = `growing` v = `true`
-            )->a( n = `growingThreshold` v = `200` ).
+    DATA(dialog_content) = dialog->ele( `content` ).
+    IF mv_object_summary_note IS NOT INITIAL.
+      dialog_content->tag( `Title`
+          )->a( n = `text` v = `Structural changes`
+          )->a( n = `level` v = `H3`
+          )->a( n = `class` v = `sapUiSmallMargin` ).
+      dialog_content->tag( `Text`
+          )->a( n = `text` v = client->_bind( mv_object_summary_note )
+          )->a( n = `class` v = `sapUiSmallMarginBeginEnd` ).
+      dialog_content->ele( `List`
+          )->a( n = `items` v = client->_bind( mt_object_summary )
+          )->a( n = `noDataText` v = `No method token changes; review the file diffs.`
+          )->a( n = `growing` v = `true`
+          )->a( n = `growingThreshold` v = `20`
+          )->ele( `items`
+              )->ele( `CustomListItem`
+                  )->a( n = `type` v = `Navigation`
+                  )->a( n = `press` v = client->_event( val = `SEMANTIC`
+                      t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ( `${ID}` ) ) )
+                  )->ele( `content`
+                      )->ele( `VBox`
+                          )->a( n = `class` v = `sapUiSmallMargin`
+                          )->tag( `Text`
+                              )->a( n = `text` v = `{TEXT}`
+                              )->a( n = `wrapping` v = `true`
+                          )->tag( `Text`
+                              )->a( n = `text` v = `{FILENAME}`
+                              )->a( n = `class` v = `sapUiTinyMarginTop` ).
+    ENDIF.
+    DATA(table) = dialog_content->ele( `Table`
+        )->a( n = `items` v = client->_bind( mt_object_files )
+        )->a( n = `growing` v = `true`
+        )->a( n = `growingThreshold` v = `200` ).
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
         )->a( n = `width` v = `55%`
@@ -925,7 +989,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
-        CLEAR: mv_zip, mv_upload, mv_upload_path, mv_files_open, mt_object_files, mv_files_title.
+        CLEAR: mv_zip, mv_upload, mv_upload_path, mv_files_open, mt_object_files, mv_files_title,
+          mt_object_summary, mt_semantic, mv_object_summary_note.
         client->nav_app_leave( ).
       WHEN `REFRESH`.
         load_status( ).
@@ -940,10 +1005,27 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           iv_key = zif_ag2ui5_settings=>c_key-status_overview iv_value = mv_overview ).
         rows_build( ).
         view_display( ).
+      WHEN `SEMANTIC`.
+        READ TABLE mt_semantic INTO DATA(ls_semantic) WITH KEY
+          path = client->get_event_arg( ) filename = client->get_event_arg( 2 ) id = client->get_event_arg( 3 ).
+        IF sy-subrc <> 0 OR mv_files_open = abap_false.
+          RETURN.
+        ENDIF.
+        READ TABLE mt_status INTO DATA(ls_semantic_file) WITH KEY path = ls_semantic-path filename = ls_semantic-filename.
+        IF sy-subrc <> 0.
+          RETURN.
+        ENDIF.
+        client->popup_destroy( ).
+        client->nav_app_call( zcl_ag2ui5_app_diff=>create(
+          iv_key = mv_key iv_zip = mv_zip iv_path = ls_semantic-path iv_filename = ls_semantic-filename
+          iv_obj_type = ls_semantic_file-obj_type iv_obj_name = ls_semantic_file-obj_name
+          iv_object_link = ls_semantic_file-object_link iv_focus = ls_semantic-id
+          iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
+            iv_lstate = ls_semantic_file-lstate iv_rstate = ls_semantic_file-rstate ) ) ).
       WHEN `OBJECT`.
         open_object_files( ).
       WHEN `FILES_CLOSE`.
-        CLEAR: mv_files_open, mt_object_files, mv_files_title.
+        CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
         client->popup_destroy( ).
       WHEN `STAGE`.
         IF mv_offline = abap_true.
@@ -1028,7 +1110,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD load_status.
 
-    CLEAR: mv_files_open, mt_object_files, mv_files_title.
+    CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
     TRY.
         DATA(ls_status) = service( )->get_status( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).

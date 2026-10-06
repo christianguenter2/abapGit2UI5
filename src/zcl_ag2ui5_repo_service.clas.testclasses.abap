@@ -2530,3 +2530,113 @@ CLASS ltcl_new_package IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `ZLOCAL` act = ls_form-software_component ).
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_semantic_diff DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS declarations FOR TESTING.
+    METHODS implementations FOR TESTING.
+    METHODS direction_and_ranges FOR TESTING.
+    METHODS formatting_and_comments FOR TESTING.
+    METHODS literal_case FOR TESTING.
+    METHODS owners_and_visibility FOR TESTING.
+    METHODS incomplete_source FOR TESTING.
+    METHODS renamed_method FOR TESTING.
+    METHODS macros_are_not_methods FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_semantic_diff IMPLEMENTATION.
+  METHOD declarations.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `INTERFACE zif_test PUBLIC.` )
+        ( `METHODS: one IMPORTING iv_x TYPE i,` ) ( ` two RETURNING VALUE(rv_x) TYPE i.` ) ( `ENDINTERFACE.` ) )
+      it_local = VALUE #( ( `INTERFACE zif_test PUBLIC.` )
+        ( `METHODS: one IMPORTING iv_x TYPE string,` ) ( ` two RETURNING VALUE(rv_x) TYPE i.` )
+        ( `CLASS-METHODS three.` ) ( `ENDINTERFACE.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-name exp = `ONE` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-action exp = `changed` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 2 ]-action exp = `added` ).
+  ENDMETHOD.
+
+  METHOD implementations.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` )
+        ( `METHOD one.` ) ( `rv_x = 1.` ) ( `ENDMETHOD.` ) ( `METHOD two.` ) ( `ENDMETHOD.` ) ( `ENDCLASS.` ) )
+      it_local = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` )
+        ( `METHOD one.` ) ( `rv_x = 2.` ) ( `ENDMETHOD.` ) ( `ENDCLASS.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-component exp = `Implementation` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-action exp = `changed` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 2 ]-action exp = `removed` ).
+  ENDMETHOD.
+
+  METHOD direction_and_ranges.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff( iv_remote_is_new = abap_true
+      it_local = VALUE #( )
+      it_remote = VALUE #( ( `INTERFACE zif_test PUBLIC.` )
+        ( `METHODS one` ) ( ` IMPORTING iv_x TYPE i.` ) ( `ENDINTERFACE.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-action exp = `added` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-remote_from exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-remote_to exp = 3 ).
+    cl_abap_unit_assert=>assert_initial( ls_result-changes[ 1 ]-local_from ).
+  ENDMETHOD.
+
+  METHOD formatting_and_comments.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` )
+        ( `METHOD one.` ) ( `rv_x = 1.` ) ( `ENDMETHOD.` ) ( `ENDCLASS.` ) )
+      it_local = VALUE #( ( `class zcl_test implementation.` )
+        ( `method one.` ) ( `" METHOD fake.` ) ( `  rv_x    = 1. " comment` ) ( `endmethod.` ) ( `endclass.` ) ) ).
+    cl_abap_unit_assert=>assert_initial( ls_result-changes ).
+    cl_abap_unit_assert=>assert_char_cp( act = ls_result-note exp = `Method declarations*` ).
+  ENDMETHOD.
+
+  METHOD literal_case.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` )
+        ( `METHOD one.` ) ( `rv_x = 'a. METHOD fake.'.` ) ( `ENDMETHOD.` ) ( `ENDCLASS.` ) )
+      it_local = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` )
+        ( `METHOD one.` ) ( `rv_x = 'A. METHOD fake.'.` ) ( `ENDMETHOD.` ) ( `ENDCLASS.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-name exp = `ONE` ).
+  ENDMETHOD.
+
+  METHOD owners_and_visibility.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `CLASS lcl_one DEFINITION.` ) ( `PUBLIC SECTION.` ) ( `METHODS run.` ) ( `ENDCLASS.` )
+        ( `CLASS lcl_two DEFINITION.` ) ( `PUBLIC SECTION.` ) ( `METHODS run.` ) ( `ENDCLASS.` ) )
+      it_local = VALUE #( ( `CLASS lcl_one DEFINITION.` ) ( `PROTECTED SECTION.` ) ( `METHODS run.` ) ( `ENDCLASS.` )
+        ( `CLASS lcl_two DEFINITION.` ) ( `PUBLIC SECTION.` ) ( `CLASS-METHODS run.` ) ( `ENDCLASS.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-owner exp = `LCL_ONE` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 2 ]-owner exp = `LCL_TWO` ).
+  ENDMETHOD.
+
+  METHOD incomplete_source.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( )
+      it_local = VALUE #( ( `CLASS zcl_test IMPLEMENTATION.` ) ( `METHOD one.` ) ( `rv_x = 1.` ) ) ).
+    cl_abap_unit_assert=>assert_initial( ls_result-changes ).
+    cl_abap_unit_assert=>assert_char_cp( act = ls_result-note exp = `Structural summary unavailable*` ).
+  ENDMETHOD.
+
+  METHOD renamed_method.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( ( `INTERFACE zif_test PUBLIC.` ) ( `METHODS old_name.` ) ( `ENDINTERFACE.` ) )
+      it_local = VALUE #( ( `INTERFACE zif_test PUBLIC.` ) ( `METHODS new_name.` ) ( `ENDINTERFACE.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-action exp = `added` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 2 ]-action exp = `removed` ).
+  ENDMETHOD.
+
+  METHOD macros_are_not_methods.
+    DATA(ls_result) = zcl_ag2ui5_repo_service=>semantic_diff(
+      it_remote = VALUE #( )
+      it_local = VALUE #( ( `DEFINE fake.` ) ( `METHODS not_a_method.` ) ( `END-OF-DEFINITION.` )
+        ( `CLASS lcl_test DEFINITION DEFERRED.` )
+        ( `CLASS lcl_test DEFINITION.` ) ( `PUBLIC SECTION.` ) ( `METHODS run.` ) ( `ENDCLASS.` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( ls_result-changes ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-name exp = `RUN` ).
+  ENDMETHOD.
+ENDCLASS.

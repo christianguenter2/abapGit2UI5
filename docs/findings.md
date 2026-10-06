@@ -1035,3 +1035,65 @@ Minor points left open by the reviews:
     credentials, so they work there only through the abapGit user exit.
 - Per slice, the minor points of the reviews are listed in their sections
   above (patch, branches, delete).
+
+
+## Structural method review (2026-10-06)
+
+See [the design](superpowers/specs/2026-10-06-semantic-diff-design.md) and
+[implementation plan](superpowers/plans/2026-10-06-semantic-diff.md).
+
+- Classes/interfaces expose method declaration and implementation summaries
+  in the object file dialog and file diff, with added/removed/changed actions
+  in the file's existing comparison direction. Declaration comparison covers
+  parameters, static/instance status, visibility and other signature tokens.
+  Each link opens the corresponding method range on both sides; Show complete
+  diff restores the file. Layout and changes-only preferences are preserved.
+- SAP's scanner supplies tokens and source locations, without include loading
+  or TRMAC expansion. A native temporary probe confirmed chained declarations
+  are separate statements with prefix tokens and correct line numbers. STOKESX
+  stores token strings without a fixed-length truncation. Token comparison
+  excludes comments/formatting; those changes stay in the raw diff. Local
+  owners/test methods are included. Renames are separate removal/addition.
+  Incomplete scopes fall back to raw review; XML metadata and unsupported
+  object types retain their existing raw diff.
+- Summary loading is on demand when an object is opened. Existing get_diff
+  restores offline ZIP data and returns plain summaries; no new abapGit object
+  references are kept by apps. Failed source loading retains the file list and
+  explains how to retry. Diff ranges and navigation identity come from protected
+  data; forged public summary entries cannot supply a source range. Patch mode
+  stays on the full file and omits summary filtering.
+- Added 17 native tests: service 9, diff app 6, status app 2. These cover chained
+  and multiline declarations, types, visibility/static changes, implementations,
+  additions/removals, direction/ranges, local owners, literals, formatting,
+  comments, incomplete scopes, macros, range filtering on both/one side, forged
+  events, restoring the file, patch preservation, ZIP forwarding and load errors.
+  **Native affected suites passed 241/241:** service 180/180, diff app 25/25,
+  status app 36/36. Combined with the unchanged suites' previously recorded
+  results, the latest suite results total 299/299.
+- Local npm check passes: ABAP lint and all 13 UI5 render documents, no errors
+  or warnings and the existing MessageStrip hint. Desktop 1280x900 and phone
+  390x844 scratch renders use the actual view builders with illustrative data
+  and only the applicable conditional branches. Visual review caught truncated
+  summary labels on phones; entries now wrap and the source-range label sits
+  above its restore button. Both layouts were inspected. Preview files and
+  models are under /tmp/ag2ui5-semantic-*, rather than committed screenshots.
+- Deployment to A4H25 was explicitly approved by Chris after automatic
+  approval review initially refused activation without deployment permission.
+  All seven existing interface/production/test sources activated through ADT,
+  with no errors. Backups: /tmp/ag2ui5-semantic-backup. All seven source
+  readbacks match the local files after newline normalization; readbacks:
+  /tmp/ag2ui5-semantic-readback. Latest SAP short dumps predate this slice.
+- Live Chrome/SAP verified on $ABAPGIT2UI5's deployed changes: object summaries,
+  added/changed declarations and implementations, navigation into FOCUS_CHANGE
+  and the changed CREATE declaration, both layouts, full-range/changes-only
+  toggles, Show complete diff, Back reopening the dialog, growing the list from
+  20 to 24 summaries, local test-class SETUP navigation, and Close. A selected
+  implementation showed precisely its 12 source lines; restoring the complete
+  file showed 158 diff rows. The original Files overview, side-by-side layout
+  and changes-only preference were restored. No fixture object, registration,
+  remote branch or commit was changed; no import/push ran.
+- Live screenshot: /tmp/ag2ui5-semantic-live-declaration.jpg. A temporary Chrome
+  viewport override changed the DOM size but its screenshot retained the
+  desktop layout, so phone visual coverage is the inspected headless render.
+  The override was reset. Browser checks used a separate agent-created tab.
+  Chris accepted the slice and authorized its commit after verification.

@@ -220,6 +220,10 @@ CLASS ltd_offline_service DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
     DATA ms_status TYPE zif_ag2ui5_repo_service=>ty_status.
+    DATA ms_diff TYPE zif_ag2ui5_repo_service=>ty_diff.
+    DATA mv_diff_zip TYPE xstring.
+    DATA mv_diff_calls TYPE i.
+    DATA mv_diff_fail TYPE abap_bool.
     DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_preview.
     DATA ms_result TYPE zif_ag2ui5_repo_service=>ty_pull_result.
     DATA mv_status_zip TYPE xstring.
@@ -233,6 +237,14 @@ CLASS ltd_offline_service DEFINITION FINAL FOR TESTING.
 ENDCLASS.
 
 CLASS ltd_offline_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~get_diff.
+    mv_diff_calls = mv_diff_calls + 1.
+    mv_diff_zip = iv_zip.
+    IF mv_diff_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Test load failure` ).
+    ENDIF.
+    rs_diff = ms_diff.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~get_status.
     mv_status_zip = iv_zip.
     rs_status = ms_status.
@@ -585,15 +597,57 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS close_clears FOR TESTING.
     METHODS unknown_key FOR TESTING.
     METHODS offline_without_zip FOR TESTING.
+    METHODS semantic_navigation FOR TESTING.
+    METHODS semantic_load_failure FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
+  METHOD semantic_navigation.
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    lo_service->ms_diff-semantic-changes = VALUE #( ( id = `ZCL_A/Declaration/RUN`
+      text = `ZCL_A=>RUN: declaration changed` path = `/src/` filename = `a.abap` ) ).
+    mo_app->mv_zip = CONV xstring( 'CAFE' ).
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = lo_service->mv_diff_calls exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lo_service->mv_diff_zip exp = mo_app->mv_zip ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_object_summary ) exp = 1 ).
+    " Forged public entries do not authorize navigation.
+    mo_app->mt_object_summary = VALUE #( ( id = `forged` path = `/src/` filename = `a.abap` ) ).
+    mo_client->mv_event = `SEMANTIC`.
+    mo_client->mt_args = VALUE #( ( `/src/` ) ( `a.abap` ) ( `forged` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    mo_client->mt_args = VALUE #( ( `/src/` ) ( `a.abap` ) ( `ZCL_A/Declaration/RUN` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_bound( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_files_open ).
+    mo_client->mv_event = `FILES_CLOSE`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_semantic ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_object_summary ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_object_summary_note ).
+  ENDMETHOD.
+
+  METHOD semantic_load_failure.
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    lo_service->mv_diff_fail = abap_true.
+    mo_client->mv_event = `OBJECT`.
+    mo_client->mt_args = VALUE #( ( `CLAS` ) ( `ZCL_A` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_files_open ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_object_files ) exp = 3 ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_app->mv_object_summary_note exp = `Some source could not be loaded*` ).
+  ENDMETHOD.
+
   METHOD setup.
     mo_settings = NEW #( ).
     zcl_ag2ui5_settings=>inject( mo_settings ).
     mo_app = zcl_ag2ui5_app_status=>create( `1` ).
     mo_client = NEW #( ).
     mo_app->client = mo_client.
+    mo_app->mi_service = NEW ltd_offline_service( ).
     mo_app->mt_status = VALUE #(
       ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/src/` filename = `a.abap`
         lstate = `M` changed = abap_true object_link = `adt://A4H/a` )

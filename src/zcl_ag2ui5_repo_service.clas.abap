@@ -87,6 +87,14 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_lines) TYPE zif_ag2ui5_repo_service=>ty_diff_lines.
 
+    "! Structural observations about method declarations and implementations.
+    CLASS-METHODS semantic_diff
+      IMPORTING
+        it_local TYPE string_table
+        it_remote TYPE string_table
+        iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+      RETURNING VALUE(rs_semantic) TYPE zif_ag2ui5_repo_service=>ty_semantic.
+
     "! abapGit's rule for the diff direction: only when nothing changed locally
     "! and something changed remotely is the remote the new side
     CLASS-METHODS remote_is_new
@@ -353,6 +361,21 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
   PROTECTED SECTION.
   PRIVATE SECTION.
+    TYPES:
+      BEGIN OF ty_component,
+        owner TYPE string,
+        name TYPE string,
+        kind TYPE string,
+        tokens TYPE string,
+        first TYPE i,
+        last TYPE i,
+      END OF ty_component,
+      ty_components TYPE SORTED TABLE OF ty_component WITH UNIQUE KEY owner kind name.
+
+    CLASS-METHODS method_components
+      IMPORTING it_source TYPE string_table
+      EXPORTING et_components TYPE ty_components ev_supported TYPE abap_bool.
+
     CLASS-METHODS ignore_repo_preview
       IMPORTING ii_repo TYPE REF TO zif_abapgit_repo_online
                 iv_rule TYPE string
@@ -938,6 +961,152 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD method_components.
+
+    DATA lt_tokens TYPE STANDARD TABLE OF stokesx WITH EMPTY KEY.
+    DATA lt_statements TYPE STANDARD TABLE OF sstmnt WITH EMPTY KEY.
+    DATA lv_owner TYPE string.
+    DATA lv_visibility TYPE string.
+    DATA ls_component TYPE ty_component.
+    DATA lv_macro TYPE abap_bool.
+    CLEAR: et_components, ev_supported.
+    IF it_source IS INITIAL.
+      ev_supported = abap_true.
+      RETURN.
+    ENDIF.
+    SCAN ABAP-SOURCE it_source TOKENS INTO lt_tokens
+      STATEMENTS INTO lt_statements WITH ANALYSIS WITHOUT TRMAC.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    LOOP AT lt_statements INTO DATA(ls_statement).
+      READ TABLE lt_tokens INTO DATA(ls_first) INDEX ls_statement-from.
+      IF sy-subrc <> 0.
+        RETURN.
+      ENDIF.
+      READ TABLE lt_tokens INTO DATA(ls_last) INDEX ls_statement-to.
+      IF sy-subrc <> 0.
+        RETURN.
+      ENDIF.
+      DATA(lv_second_index) = ls_statement-from + 1.
+      DATA(ls_second) = VALUE stokesx( lt_tokens[ lv_second_index ] OPTIONAL ).
+      IF ls_first-str = 'DEFINE'.
+        IF ls_component-name IS NOT INITIAL.
+          RETURN.
+        ENDIF.
+        lv_macro = abap_true.
+      ELSEIF ls_first-str = 'END-OF-DEFINITION'.
+        lv_macro = abap_false.
+        CONTINUE.
+      ENDIF.
+      IF lv_macro = abap_true.
+        CONTINUE.
+      ENDIF.
+      CASE ls_first-str.
+        WHEN 'CLASS' OR 'INTERFACE'.
+          IF ls_component-name IS NOT INITIAL OR lv_owner IS NOT INITIAL.
+            RETURN.
+          ENDIF.
+          " Forward declarations have no method scope.
+          DATA(lv_forward) = abap_false.
+          LOOP AT lt_tokens INTO DATA(ls_header_token) FROM ls_statement-from TO ls_statement-to.
+            IF ls_header_token-str = 'DEFERRED' OR ls_header_token-str = 'LOAD'.
+              lv_forward = abap_true.
+            ENDIF.
+          ENDLOOP.
+          DATA(ls_fourth) = VALUE stokesx( lt_tokens[ ls_statement-from + 3 ] OPTIONAL ).
+          DATA(ls_fifth) = VALUE stokesx( lt_tokens[ ls_statement-from + 4 ] OPTIONAL ).
+          IF ls_fourth-str = 'LOCAL' AND ls_fifth-str = 'FRIENDS'.
+            lv_forward = abap_true.
+          ENDIF.
+          IF lv_forward = abap_true.
+            CONTINUE.
+          ENDIF.
+          lv_owner = ls_second-str.
+          lv_visibility = COND #( WHEN ls_first-str = 'INTERFACE' THEN `PUBLIC` ELSE `PRIVATE` ).
+        WHEN 'ENDCLASS' OR 'ENDINTERFACE'.
+          IF ls_component-name IS NOT INITIAL OR lv_owner IS INITIAL.
+            RETURN.
+          ENDIF.
+          CLEAR lv_owner.
+        WHEN 'PUBLIC' OR 'PROTECTED' OR 'PRIVATE'.
+          IF ls_second-str = 'SECTION'.
+            lv_visibility = ls_first-str.
+          ENDIF.
+        WHEN 'METHODS' OR 'CLASS-METHODS' OR 'METHOD'.
+          IF lv_owner IS INITIAL OR ls_component-name IS NOT INITIAL OR ls_second-str IS INITIAL.
+            RETURN.
+          ENDIF.
+          ls_component = VALUE #( owner = lv_owner name = ls_second-str
+            kind = COND #( WHEN ls_first-str = 'METHOD' THEN `Implementation` ELSE `Declaration` )
+            first = COND #( WHEN ls_statement-prefixlen > 0 THEN ls_second-row ELSE ls_first-row ) last = ls_last-row ).
+          IF ls_component-kind = `Declaration`.
+            ls_component-tokens = lv_visibility.
+          ENDIF.
+        WHEN 'ENDMETHOD'.
+          IF ls_component-name IS INITIAL OR ls_component-kind <> `Implementation`.
+            RETURN.
+          ENDIF.
+      ENDCASE.
+      IF ls_component-name IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      LOOP AT lt_tokens INTO DATA(ls_token) FROM ls_statement-from TO ls_statement-to.
+        " Delimit by length: literals and escaped identifiers stay distinct.
+        ls_component-tokens = |{ ls_component-tokens }{ strlen( ls_token-str ) }:{ ls_token-str };|.
+      ENDLOOP.
+      ls_component-last = ls_last-row.
+      IF ls_component-kind = `Declaration` OR ls_first-str = 'ENDMETHOD'.
+        INSERT ls_component INTO TABLE et_components.
+        IF sy-subrc <> 0.
+          RETURN.
+        ENDIF.
+        CLEAR ls_component.
+      ENDIF.
+    ENDLOOP.
+    ev_supported = xsdbool( lv_owner IS INITIAL AND ls_component-name IS INITIAL AND lv_macro = abap_false ).
+
+  ENDMETHOD.
+
+  METHOD semantic_diff.
+
+    method_components( EXPORTING it_source = it_local
+      IMPORTING et_components = DATA(lt_local) ev_supported = DATA(lv_local_supported) ).
+    method_components( EXPORTING it_source = it_remote
+      IMPORTING et_components = DATA(lt_remote) ev_supported = DATA(lv_remote_supported) ).
+    IF lv_local_supported = abap_false OR lv_remote_supported = abap_false.
+      rs_semantic-note = `Structural summary unavailable for this source; review the raw diff.`.
+      RETURN.
+    ENDIF.
+    DATA(lt_keys) = lt_local.
+    LOOP AT lt_remote INTO DATA(ls_remote).
+      IF NOT line_exists( lt_keys[ owner = ls_remote-owner kind = ls_remote-kind name = ls_remote-name ] ).
+        INSERT ls_remote INTO TABLE lt_keys.
+      ENDIF.
+    ENDLOOP.
+    LOOP AT lt_keys INTO DATA(ls_key).
+      DATA(ls_local) = VALUE ty_component( lt_local[ owner = ls_key-owner kind = ls_key-kind name = ls_key-name ] OPTIONAL ).
+      ls_remote = VALUE #( lt_remote[ owner = ls_key-owner kind = ls_key-kind name = ls_key-name ] OPTIONAL ).
+      IF ls_local-name IS NOT INITIAL AND ls_remote-name IS NOT INITIAL AND ls_local-tokens = ls_remote-tokens.
+        CONTINUE.
+      ENDIF.
+      DATA(lv_new_exists) = COND abap_bool( WHEN iv_remote_is_new = abap_true
+        THEN xsdbool( ls_remote-name IS NOT INITIAL ) ELSE xsdbool( ls_local-name IS NOT INITIAL ) ).
+      DATA(lv_old_exists) = COND abap_bool( WHEN iv_remote_is_new = abap_true
+        THEN xsdbool( ls_local-name IS NOT INITIAL ) ELSE xsdbool( ls_remote-name IS NOT INITIAL ) ).
+      DATA(lv_action) = COND string( WHEN lv_old_exists = abap_false THEN `added`
+        WHEN lv_new_exists = abap_false THEN `removed` ELSE `changed` ).
+      DATA(lv_side) = COND string( WHEN iv_remote_is_new = abap_true THEN `Git` ELSE `this system` ).
+      INSERT VALUE #( id = |{ ls_key-owner }/{ ls_key-kind }/{ ls_key-name }|
+        owner = ls_key-owner name = ls_key-name component = ls_key-kind action = lv_action
+        text = |{ ls_key-owner } / { ls_key-name }: { to_lower( ls_key-kind ) } { lv_action } in { lv_side }|
+        local_from = ls_local-first local_to = ls_local-last
+        remote_from = ls_remote-first remote_to = ls_remote-last ) INTO TABLE rs_semantic-changes.
+    ENDLOOP.
+    rs_semantic-note = `Method declarations and implementations only. Comments and formatting stay in the raw diff; summaries do not predict behavior.`.
+
+  ENDMETHOD.
+
   METHOD zif_ag2ui5_repo_service~get_diff.
 
     assert_authorized( ).
@@ -963,6 +1132,20 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       DATA(li_diff) = zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_remote iv_old = lv_local ).
     ELSE.
       li_diff = zcl_abapgit_diff_factory=>get( )->create( iv_new = lv_local iv_old = lv_remote ).
+    ENDIF.
+    IF to_lower( iv_filename ) CP '*.clas*.abap' OR to_lower( iv_filename ) CP '*.intf.abap'.
+      DATA lt_local_source TYPE string_table.
+      DATA lt_remote_source TYPE string_table.
+      SPLIT zcl_abapgit_convert=>xstring_to_string_utf8( lv_local ) AT cl_abap_char_utilities=>newline INTO TABLE lt_local_source.
+      SPLIT zcl_abapgit_convert=>xstring_to_string_utf8( lv_remote ) AT cl_abap_char_utilities=>newline INTO TABLE lt_remote_source.
+      rs_diff-semantic = semantic_diff( it_local = lt_local_source it_remote = lt_remote_source iv_remote_is_new = iv_remote_is_new ).
+      LOOP AT rs_diff-semantic-changes ASSIGNING FIELD-SYMBOL(<ls_change>).
+        <ls_change>-path = iv_path.
+        <ls_change>-filename = iv_filename.
+        IF iv_zip IS NOT INITIAL AND iv_remote_is_new = abap_true.
+          REPLACE FIRST OCCURRENCE OF ` in Git` IN <ls_change>-text WITH ` in ZIP`.
+        ENDIF.
+      ENDLOOP.
     ENDIF.
     rs_diff-lines = map_diff( it_diff = li_diff->get( ) iv_remote_is_new = iv_remote_is_new ).
     LOOP AT rs_diff-lines TRANSPORTING NO FIELDS WHERE kind = zif_ag2ui5_repo_service=>c_line_kind-local.

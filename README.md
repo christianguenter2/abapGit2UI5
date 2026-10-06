@@ -46,6 +46,13 @@ This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
   side that changed is the "new" one, in green. Side by side keeps the system
   left and Git right in both directions, as abapGit does. Added lines have a light green
   background, removed ones light red, folded unchanged lines light grey.
+- **Structural method review:** opening a class or interface in Objects shows
+  added, removed and changed method declarations and implementations in its
+  changed ABAP source files. Each summary opens that method's source range;
+  **Show complete diff** restores the file. The diff page offers the same
+  review. Summaries follow the diff direction and include local/test classes.
+  Comments, formatting, XML metadata and other object types remain in the raw
+  diffs. This reports structure, without predicting runtime behavior.
 - **Stage, commit, push:** select the locally changed files, enter a commit
   message, then push with a Git user and token. The credentials are used for
   that one push only and never stored. "Pick lines" commits only some changes

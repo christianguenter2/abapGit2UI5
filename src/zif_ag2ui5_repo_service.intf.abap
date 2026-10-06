@@ -226,11 +226,35 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     ty_sbs_rows TYPE STANDARD TABLE OF ty_sbs_row WITH EMPTY KEY.
 
   TYPES:
+    BEGIN OF ty_semantic_change,
+      id          TYPE string,
+      owner       TYPE string,
+      name        TYPE string,
+      component   TYPE string,
+      action      TYPE string,
+      text        TYPE string,
+      local_from  TYPE i,
+      local_to    TYPE i,
+      remote_from TYPE i,
+      remote_to   TYPE i,
+      path        TYPE string,
+      filename    TYPE string,
+    END OF ty_semantic_change,
+    ty_semantic_changes TYPE STANDARD TABLE OF ty_semantic_change WITH EMPTY KEY.
+
+  TYPES:
+    BEGIN OF ty_semantic,
+      changes TYPE ty_semantic_changes,
+      note    TYPE string,
+    END OF ty_semantic.
+
+  TYPES:
     BEGIN OF ty_diff,
       "! The side that changed is "new": the remote when only Git changed,
       "! otherwise the system - as abapGit decides
       remote_is_new TYPE abap_bool,
       lines        TYPE ty_diff_lines,
+      semantic     TYPE ty_semantic,
       "! Lines only in this system / only in Git
       local_count  TYPE i,
       remote_count TYPE i,

@@ -1,9 +1,10 @@
+CLASS ltcl_semantic DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_columns DEFINITION DEFERRED.
 CLASS ltcl_settings DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_patch ltcl_columns ltcl_settings ltcl_header ltcl_object_links.
+CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_semantic ltcl_patch ltcl_columns ltcl_settings ltcl_header ltcl_object_links.
 
 "! abap2UI5 client for one event with its arguments
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -507,5 +508,105 @@ CLASS ltcl_object_links IMPLEMENTATION.
     FIND REGEX `<ObjectAttribute title="Object" text="[^"]*"/>`
       IN lo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+  ENDMETHOD.
+ENDCLASS.
+
+
+CLASS ltcl_semantic DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_diff.
+    DATA mo_client TYPE REF TO ltd_client.
+    METHODS setup.
+    METHODS teardown.
+    METHODS filters_both_sides FOR TESTING.
+    METHODS filters_one_side FOR TESTING.
+    METHODS rejects_forged_range FOR TESTING.
+    METHODS full_diff_restores FOR TESTING.
+    METHODS patch_keeps_full_source FOR TESTING.
+    METHODS view_has_summary FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_semantic IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_app = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/` iv_filename = `test.clas.abap`
+      iv_obj_type = `CLAS` iv_obj_name = `ZCL_TEST` ).
+    mo_client = NEW #( ).
+    mo_app->client = mo_client.
+    mo_app->mv_show_all = abap_true.
+    mo_app->mt_all = VALUE #(
+      ( text = `outside` local_num = `1` remote_num = `1` kind = `SAME` )
+      ( text = `METHOD run.` local_num = `2` remote_num = `2` kind = `SAME` )
+      ( text = `old` remote_num = `3` kind = `REMOTE` patch_id = `N3` )
+      ( text = `new` local_num = `3` kind = `LOCAL` patch_id = `N3` )
+      ( text = `ENDMETHOD.` local_num = `4` remote_num = `4` kind = `SAME` )
+      ( text = `outside` local_num = `5` remote_num = `5` kind = `SAME` ) ).
+    mo_app->mt_semantic = VALUE #( ( id = `ZCL_TEST/Implementation/RUN` text = `RUN implementation changed`
+      local_from = 2 local_to = 4 remote_from = 2 remote_to = 4 ) ).
+    mo_app->mt_summary = CORRESPONDING #( mo_app->mt_semantic ).
+    mo_app->mv_summary_note = `Method declarations and implementations only.`.
+    mo_app->rows_build( ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD filters_both_sides.
+    mo_client->mv_event = `SEMANTIC`.
+    mo_client->mt_args = VALUE #( ( `ZCL_TEST/Implementation/RUN` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 4 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-local_num exp = `2` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 2 ]-remote_num exp = `3` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_all ) exp = 6 ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_sbs ) exp = 3 ).
+  ENDMETHOD.
+  METHOD filters_one_side.
+    mo_app->mt_semantic = VALUE #( ( id = `removed` remote_from = 3 remote_to = 3 )
+      ( id = `added` local_from = 3 local_to = 3 ) ).
+    mo_app->focus_change( `removed` ).
+    mo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-remote_num exp = `3` ).
+    mo_app->focus_change( `added` ).
+    mo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-local_num exp = `3` ).
+  ENDMETHOD.
+
+  METHOD rejects_forged_range.
+    mo_app->mt_summary = VALUE #( ( id = `forged` text = `forged source range` ) ).
+    mo_client->mv_event = `SEMANTIC`.
+    mo_client->mt_args = VALUE #( ( `forged` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_focus ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 6 ).
+  ENDMETHOD.
+  METHOD full_diff_restores.
+    mo_app->focus_change( `ZCL_TEST/Implementation/RUN` ).
+    mo_client->mv_event = `FULL_DIFF`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_focus ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_focus_text ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 6 ).
+  ENDMETHOD.
+  METHOD patch_keeps_full_source.
+    mo_app->mv_patch = abap_true.
+    mo_client->mv_event = `SEMANTIC`.
+    mo_client->mt_args = VALUE #( ( `ZCL_TEST/Implementation/RUN` ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_focus ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_rows ) exp = 6 ).
+    mo_client->mv_event = `PICK_ALL`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_picked ) exp = 1 ).
+  ENDMETHOD.
+  METHOD view_has_summary.
+    mo_app->focus_change( `ZCL_TEST/Implementation/RUN` ).
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*Structural changes*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*Show complete diff*` ).
+    mo_app->mv_patch = abap_true.
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_false( xsdbool( mo_client->mv_view CS `Structural changes` ) ).
   ENDMETHOD.
 ENDCLASS.

@@ -71,6 +71,15 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     "! Only the visible rows travel to the browser
     DATA mt_rows        TYPE ty_rows.
     DATA mt_sbs         TYPE ty_sbs_rows.
+    TYPES:
+      BEGIN OF ty_summary,
+        id TYPE string,
+        text TYPE string,
+      END OF ty_summary,
+      ty_summary_rows TYPE STANDARD TABLE OF ty_summary WITH EMPTY KEY.
+    DATA mt_summary TYPE ty_summary_rows.
+    DATA mv_summary_note TYPE string.
+    DATA mv_focus_text TYPE string.
     DATA mv_toggle_text TYPE string.
     "! INLINE or SBS
     DATA mv_layout      TYPE string VALUE `INLINE`.
@@ -87,6 +96,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         iv_obj_name   TYPE string
         iv_object_link TYPE string OPTIONAL
         iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+        iv_focus      TYPE string OPTIONAL
         iv_patch      TYPE abap_bool DEFAULT abap_false
         it_picked     TYPE string_table OPTIONAL
       RETURNING
@@ -99,6 +109,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
+    DATA mv_focus TYPE string.
+    DATA ms_focus TYPE zif_ag2ui5_repo_service=>ty_semantic_change.
+    DATA mt_semantic TYPE zif_ag2ui5_repo_service=>ty_semantic_changes.
+    METHODS focus_change IMPORTING iv_id TYPE string.
     DATA mv_key TYPE string.
     DATA mv_zip TYPE xstring.
     DATA mv_path TYPE string.
@@ -153,6 +167,9 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
     ro_app = NEW #( ).
     ro_app->mv_key       = iv_key.
+    IF iv_patch = abap_false.
+      ro_app->mv_focus = iv_focus.
+    ENDIF.
     ro_app->mv_zip       = iv_zip.
     ro_app->mv_path      = iv_path.
     ro_app->mv_filename  = iv_filename.
@@ -357,6 +374,42 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
           )->a( n = `class`    v = `sapUiSmallMarginBeginEnd sapUiTinyMarginTop` ).
     ENDIF.
 
+    IF mv_patch = abap_false AND mv_summary_note IS NOT INITIAL.
+      DATA(summary) = content->ele( `Panel`
+          )->a( n = `headerText` v = `Structural changes`
+          )->a( n = `expandable` v = `true`
+          )->a( n = `expanded` v = `true`
+          )->a( n = `class` v = `sapUiSmallMarginBeginEnd`
+          )->ele( `content` ).
+      summary->tag( `Text`
+          )->a( n = `text` v = client->_bind( mv_summary_note )
+          )->a( n = `class` v = `sapUiSmallMargin` ).
+      summary->ele( `List`
+          )->a( n = `items` v = client->_bind( mt_summary )
+          )->a( n = `noDataText` v = `No method token changes; review the raw diff.`
+          )->a( n = `growing` v = `true`
+          )->a( n = `growingThreshold` v = `20`
+          )->ele( `items`
+              )->ele( `CustomListItem`
+                  )->a( n = `type` v = `Navigation`
+                  )->a( n = `press` v = client->_event( val = `SEMANTIC` arg = `${ID}` )
+                  )->ele( `content`
+                      )->ele( `VBox`
+                          )->a( n = `class` v = `sapUiSmallMargin`
+                          )->tag( `Text`
+                              )->a( n = `text` v = `{TEXT}`
+                              )->a( n = `wrapping` v = `true` ).
+    ENDIF.
+    IF ms_focus-id IS NOT INITIAL AND mv_patch = abap_false.
+      DATA(focus_bar) = content->ele( `VBox`
+          )->a( n = `class` v = `sapUiSmallMargin` ).
+      focus_bar->tag( `Text`
+          )->a( n = `text` v = client->_bind( mv_focus_text ) ).
+      focus_bar->tag( `Button`
+          )->a( n = `text` v = `Show complete diff`
+          )->a( n = `press` v = client->_event( `FULL_DIFF` ) ).
+    ENDIF.
+
     IF mv_binary = abap_true.
       content->tag( `MessageStrip`
           )->a( n = `text`     v = `Binary file - no line diff`
@@ -494,6 +547,16 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
     CASE client->get_event( ).
       WHEN `BACK`.
         client->nav_app_leave( ).
+      WHEN `SEMANTIC`.
+        IF mv_patch = abap_false.
+          focus_change( client->get_event_arg( ) ).
+          rows_build( ).
+          view_display( ).
+        ENDIF.
+      WHEN `FULL_DIFF`.
+        CLEAR: ms_focus, mv_focus, mv_focus_text.
+        rows_build( ).
+        view_display( ).
       WHEN `TOGGLE`.
         mv_show_all = xsdbool( mv_show_all = abap_false ).
         zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_show_all
@@ -546,6 +609,12 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
+    mt_semantic = ls_diff-semantic-changes.
+    IF mv_patch = abap_false.
+      mt_summary = CORRESPONDING #( mt_semantic ).
+      mv_summary_note = ls_diff-semantic-note.
+      focus_change( mv_focus ).
+    ENDIF.
     mt_all    = ls_diff-lines.
     mv_binary = ls_diff-binary.
     mv_fingerprint = ls_diff-fingerprint.
@@ -561,11 +630,36 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD focus_change.
+
+    " Selection comes from the browser: ranges come only from protected data.
+    READ TABLE mt_semantic INTO DATA(ls_change) WITH KEY id = iv_id.
+    IF sy-subrc <> 0 OR mv_patch = abap_true.
+      RETURN.
+    ENDIF.
+    ms_focus = ls_change.
+    mv_focus = ls_change-id.
+    mv_focus_text = |Source range - { ls_change-text }|.
+
+  ENDMETHOD.
+
   METHOD rows_build.
 
+    DATA(lt_source) = mt_all.
+    IF ms_focus-id IS NOT INITIAL AND mv_patch = abap_false.
+      CLEAR lt_source.
+      LOOP AT mt_all INTO DATA(ls_source).
+        DATA(lv_local) = COND i( WHEN ls_source-local_num IS NOT INITIAL THEN CONV i( ls_source-local_num ) ).
+        DATA(lv_remote) = COND i( WHEN ls_source-remote_num IS NOT INITIAL THEN CONV i( ls_source-remote_num ) ).
+        IF ( lv_local > 0 AND lv_local >= ms_focus-local_from AND lv_local <= ms_focus-local_to )
+          OR ( lv_remote > 0 AND lv_remote >= ms_focus-remote_from AND lv_remote <= ms_focus-remote_to ).
+          INSERT ls_source INTO TABLE lt_source.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
     DATA(lt_lines) = COND #( WHEN mv_show_all = abap_true
-                             THEN mt_all
-                             ELSE zcl_ag2ui5_repo_service=>compact( mt_all ) ).
+                             THEN lt_source
+                             ELSE zcl_ag2ui5_repo_service=>compact( lt_source ) ).
     mv_toggle_text = COND #( WHEN mv_show_all = abap_true THEN `Changes only` ELSE `Show all` ).
 
     " green and + for the side that changed, red and - for the other
