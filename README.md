@@ -6,7 +6,40 @@ it avoids the quirks of the SAP GUI HTML control (IE and Edge controls, SAP GUI
 for Java, WebGUI).
 
 This is a proof of concept, tested end to end on an SAP NetWeaver 7.5x system
-(A4H). It supports:
+(A4H). It uses the same abapGit repositories and serialization, with a UI5
+interface for the workflows below.
+
+## Feature comparison
+
+This compares the conventional abapGit UI with the current abapGit2UI5
+frontend, as of October 2026. Conventional abapGit features are described in
+the [abapGit user guide](https://docs.abapgit.org/user-guide/).
+
+| Feature | Conventional abapGit UI | abapGit2UI5 |
+|---|---|---|
+| User interface | [HTML control in SAP GUI](https://docs.abapgit.org/user-guide/setup/sapgui.html), including SAP GUI for HTML | SAPUI5 in a browser through abap2UI5 |
+| Installation | Standalone program or developer version | Requires the abapGit developer version, abap2UI5 and its ICF service |
+| Repository browsing | Repository list and favorites | Searchable list or tiles |
+| Status and object overview | Object groups with file details and change states | Files or Objects view, filters, sorting and changed/total file counts |
+| Line diff | Unified or split diff with context and method/section markers | Inline or side-by-side diff, context or whole file |
+| Structural method review | Method/section markers in the line diff | Added, removed and changed declarations/implementations, with links to their source ranges |
+| Stage, commit and push | File selection and line patches | File selection and **Pick lines**; push to the followed branch |
+| Pull decisions | Separate dialogs for overwrite, deletion, package and other checks | One dialog grouped by risk, with individual selections and abapGit's defaults |
+| Ignore rules | Native `.abapgit.xml` rules | Same rules, with editable patterns and previews before saving or removing |
+| Branches and tags | Switch, create, delete and merge branches; tag operations | Switch, create at the current head and delete branches; no merge or tag UI |
+| Authentication | [Username/password or token dialog](https://docs.abapgit.org/user-guide/projects/online/authentication.html) when credentials are needed | Username/token for one push; authenticated reads and branch operations need an abapGit user exit |
+| Offline ZIPs | Import and export | Binary upload/download, status and diff against the uploaded ZIP, selective import |
+| Repository and package lifecycle | Register repositories, create packages, remove and uninstall | Online/offline registration, package creation, Remove and guarded Uninstall with a deletion preview |
+| Transports | SAP transport request dialogs; stage/export by transport and transport-to-branch tools | Select an existing request for pull, package creation or uninstall; no request creation or transport-based staging |
+| Settings, checks and automation | Repository settings, Code Inspector/ATC, syntax and unit-test tools, [background mode](https://docs.abapgit.org/user-guide/repo-settings/background-mode.html) | Remembers display preferences per SAP user; these administration tools are not exposed |
+
+abapGit2UI5 covers selected workflows rather than the full conventional UI.
+Repository settings remain in abapGit; use its conventional UI for the
+administration tools and Git operations not exposed here. Pulling updates to
+abapGit, abap2UI5 or this frontend also requires conventional abapGit, because
+the browser session is running that code.
+
+## Supported workflows
 
 - **Repository list:** all abapGit repositories of the system, with a search,
   as a table or as tiles (one card per repository).
@@ -144,8 +177,11 @@ frontend is refused. It would replace code that is running in the same
 session. Use abapGit in SAP GUI for those.
 
 Using the frontend requires abapGit's startup authorization (see
-`ZCL_ABAPGIT_AUTH_EXIT`). Private repositories are not supported, because there
-is no way to enter credentials.
+`ZCL_ABAPGIT_AUTH_EXIT`). There is no general login dialog for fetching private
+repositories: authenticated reads, repository creation and branch operations
+need credentials supplied by an abapGit user exit. Staging offers a Git user
+and token for the push call only; they are cleared after that call and never
+stored by this frontend.
 
 ## Development
 
