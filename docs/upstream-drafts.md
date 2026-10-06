@@ -31,6 +31,8 @@ Not posted (Chris, 2026-10-06): left out for now.
 
 ### B. Pull and push for headless callers (discussion first, no code yet)
 
+Posted by Chris as abapGit/abapGit#7941 (2026-10-06), without the self-update parts.
+
 > **Title:** Discussion: pull and push without the UI layer
 >
 > The steps of a pull and a push live in `ui/routing`
