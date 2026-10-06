@@ -7,6 +7,8 @@ Texts ready to paste, one issue each. Background and evidence are in
 
 ### A. Self-update guard: decide by package, not by URL and program
 
+Not posted (Chris, 2026-10-06): left out for now.
+
 > **Title:** Self-update protection misses headless callers and mirrored URLs
 >
 > `zcl_abapgit_services_repo=>check_self_update` (and the restart in
@@ -36,13 +38,13 @@ Texts ready to paste, one issue each. Background and evidence are in
 > point that is not the SAP GUI popup flow puts them together itself, and the
 > copies already differ inside abapGit:
 >
-> | Entry point | Self-update check | Delete removed objects | Push exits |
-> |---|---|---|---|
-> | Pull with popups (`gui_deserialize`) | yes | yes | - |
-> | HTML pull page (Flow, `gui_page_pull`) | **no**, calls `real_deserialize` directly | yes | - |
-> | Background pull | no | yes, via the UI class `zcl_abapgit_services_repo` | - |
-> | Commit page (`services_git=>commit`) | - | - | yes |
-> | Background push (`push_au`, `push_fi`) | - | - | **no**: `validate_before_push` / `validate_after_push` are not called |
+> | Entry point | Pull steps | Push exits |
+> |---|---|---|
+> | Pull with popups | `gui_deserialize` → `real_deserialize` | - |
+> | HTML pull page (Flow, `gui_page_pull`) | calls `real_deserialize` directly | - |
+> | Background pull | deletes and deserializes itself, calling the UI class `zcl_abapgit_services_repo` for the deletion | - |
+> | Commit page (`services_git=>commit`) | - | yes |
+> | Background push (`push_au`, `push_fi`) | - | **no**: `validate_before_push` / `validate_after_push` are not called |
 >
 > Outside abapGit, the ADT backend, abapgit-agent and abapGit2UI5 (an abap2UI5
 > frontend) each have their own copy too. abapGit2UI5, for example, first
@@ -67,9 +69,6 @@ Texts ready to paste, one issue each. Background and evidence are in
 > - Should the background push call the push exits? Today it does not. Adding
 >   them changes behaviour for users with an exit, so we would make it an
 >   explicit decision.
-> - The self-update check is GUI specific today (`sy-cprog = 'ZABAPGIT'`,
->   restart via `SUBMIT`). Leave it in the GUI for now, or move the check
->   into the pull class? (Related: the separate issue about the guard itself.)
 
 ### C. Form feed marker in diff output
 
