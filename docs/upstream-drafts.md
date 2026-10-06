@@ -34,7 +34,7 @@ Texts ready to paste, one issue each. Background and evidence are in
 > The steps of a pull and a push live in `ui/routing`
 > (`zcl_abapgit_services_repo`, `zcl_abapgit_services_git`). Every entry
 > point that is not the SAP GUI popup flow puts them together itself, and the
-> copies already differ inside abapGit (main at `5c05184a`):
+> copies already differ inside abapGit:
 >
 > | Entry point | Self-update check | Delete removed objects | Push exits |
 > |---|---|---|---|
