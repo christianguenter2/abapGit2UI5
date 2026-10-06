@@ -142,6 +142,9 @@ abapGit with the fix.
       offsets, split at newlines). Not verified end to end: that needs the
       fix in the running `$ABAPGIT`.
     - **PR abapGit/abapGit#7924** opened by Chris on 2026-10-02.
+    - **Verified end to end (2026-10-06):** with `$ABAPGIT` on main
+      (`5c05184a`, includes #7924), Chris created a branch with an umlaut on
+      `$UMLAUT`; it worked.
 13. **`create_branch` ASSERTs instead of raising.**
     `zif_abapgit_repo_online~create_branch` has
     `ASSERT iv_name CP 'refs/heads/*'`. A headless caller without the prefix
