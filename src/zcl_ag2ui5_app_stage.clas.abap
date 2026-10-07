@@ -41,6 +41,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     DATA mv_ignore_editable TYPE abap_bool.
     DATA mt_rows   TYPE ty_rows.
     DATA ms_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
+    "! Placeholder of the new-branch input; bound, a branch name may contain braces
+    DATA mv_branch_hint TYPE string.
     DATA mv_user   TYPE string.
     "! Bound to a password field; on_event( ) clears it first on every event,
     "! so it is never part of the state abap2UI5 saves
@@ -326,6 +328,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `value`       v = client->_bind( ms_commit-email )
         )->a( n = `placeholder` v = `E-mail` ).
     form->tag( `Label`
+        )->a( n = `text` v = `New branch` ).
+    form->tag( `Input`
+        )->a( n = `value`       v = client->_bind( ms_commit-new_branch )
+        )->a( n = `placeholder` v = client->_bind( mv_branch_hint ) ).
+    form->tag( `Label`
         )->a( n = `text` v = `Git user` ).
     form->tag( `Input`
         )->a( n = `value` v = client->_bind( mv_user ) ).
@@ -562,6 +569,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     IF ms_commit-email IS INITIAL.
       ms_commit-email = ls_stage-email.
     ENDIF.
+    mv_branch_hint = |Leave empty to push to { ls_stage-branch }|.
 
   ENDMETHOD.
 
@@ -610,8 +618,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     CASE ls_result-outcome.
       WHEN zif_ag2ui5_repo_service=>c_outcome-pushed.
-        CLEAR: ms_commit-title, ms_commit-body.
-        client->message_toast_display( |Pushed { ls_result-commit }| ).
+        CLEAR: ms_commit-title, ms_commit-body, ms_commit-new_branch.
+        client->message_toast_display( |Pushed { ls_result-commit } to { ls_result-branch }| ).
         load_stage( ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
         load_stage( ).

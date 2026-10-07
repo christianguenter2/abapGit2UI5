@@ -102,6 +102,7 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA mv_preview_rule TYPE string.
     DATA mv_preview_remove TYPE abap_bool.
     DATA mv_save_fail TYPE abap_bool.
+    DATA ms_received_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
 ENDCLASS.
 
 
@@ -109,11 +110,13 @@ CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~commit_push.
     mv_received_token = iv_token.
     mt_received_items = it_items.
+    ms_received_commit = is_commit.
     IF mv_fail = abap_true.
       zcx_abapgit_exception=>raise( `HTTP 401 Unauthorized` ).
     ENDIF.
     rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
     rs_result-commit  = `abc1234`.
+    rs_result-branch  = COND #( WHEN is_commit-new_branch IS NOT INITIAL THEN is_commit-new_branch ELSE `main` ).
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~get_stage.
@@ -154,6 +157,10 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS token_cleared_without_select FOR TESTING.
     METHODS committer_required FOR TESTING.
     METHODS token_cleared_on_other_events FOR TESTING.
+    METHODS new_branch_passed FOR TESTING.
+    METHODS new_branch_cleared_after_push FOR TESTING.
+    METHODS toast_names_branch FOR TESTING.
+    METHODS placeholder_bound FOR TESTING.
 
 ENDCLASS.
 
@@ -235,6 +242,32 @@ CLASS ltcl_push IMPLEMENTATION.
       cl_abap_unit_assert=>assert_initial( act = mo_app->mv_token
                                            msg = |Token kept after { lv_event }| ).
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD new_branch_passed.
+    mo_app->ms_commit-new_branch = `feature/x`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->ms_received_commit-new_branch exp = `feature/x` ).
+  ENDMETHOD.
+
+  METHOD new_branch_cleared_after_push.
+    " a second push must not try to create the same branch again
+    mo_app->ms_commit-new_branch = `feature/x`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_commit-new_branch ).
+  ENDMETHOD.
+
+  METHOD toast_names_branch.
+    mo_app->ms_commit-new_branch = `feature/x`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Pushed abc1234 to feature/x` ).
+  ENDMETHOD.
+
+  METHOD placeholder_bound.
+    " a branch name may contain { }: the hint reaches the view bound, not inline
+    mo_service->ms_stage-branch = `a{b}`.
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_branch_hint exp = `Leave empty to push to a{b}` ).
   ENDMETHOD.
 
 ENDCLASS.
