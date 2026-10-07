@@ -1,6 +1,5 @@
-"! Select files differing from Git, commit the SAP version and push. The credentials are
-"! used for the push only: the token is cleared on every event, before
-"! abap2UI5 saves the state
+"! Select files differing from Git, commit the SAP version and push. Credentials
+"! come from abapGit's user exit or the session login (ZCL_AG2UI5_APP_LOGIN)
 CLASS zcl_ag2ui5_app_stage DEFINITION
   PUBLIC
   FINAL
@@ -43,10 +42,6 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     DATA ms_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
     "! Placeholder of the new-branch input; bound, a branch name may contain braces
     DATA mv_branch_hint TYPE string.
-    DATA mv_user   TYPE string.
-    "! Bound to a password field; on_event( ) clears it first on every event,
-    "! so it is never part of the state abap2UI5 saves
-    DATA mv_token  TYPE string.
 
     CLASS-METHODS create
       IMPORTING
@@ -103,9 +98,7 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     "! After a failed push to a new branch: if the branch was created, the
     "! repository follows it now, and the input must not create it again
     METHODS follow_created_branch.
-    METHODS push
-      IMPORTING
-        iv_token TYPE string.
+    METHODS push.
     METHODS select_all
       IMPORTING
         iv_selected TYPE abap_bool.
@@ -187,7 +180,6 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       load_stage( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
-      CLEAR mv_token.
       " back from the diff page: in patch mode it hands the picked lines back
       TRY.
           take_patch( CAST zcl_ag2ui5_app_diff( client->get_app_prev( ) )->get_patch( ) ).
@@ -337,15 +329,6 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     form->tag( `Input`
         )->a( n = `value`       v = client->_bind( ms_commit-new_branch )
         )->a( n = `placeholder` v = client->_bind( mv_branch_hint ) ).
-    form->tag( `Label`
-        )->a( n = `text` v = `Git user` ).
-    form->tag( `Input`
-        )->a( n = `value` v = client->_bind( mv_user ) ).
-    form->tag( `Label`
-        )->a( n = `text` v = `Token or password` ).
-    form->tag( `Input`
-        )->a( n = `value` v = client->_bind( mv_token )
-        )->a( n = `type`  v = `Password` ).
     form->tag( `Label` ).
     form->tag( `Button`
         )->a( n = `text`  v = `Commit & push`
@@ -472,13 +455,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   METHOD on_event.
 
-    " a typed token arrives with whatever button is pressed next, and abap2UI5
-    " saves the app state after every event (into its draft table) - so it is
-    " taken out of the attribute before anything else, for every event
     DATA ls_row TYPE ty_row.
-
-    DATA(lv_token) = mv_token.
-    CLEAR mv_token.
 
     CASE client->get_event( ).
       WHEN `BACK`.
@@ -547,7 +524,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         clear_ignore( ).
         client->popup_destroy( ).
       WHEN `PUSH`.
-        push( lv_token ).
+        push( ).
     ENDCASE.
 
   ENDMETHOD.
@@ -602,8 +579,6 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 
-    DATA(lv_token) = iv_token.
-
     IF NOT line_exists( mt_rows[ selected = abap_true ] ).
       client->message_toast_display( `Select at least one file` ).
       RETURN.
@@ -631,18 +606,14 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     TRY.
         DATA(ls_result) = service( )->commit_push( iv_key    = mv_key
                                                    it_items  = lt_items
-                                                   is_commit = ms_commit
-                                                   iv_user   = mv_user
-                                                   iv_token  = lv_token ).
+                                                   is_commit = ms_commit ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        CLEAR lv_token.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         IF ms_commit-new_branch IS NOT INITIAL.
           follow_created_branch( ).
         ENDIF.
         RETURN.
     ENDTRY.
-    CLEAR lv_token.
 
     CASE ls_result-outcome.
       WHEN zif_ag2ui5_repo_service=>c_outcome-pushed.

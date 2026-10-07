@@ -1,3 +1,6 @@
+CLASS ltcl_login DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_login.
+
 CLASS ltcl_delete_preview DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
   PRIVATE SECTION.
     DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
@@ -2885,5 +2888,119 @@ CLASS ltcl_favorite_mutation IMPLEMENTATION.
     mi_service->set_favorite( iv_key = `42` iv_favorite = `` ).
     cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_user->mt_favorites ) ).
     cl_abap_unit_assert=>assert_equals( exp = `7` act = mo_user->mt_favorites[ 1 ] ).
+  ENDMETHOD.
+ENDCLASS.
+
+
+"! The session login: abapGit's error, the inputs, the expiry
+CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    CONSTANTS c_url TYPE string VALUE `https://example.invalid/r.git`.
+    METHODS setup.
+    METHODS teardown.
+    METHODS login_required_text FOR TESTING.
+    METHODS url_host_cases FOR TESTING.
+    METHODS login_refuses_empty FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS login_refuses_control_chars FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS login_sets_credentials FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS expiry_keeps FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS expiry_clears FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS logoff_clears FOR TESTING RAISING zcx_abapgit_exception.
+    "! Test values only - the login manager keeps them in this session's memory
+    METHODS fixture
+      RAISING
+        zcx_abapgit_exception.
+    METHODS refused
+      IMPORTING
+        iv_user  TYPE string
+        iv_token TYPE string
+        iv_url   TYPE string DEFAULT c_url
+      RAISING
+        zcx_abapgit_exception.
+ENDCLASS.
+
+CLASS ltcl_login IMPLEMENTATION.
+  METHOD setup.
+    zcl_abapgit_login_manager=>clear( ).
+    CLEAR: zcl_ag2ui5_repo_service=>gv_last_use, zcl_ag2ui5_repo_service=>gv_now.
+  ENDMETHOD.
+
+  METHOD teardown.
+    zcl_abapgit_login_manager=>clear( ).
+    CLEAR: zcl_ag2ui5_repo_service=>gv_last_use, zcl_ag2ui5_repo_service=>gv_now.
+  ENDMETHOD.
+
+  METHOD fixture.
+    zcl_abapgit_login_manager=>set_basic( iv_uri = c_url iv_username = `u` iv_password = `p` ).
+  ENDMETHOD.
+
+  METHOD login_required_text.
+    TRY.
+        zcx_abapgit_exception=>raise( `Unauthorized access. Check your credentials` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_auth).
+    ENDTRY.
+    TRY.
+        zcx_abapgit_exception=>raise( `HTTP 401 Unauthorized` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_other).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_auth ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>login_required( lx_other ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>login_required( VALUE #( ) ) ).
+  ENDMETHOD.
+
+  METHOD url_host_cases.
+    cl_abap_unit_assert=>assert_equals( exp = `github.com`
+      act = zcl_ag2ui5_repo_service=>url_host( `https://github.com/a/b.git` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `git.example.com:8443`
+      act = zcl_ag2ui5_repo_service=>url_host( `https://git.example.com:8443/x` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>url_host( `` ) ).
+  ENDMETHOD.
+
+  METHOD refused.
+    TRY.
+        NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~login(
+          iv_url = iv_url iv_user = iv_user iv_token = iv_token ).
+        cl_abap_unit_assert=>fail( |Login with "{ iv_user }" must be refused| ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_initial( zcl_abapgit_login_manager=>get( c_url ) ).
+  ENDMETHOD.
+
+  METHOD login_refuses_empty.
+    refused( iv_user = `` iv_token = `t` ).
+    refused( iv_user = `u` iv_token = `` ).
+    refused( iv_user = `u` iv_token = `t` iv_url = `` ).
+  ENDMETHOD.
+
+  METHOD login_refuses_control_chars.
+    refused( iv_user = |u{ cl_abap_char_utilities=>newline }x| iv_token = `t` ).
+    refused( iv_user = `u` iv_token = |t{ cl_abap_char_utilities=>horizontal_tab }| ).
+  ENDMETHOD.
+
+  METHOD login_sets_credentials.
+    NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~login( iv_url = c_url iv_user = `u` iv_token = `p` ).
+    cl_abap_unit_assert=>assert_not_initial( zcl_abapgit_login_manager=>get( c_url ) ).
+  ENDMETHOD.
+
+  METHOD expiry_keeps.
+    fixture( ).
+    GET TIME STAMP FIELD zcl_ag2ui5_repo_service=>gv_now.
+    zcl_ag2ui5_repo_service=>gv_last_use = cl_abap_tstmp=>subtractsecs( tstmp = zcl_ag2ui5_repo_service=>gv_now secs = 1799 ).
+    NEW zcl_ag2ui5_repo_service( )->assert_authorized( ).
+    cl_abap_unit_assert=>assert_not_initial( zcl_abapgit_login_manager=>get( c_url ) ).
+  ENDMETHOD.
+
+  METHOD expiry_clears.
+    fixture( ).
+    GET TIME STAMP FIELD zcl_ag2ui5_repo_service=>gv_now.
+    zcl_ag2ui5_repo_service=>gv_last_use = cl_abap_tstmp=>subtractsecs( tstmp = zcl_ag2ui5_repo_service=>gv_now secs = 1801 ).
+    NEW zcl_ag2ui5_repo_service( )->assert_authorized( ).
+    cl_abap_unit_assert=>assert_initial( zcl_abapgit_login_manager=>get( c_url ) ).
+  ENDMETHOD.
+
+  METHOD logoff_clears.
+    fixture( ).
+    NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~logoff( ).
+    cl_abap_unit_assert=>assert_initial( zcl_abapgit_login_manager=>get( c_url ) ).
   ENDMETHOD.
 ENDCLASS.

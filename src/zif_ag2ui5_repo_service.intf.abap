@@ -536,8 +536,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
               is_preview TYPE ty_ignore_preview
     RAISING zcx_abapgit_exception.
 
-  "! Commits the selected files and pushes them. The credentials are used for
-  "! this call only and never stored. Outcome changed, and nothing is pushed,
+  "! Commits the selected files and pushes them, with the credentials of the
+  "! user exit or of login( ). Outcome changed, and nothing is pushed,
   "! when a selected file is no longer changed locally as it was, or a
   "! patched file is no longer the version its lines were picked on
   METHODS commit_push
@@ -545,12 +545,25 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_key           TYPE string
       it_items         TYPE ty_stage_items
       is_commit        TYPE ty_commit
-      iv_user          TYPE string OPTIONAL
-      iv_token         TYPE string OPTIONAL
     RETURNING
       VALUE(rs_result) TYPE ty_push_result
     RAISING
       zcx_abapgit_exception.
+
+  "! Keeps user and token for the repository's host in abapGit's login
+  "! manager - server memory of this session only, see assert_authorized for
+  "! the expiry. The repository by key, or a URL for one not registered yet
+  METHODS login
+    IMPORTING
+      iv_key   TYPE string OPTIONAL
+      iv_url   TYPE string OPTIONAL
+      iv_user  TYPE string
+      iv_token TYPE string
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Drops every credential kept by login( )
+  METHODS logoff.
 
   "! The remote's branches, the default one first
   METHODS list_branches

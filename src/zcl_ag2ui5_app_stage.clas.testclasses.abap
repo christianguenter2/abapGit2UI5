@@ -93,11 +93,11 @@ CLASS ltd_client IMPLEMENTATION.
 ENDCLASS.
 
 
-"! Service that records the token it got, and fails on request
+"! Service that counts the pushes, and fails on request
 CLASS ltd_service DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
-    DATA mv_received_token TYPE string.
+    DATA mv_push_calls TYPE i.
     DATA mv_fail TYPE abap_bool.
     DATA mt_received_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
     DATA ms_stage TYPE zif_ag2ui5_repo_service=>ty_stage.
@@ -112,7 +112,7 @@ ENDCLASS.
 
 CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~commit_push.
-    mv_received_token = iv_token.
+    mv_push_calls = mv_push_calls + 1.
     mt_received_items = it_items.
     ms_received_commit = is_commit.
     IF mv_fail = abap_true.
@@ -156,11 +156,11 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
 
     METHODS setup.
     METHODS teardown.
-    METHODS token_cleared_after_push FOR TESTING.
-    METHODS token_cleared_after_error FOR TESTING.
-    METHODS token_cleared_without_select FOR TESTING.
+    METHODS pushes_once FOR TESTING.
+    METHODS error_shown FOR TESTING.
+    METHODS no_push_without_select FOR TESTING.
     METHODS committer_required FOR TESTING.
-    METHODS token_cleared_on_other_events FOR TESTING.
+    METHODS no_token_fields FOR TESTING.
     METHODS new_branch_passed FOR TESTING.
     METHODS new_branch_cleared_after_push FOR TESTING.
     METHODS toast_names_branch FOR TESTING.
@@ -191,42 +191,35 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->mi_service = mo_service.
     mo_app->mt_rows = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` action = `ADD` selected = abap_true ) ).
     mo_app->ms_commit-title = `Test`.
-    mo_app->mv_user  = `someone`.
-    mo_app->mv_token = `secret-token`.
     mo_app->ms_commit-name  = `Someone`.
     mo_app->ms_commit-email = `someone@example.com`.
     " another change is left after the push: the page stays
     mo_service->ms_stage-items = VALUE #( ( path = `/src/` filename = `zcl_b.clas.abap` action = `ADD` ) ).
   ENDMETHOD.
 
-  METHOD token_cleared_after_push.
+  METHOD pushes_once.
     mo_app->z2ui5_if_app~main( mo_client ).
 
-    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_received_token
-                                        exp = `secret-token` ).
-    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_push_calls exp = 1 ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message
                                          exp = `Pushed abc1234*` ).
   ENDMETHOD.
 
-  METHOD token_cleared_after_error.
+  METHOD error_shown.
     mo_service->mv_fail = abap_true.
 
     mo_app->z2ui5_if_app~main( mo_client ).
 
-    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message
                                         exp = `HTTP 401 Unauthorized` ).
   ENDMETHOD.
 
-  METHOD token_cleared_without_select.
-    " even when the push does not start, the token must not stay
+  METHOD no_push_without_select.
     mo_app->mt_rows[ 1 ]-selected = abap_false.
 
     mo_app->z2ui5_if_app~main( mo_client ).
 
-    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
-    cl_abap_unit_assert=>assert_initial( mo_service->mv_received_token ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_push_calls exp = 0 ).
   ENDMETHOD.
 
   METHOD committer_required.
@@ -235,25 +228,17 @@ CLASS ltcl_push IMPLEMENTATION.
 
     mo_app->z2ui5_if_app~main( mo_client ).
 
-    cl_abap_unit_assert=>assert_initial( mo_service->mv_received_token ).
-    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_push_calls exp = 0 ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message
                                          exp = `*committer*` ).
   ENDMETHOD.
 
-  METHOD token_cleared_on_other_events.
-    " abap2UI5 saves the draft after every event, and a typed token arrives
-    " with whatever button is pressed next
-    LOOP AT VALUE string_table( ( `ALL` ) ( `NONE` ) ( `DIFF` ) ( `PATCH` ) ( `BACK` )
-      ( `RULES` ) ( `IGNORE` ) ( `RULE_REMOVE` ) ( `IGNORE_PREVIEW` ) ( `IGNORE_SAVE` ) ( `IGNORE_CANCEL` ) ) INTO DATA(lv_event).
-      mo_app->mv_token = `secret-token`.
-      mo_client->mv_event = lv_event.
-
-      mo_app->z2ui5_if_app~main( mo_client ).
-
-      cl_abap_unit_assert=>assert_initial( act = mo_app->mv_token
-                                           msg = |Token kept after { lv_event }| ).
-    ENDLOOP.
+  METHOD no_token_fields.
+    " credentials come from the user exit or the session login, never from this page
+    mo_app->client = mo_client.
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*Password*` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*Git user*` ).
   ENDMETHOD.
 
   METHOD new_branch_passed.
