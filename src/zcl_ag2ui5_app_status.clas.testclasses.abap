@@ -325,6 +325,9 @@ CLASS ltd_offline_service DEFINITION FINAL FOR TESTING.
     DATA ms_preview TYPE zif_ag2ui5_repo_service=>ty_preview.
     DATA ms_result TYPE zif_ag2ui5_repo_service=>ty_pull_result.
     DATA mv_status_zip TYPE xstring.
+    DATA mv_status_calls TYPE i.
+    "! get_status raises this text when set
+    DATA mv_status_error TYPE string.
     DATA mv_preview_zip TYPE xstring.
     DATA mv_pull_zip TYPE xstring.
     DATA mv_export TYPE xstring.
@@ -344,6 +347,10 @@ CLASS ltd_offline_service IMPLEMENTATION.
     rs_diff = ms_diff.
   ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~get_status.
+    mv_status_calls = mv_status_calls + 1.
+    IF mv_status_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_status_error ).
+    ENDIF.
     mv_status_zip = iv_zip.
     rs_status = ms_status.
   ENDMETHOD.
@@ -704,12 +711,42 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS return_after_push_reloads FOR TESTING.
     METHODS return_without_push_keeps FOR TESTING.
     METHODS return_after_push_shows_text FOR TESTING.
+    METHODS login_error_opens_login FOR TESTING.
+    METHODS other_error_message FOR TESTING.
+    METHODS logged_in_reloads FOR TESTING.
     METHODS repo_diff_passes_changed FOR TESTING.
     METHODS diff_off_offline_without_zip FOR TESTING.
     METHODS diff_disabled_without_changes FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
+  METHOD login_error_opens_login.
+    " abapGit's user exit has no credentials for the remote: log in, no error box
+    CAST ltd_offline_service( mo_app->mi_service )->mv_status_error = `Unauthorized access. Check your credentials`.
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
+  ENDMETHOD.
+
+  METHOD other_error_message.
+    CAST ltd_offline_service( mo_app->mi_service )->mv_status_error = `Boom`.
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_error exp = `Boom` ).
+  ENDMETHOD.
+
+  METHOD logged_in_reloads.
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = lo_service->mv_status_calls exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
+                                        exp = `Logged in to github.com - repeat the action if it did not run` ).
+  ENDMETHOD.
+
   METHOD repo_diff_passes_changed.
     " every changed file, in file order, whatever the filter shows
     mo_app->mv_offline = abap_false.

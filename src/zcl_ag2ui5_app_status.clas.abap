@@ -160,6 +160,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS popup_decisions_display.
     METHODS popup_branches_display.
     METHODS load_branches.
+    "! A login-required error opens the login page; any other error is shown
+    METHODS show_error
+      IMPORTING
+        ix_error TYPE REF TO zcx_abapgit_exception.
     "! Some file differs, and an offline repository has its ZIP
     METHODS can_repo_diff
       RETURNING
@@ -250,8 +254,12 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       IF lr_returned IS BOUND.
         ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
         DATA(lv_returned) = CONV string( <lv_returned> ).
-        IF lv_returned = `PUSHED` OR lv_returned CP `PUSHED:*`.
+        IF lv_returned = `PUSHED` OR lv_returned CP `PUSHED:*` OR lv_returned CP `LOGGED_IN:*`.
           load_status( ).
+        ENDIF.
+        IF lv_returned CP `LOGGED_IN:*`.
+          client->message_toast_display(
+            |Logged in to { substring( val = lv_returned off = 10 ) } - repeat the action if it did not run| ).
         ENDIF.
         IF lv_returned CP `PUSHED:*` AND strlen( lv_returned ) > 7.
           client->message_toast_display( substring( val = lv_returned off = 7 ) ).
@@ -875,7 +883,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(lt_branches) = service( )->list_branches( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -905,7 +913,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         service( )->switch_branch( iv_key    = mv_key
                                    iv_branch = iv_branch ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -922,7 +930,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                      iv_name = mv_new_name ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         " the dialog stays open with the name
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -939,7 +947,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                    iv_branch = mv_delete_branch
                                                    iv_sha1   = mv_delete_sha1 ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -1210,7 +1218,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR: mt_rows, mt_status, mv_loaded.
         mv_no_data = `Status could not be loaded`.
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -1238,7 +1246,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(ls_preview) = service( )->preview_pull( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -1284,7 +1292,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           mv_customizing = VALUE #( mt_customizing[ 1 ]-trkorr OPTIONAL ).
         ENDIF.
       CATCH zcx_abapgit_exception INTO lx_error.
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -1347,7 +1355,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                             iv_transport    = mv_transport
                                             iv_customizing  = mv_customizing ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -1442,9 +1450,19 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                   t_arg = VALUE #( ( `data:application/zip;base64,` && lv_base64 )
                                                    ( `repository.zip` ) ) ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
     ENDTRY.
 
+  ENDMETHOD.
+
+  METHOD show_error.
+    IF zcl_ag2ui5_repo_service=>login_required( ix_error ) = abap_true.
+      " abapGit's user exit has no credentials for this remote
+      client->popup_destroy( ).
+      client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
+      RETURN.
+    ENDIF.
+    client->message_box_display( text = ix_error->get_text( ) type = `error` ).
   ENDMETHOD.
 
   METHOD can_repo_diff.
