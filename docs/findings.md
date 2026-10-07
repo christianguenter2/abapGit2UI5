@@ -1366,3 +1366,30 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   ADT fallback, without overriding pull conflicts. Both readbacks match Git.
   Repository app ABAP Unit passed 27/27 with no failures/skips/test warnings.
   Activation had two existing warnings (ABAP Doc and STRING/CLIKE).
+
+## Repository diff (2026-10-07)
+
+Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
+`docs/superpowers/plans/2026-10-07-repository-diff.md`.
+
+- New app `ZCL_AG2UI5_APP_REPO_DIFF`: every changed file of the status as a
+  collapsible panel (file, object link, state, +/- counts, Open), in file
+  order. The first 3 load on start; a panel loads through the existing
+  `get_diff` when expanded and drops its rows when collapsed; Expand all opens
+  at most 25. Inline / side by side for all panels; binary files and load
+  errors show their text in their own panel. The header summarizes
+  `n files, +x -y (k not loaded)`.
+- The status table toolbar has **Diff** (disabled without changes, and for an
+  offline repository without ZIP); it passes all changed rows, independent of
+  filter and sort.
+- Panels come from one bound file table with nested line tables (template
+  binding); abap2UI5 sends the nested tables as expected. Chrome showed long
+  files cut at 100 rows (the JSON model's size limit applies to a
+  non-growing table); the panel tables now grow (500 rows, then More).
+- The class was created through abapgit-mcp `write_objects` (empty shell with
+  a placeholder test include), then the real sources were written over ADT.
+- Native suites 375/375 (repository diff 14, status 56). `npm run check` 0
+  errors. Readbacks match. The only new short dump is the expected RED run of
+  the status test before the Diff event existed. Chrome on `$UMLAUT` and
+  `$ABAPGIT2UI5` (read only): panels, collapse/expand, side by side, Open and
+  Back, Expand all, 607-line file with More.

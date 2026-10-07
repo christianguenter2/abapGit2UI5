@@ -21,7 +21,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 | Installation | Standalone program or developer version | Requires the abapGit developer version, abap2UI5 and its ICF service |
 | Repository browsing | Repository list and favorites | Searchable list or tiles |
 | Status and object overview | Object groups with file details and change states | Files or Objects view, filters, sorting and changed/total file counts |
-| Line diff | Unified or split diff with context and method/section markers | Inline or side-by-side diff, context or whole file |
+| Line diff | Unified or split diff with context and method/section markers; repository-wide diff page | Inline or side-by-side diff, context or whole file; **Diff** page with every changed file as a collapsible panel |
 | Structural method review | Method/section markers in the line diff | Added, removed and changed declarations/implementations, with links to their source ranges |
 | Stage, commit and push | File selection and line patches | File selection and **Pick lines**; push to the followed branch or to a new one |
 | Pull decisions | Separate dialogs for overwrite, deletion, package and other checks | One dialog grouped by risk, with individual selections and abapGit's defaults |
@@ -74,6 +74,10 @@ the browser session is running that code.
   object, with changed/total file counts and combined Local/Remote states.
   Press the row to see all its files and open a diff; Back returns to that
   file list. Files without an object appear under "Repository files".
+- **All changes:** **Diff** in the status table's toolbar opens every changed
+  file of the repository on one page, one collapsible panel each, in file
+  order. The first three are open; others load when expanded (Expand all opens
+  at most 25). Each panel has **Open** for the single-file diff below.
 - **Diff:** pressing a file in the status list shows its line diff, inline or
   side by side, with changes in context or the whole file. As in abapGit, the
   side that changed is the "new" one, in green. Side by side keeps the system

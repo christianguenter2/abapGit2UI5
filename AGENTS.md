@@ -50,6 +50,9 @@ present. It is Git-ignored.
     action, objects and transport requirement with `assert_delete_preview`;
     validate keys before fixed-length conversion and require the exact package
     name for Uninstall
+  - `ZCL_AG2UI5_APP_REPO_DIFF`: panel, Open and expand arguments are indexes
+    into the PROTECTED file list from the status page; Open uses that row,
+    never the posted panel data
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
   table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
