@@ -1433,3 +1433,20 @@ Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
   Scratch copies resolve the screenshot tool's helper/conditional limitations;
   production code and SAP data/settings were unchanged. Existing Diff/Pull/Stage
   images are retained. README local links and diff whitespace checks pass.
+
+## Own ICF node (2026-10-07)
+
+- `/sap/bc/zabapgit2ui5` with handler `ZCL_AG2UI5_HTTP` (calls
+  `z2ui5_cl_http_handler=>run`) and a session timeout of 30 minutes
+  (`ICF_TIME`). It prepares stateful sessions that keep Git credentials in
+  memory: A4H25 has `rdisp/plugin_auto_logout = 0` and no timeout on the
+  `/sap/bc` path, so a stateful session would otherwise never end.
+- Spike (deleted afterwards): statics survive round trips and
+  `nav_app_call`/`nav_app_leave` only after `set_session_stateful( )`; they are
+  gone after switching back and after a page reload; a reloaded page leaves
+  the old stateful session on the server.
+- Created through abapgit-mcp. Two findings: abapgit-mcp collapsed the
+  padding inside SICF file names (fixed in abapGitMCP-backend), and abapGit
+  writes `ICF_TIME` as `00:30:00`; the timeout was set once through
+  `cl_icf_tree=>change_node`, then the Git file was taken from abapGit's own
+  serialization. Chrome: repository list and round trips through the new node.

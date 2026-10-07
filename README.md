@@ -167,13 +167,18 @@ a real system.
 ## Installation
 
 Install this repository with abapGit into a local package, for example
-`$ABAPGIT2UI5`.
+`$ABAPGIT2UI5`. It brings its own ICF node `/sap/bc/zabapgit2ui5`
+(handler `ZCL_AG2UI5_HTTP`, which runs abap2UI5) with a session timeout of
+30 minutes; activate it in SICF if your system installs nodes inactive.
 
 ## Start
 
 ```
-https://<host>:<port>/sap/bc/z2ui5?sap-client=<client>&app_start=zcl_ag2ui5_app_repos
+https://<host>:<port>/sap/bc/zabapgit2ui5?sap-client=<client>&app_start=zcl_ag2ui5_app_repos
 ```
+
+The abap2UI5 node `/sap/bc/z2ui5` works too, but has no session timeout of its
+own.
 
 ## How a pull decides
 

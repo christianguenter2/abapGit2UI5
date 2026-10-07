@@ -64,7 +64,7 @@
     "superclass_final": true,
     "unknown_types": true,
     "allowed_object_types": {
-      "allowed": ["CLAS", "DEVC", "INTF", "TABL"]
+      "allowed": ["CLAS", "DEVC", "INTF", "SICF", "TABL"]
     },
     "obsolete_statement": true,
 
