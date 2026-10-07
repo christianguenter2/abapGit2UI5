@@ -244,12 +244,17 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       load_status( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
-      " the stage page hands over a push: the followed branch may be new
+      " the stage page hands over a push: the followed branch may be new.
+      " PUSHED:<text> - it left by itself and its message is shown here
       DATA(lr_returned) = client->get( )-r_event_data.
       IF lr_returned IS BOUND.
         ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
-        IF CONV string( <lv_returned> ) = `PUSHED`.
+        DATA(lv_returned) = CONV string( <lv_returned> ).
+        IF lv_returned = `PUSHED` OR lv_returned CP `PUSHED:*`.
           load_status( ).
+        ENDIF.
+        IF lv_returned CP `PUSHED:*` AND strlen( lv_returned ) > 7.
+          client->message_toast_display( substring( val = lv_returned off = 7 ) ).
         ENDIF.
       ENDIF.
       view_display( ).

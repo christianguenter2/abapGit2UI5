@@ -1407,3 +1407,15 @@ Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
   the status test before the Diff event existed. Chrome on `$UMLAUT` and
   `$ABAPGIT2UI5` (read only): panels, collapse/expand, side by side, Open and
   Back, Expand all, 607-line file with More.
+
+## Back to the repository after the last commit (2026-10-07)
+
+- After a successful push the Stage page reloads its candidates. When none
+  are left it returns to the status page by itself and hands over
+  `PUSHED:Pushed <commit> to <branch>`; the status page reloads and shows that
+  message (a toast sent with `nav_app_leave` would be lost). With changes
+  left, or after a failed push, Stage stays as before. Stage stays reachable
+  without changes, so ignore rules can still be managed.
+- Stage 34/34 (3 new), status 57/57 (1 new); all suites 383/383.
+  `npm run check` 0 errors. Readbacks match. Chrome: Stage and Back unchanged.
+  No live push was made.

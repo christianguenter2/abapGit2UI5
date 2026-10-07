@@ -134,7 +134,9 @@ row of abapGit's four check tables needs a decision, or abapGit's
   with `ele( )`: after `tag( )` the chain is back on the toolbar.
 - A toast sent in the same round trip as `nav_app_leave` is lost. Hand the
   message over with `nav_app_leave( r_data = ... )`; the list shows it from
-  `get( )-r_event_data`.
+  `get( )-r_event_data`. Stage hands `PUSHED` (Back after a push) or
+  `PUSHED:<message>` (it left by itself because nothing was left to stage) to
+  the status page, which reloads and shows the message.
 - Event arguments arrive as abap2UI5 sends them: a boolean is `X` or space,
   not `true`. App tests with a client double must send the same values.
 - `ObjectAttribute.customContent` accepts a Link or Text, not an HBox. Use

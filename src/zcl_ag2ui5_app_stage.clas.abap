@@ -648,8 +648,15 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       WHEN zif_ag2ui5_repo_service=>c_outcome-pushed.
         CLEAR: ms_commit-title, ms_commit-body, ms_commit-new_branch.
         mv_pushed = abap_true.
-        client->message_toast_display( |Pushed { ls_result-commit } to { ls_result-branch }| ).
+        DATA(lv_pushed) = |Pushed { ls_result-commit } to { ls_result-branch }|.
         load_stage( ).
+        IF mt_rows IS INITIAL.
+          " nothing left to stage: back to the repository. A toast sent with
+          " nav_app_leave is lost, so the status page shows the message
+          client->nav_app_leave( r_data = |PUSHED:{ lv_pushed }| ).
+        ELSE.
+          client->message_toast_display( lv_pushed ).
+        ENDIF.
       WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
         load_stage( ).
         client->message_box_display( text = `The staging files changed since the page was loaded - nothing was pushed. Check the selection and push again.`

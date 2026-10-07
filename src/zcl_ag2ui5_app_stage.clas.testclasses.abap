@@ -168,6 +168,9 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS failed_push_follows_new_branch FOR TESTING.
     METHODS failed_push_keeps_unused_name FOR TESTING.
     METHODS back_after_push_reports FOR TESTING.
+    METHODS leave_when_nothing_left FOR TESTING.
+    METHODS stay_when_changes_left FOR TESTING.
+    METHODS stay_after_failed_push FOR TESTING.
 
 ENDCLASS.
 
@@ -192,6 +195,8 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->mv_token = `secret-token`.
     mo_app->ms_commit-name  = `Someone`.
     mo_app->ms_commit-email = `someone@example.com`.
+    " another change is left after the push: the page stays
+    mo_service->ms_stage-items = VALUE #( ( path = `/src/` filename = `zcl_b.clas.abap` action = `ADD` ) ).
   ENDMETHOD.
 
   METHOD token_cleared_after_push.
@@ -298,6 +303,26 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->ms_commit-new_branch exp = `feature/x` ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mv_branch_hint exp = `Leave empty to push to main` ).
+  ENDMETHOD.
+
+  METHOD leave_when_nothing_left.
+    " nothing to stage any more: back to the repository, with the message
+    CLEAR mo_service->ms_stage-items.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_left_data exp = `PUSHED:Pushed abc1234 to main` ).
+  ENDMETHOD.
+
+  METHOD stay_when_changes_left.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_left_data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Pushed abc1234 to main` ).
+  ENDMETHOD.
+
+  METHOD stay_after_failed_push.
+    CLEAR mo_service->ms_stage-items.
+    mo_service->mv_fail = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_left_data ).
   ENDMETHOD.
 
   METHOD back_after_push_reports.

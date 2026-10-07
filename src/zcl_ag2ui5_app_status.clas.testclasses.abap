@@ -703,6 +703,7 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS semantic_load_failure FOR TESTING.
     METHODS return_after_push_reloads FOR TESTING.
     METHODS return_without_push_keeps FOR TESTING.
+    METHODS return_after_push_shows_text FOR TESTING.
     METHODS repo_diff_passes_changed FOR TESTING.
     METHODS diff_off_offline_without_zip FOR TESTING.
     METHODS diff_disabled_without_changes FOR TESTING.
@@ -753,6 +754,16 @@ CLASS ltcl_overview IMPLEMENTATION.
     mo_client->mv_navigated = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-branch_display exp = `feature-x` ).
+  ENDMETHOD.
+
+  METHOD return_after_push_shows_text.
+    " the stage page left by itself: its toast would be lost on the way
+    CAST ltd_offline_service( mo_app->mi_service )->ms_status-branch_display = `feature-x`.
+    mo_client->ms_get-r_event_data = NEW string( `PUSHED:Pushed abc1234 to feature-x` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-branch_display exp = `feature-x` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast exp = `Pushed abc1234 to feature-x` ).
   ENDMETHOD.
 
   METHOD return_without_push_keeps.
