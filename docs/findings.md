@@ -1191,6 +1191,17 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   need staging against that branch's tree.
 - Built on `feature/branch-links` (`7c2a680`); display names use its
   `branch_display( )`.
-- Native suites 314/314 (service 190, stage 28, diff 25, settings 10,
-  status 36, repositories 13, new repository 12). `npm run check` 0 errors.
-  Five source readbacks match Git. No new short dumps.
+- Final review fixes: after a failed push that already created the branch,
+  the Stage app reads the followed branch again, updates the placeholder and
+  clears the input when it names that branch, so a retry pushes there; the
+  selection stays. Back after a successful push hands `PUSHED` to the status
+  page, which reloads its header and files.
+- Native suites 319/319 (service 190, stage 31, diff 25, settings 10,
+  status 38, repositories 13, new repository 12). `npm run check` 0 errors.
+  Source readbacks match Git. No new short dumps.
+- Deferred minors from the review: the wrapped push error drops
+  `ix_previous` and can be cut at 200 characters; whitespace-only input still
+  lists the remote branches; `placeholder_bound` checks the attribute, not
+  the binding; AGENTS.md does not name `push_branch` yet;
+  `assert_branch_name` misses `@{`, `a/.b` and `a.lock/b` (the remote refuses
+  them).

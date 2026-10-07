@@ -240,6 +240,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       load_status( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
+      " the stage page hands over a push: the followed branch may be new
+      DATA(lr_returned) = client->get( )-r_event_data.
+      IF lr_returned IS BOUND.
+        ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
+        IF CONV string( <lv_returned> ) = `PUSHED`.
+          load_status( ).
+        ENDIF.
+      ENDIF.
       view_display( ).
       IF mv_files_open = abap_true.
         popup_files_display( ).

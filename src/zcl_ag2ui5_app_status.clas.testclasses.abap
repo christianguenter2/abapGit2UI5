@@ -60,9 +60,13 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_follow TYPE string.
     DATA mt_args TYPE string_table.
     DATA mo_called TYPE REF TO z2ui5_if_app.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
+  ENDMETHOD.
   METHOD z2ui5_if_client~check_on_init.
     result = mv_init.
   ENDMETHOD.
@@ -599,9 +603,29 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS offline_without_zip FOR TESTING.
     METHODS semantic_navigation FOR TESTING.
     METHODS semantic_load_failure FOR TESTING.
+    METHODS return_after_push_reloads FOR TESTING.
+    METHODS return_without_push_keeps FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
+  METHOD return_after_push_reloads.
+    " a push may have moved the repository to a new branch
+    CAST ltd_offline_service( mo_app->mi_service )->ms_status-branch_display = `feature-x`.
+    mo_app->ms_head-branch_display = `main`.
+    mo_client->ms_get-r_event_data = NEW string( `PUSHED` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-branch_display exp = `feature-x` ).
+  ENDMETHOD.
+
+  METHOD return_without_push_keeps.
+    CAST ltd_offline_service( mo_app->mi_service )->ms_status-branch_display = `feature-x`.
+    mo_app->ms_head-branch_display = `main`.
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-branch_display exp = `main` ).
+  ENDMETHOD.
+
   METHOD semantic_navigation.
     DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
     lo_service->ms_diff-semantic-changes = VALUE #( ( id = `ZCL_A/Declaration/RUN`

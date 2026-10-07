@@ -74,6 +74,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
       ty_patches TYPE STANDARD TABLE OF ty_patch WITH EMPTY KEY.
     "! The picked lines per file; a file without an entry is committed whole
     DATA mt_patches TYPE ty_patches.
+    "! A push succeeded: the status page reloads on the way back
+    DATA mv_pushed TYPE abap_bool.
 
     "! Takes the diff page's selection over into its row
     METHODS take_patch
@@ -98,6 +100,9 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     METHODS view_display.
     METHODS on_event.
     METHODS load_stage.
+    "! After a failed push to a new branch: if the branch was created, the
+    "! repository follows it now, and the input must not create it again
+    METHODS follow_created_branch.
     METHODS push
       IMPORTING
         iv_token TYPE string.
@@ -477,7 +482,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
-        client->nav_app_leave( ).
+        IF mv_pushed = abap_true.
+          client->nav_app_leave( r_data = `PUSHED` ).
+        ELSE.
+          client->nav_app_leave( ).
+        ENDIF.
       WHEN `ALL`.
         select_all( abap_true ).
       WHEN `NONE`.
@@ -573,6 +582,22 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD follow_created_branch.
+
+    " only the branch is taken: the selection and picked lines stay for a retry
+    TRY.
+        DATA(lv_branch) = service( )->get_stage( mv_key )-branch.
+      CATCH zcx_abapgit_exception.
+        RETURN.
+    ENDTRY.
+    mv_branch_hint = |Leave empty to push to { lv_branch }|.
+    IF lv_branch = zcl_ag2ui5_repo_service=>branch_display(
+                     zcl_ag2ui5_repo_service=>branch_name( ms_commit-new_branch ) ).
+      CLEAR ms_commit-new_branch.
+    ENDIF.
+
+  ENDMETHOD.
+
   METHOD push.
 
     DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
@@ -612,6 +637,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR lv_token.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        IF ms_commit-new_branch IS NOT INITIAL.
+          follow_created_branch( ).
+        ENDIF.
         RETURN.
     ENDTRY.
     CLEAR lv_token.
@@ -619,6 +647,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     CASE ls_result-outcome.
       WHEN zif_ag2ui5_repo_service=>c_outcome-pushed.
         CLEAR: ms_commit-title, ms_commit-body, ms_commit-new_branch.
+        mv_pushed = abap_true.
         client->message_toast_display( |Pushed { ls_result-commit } to { ls_result-branch }| ).
         load_stage( ).
       WHEN zif_ag2ui5_repo_service=>c_outcome-changed.

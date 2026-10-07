@@ -33,6 +33,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_closed TYPE abap_bool.
     DATA mv_arg1 TYPE string VALUE `/src/`.
     DATA mv_arg2 TYPE string VALUE `zcl_a.clas.abap`.
+    DATA mv_left_data TYPE string.
 ENDCLASS.
 
 
@@ -69,7 +70,10 @@ CLASS ltd_client IMPLEMENTATION.
     mv_called = app.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~nav_app_leave ##NEEDED.
+  METHOD z2ui5_if_client~nav_app_leave.
+    IF r_data IS SUPPLIED.
+      mv_left_data = r_data.
+    ENDIF.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~popup_display.
@@ -161,6 +165,9 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS new_branch_cleared_after_push FOR TESTING.
     METHODS toast_names_branch FOR TESTING.
     METHODS placeholder_bound FOR TESTING.
+    METHODS failed_push_follows_new_branch FOR TESTING.
+    METHODS failed_push_keeps_unused_name FOR TESTING.
+    METHODS back_after_push_reports FOR TESTING.
 
 ENDCLASS.
 
@@ -268,6 +275,37 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_service->ms_stage-branch = `a{b}`.
     mo_app->load_stage( ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mv_branch_hint exp = `Leave empty to push to a{b}` ).
+  ENDMETHOD.
+
+  METHOD failed_push_follows_new_branch.
+    " the branch was created, the push failed: a retry must go to that
+    " branch, not try to create it again, and the selection stays
+    mo_service->mv_fail = abap_true.
+    mo_service->ms_stage-branch = `feature-x`.
+    mo_app->ms_commit-new_branch = `feature x`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_commit-new_branch ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_branch_hint exp = `Leave empty to push to feature-x` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `HTTP 401 Unauthorized` ).
+  ENDMETHOD.
+
+  METHOD failed_push_keeps_unused_name.
+    " refused before anything was written: the name stays for correction
+    mo_service->mv_fail = abap_true.
+    mo_service->ms_stage-branch = `main`.
+    mo_app->ms_commit-new_branch = `feature/x`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_commit-new_branch exp = `feature/x` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_branch_hint exp = `Leave empty to push to main` ).
+  ENDMETHOD.
+
+  METHOD back_after_push_reports.
+    " the status page shows the followed branch: it must reload after a push
+    mo_app->z2ui5_if_app~main( mo_client ).
+    mo_client->mv_event = `BACK`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_left_data exp = `PUSHED` ).
   ENDMETHOD.
 
 ENDCLASS.
