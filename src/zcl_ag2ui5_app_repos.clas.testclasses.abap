@@ -63,11 +63,17 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_popup TYPE string.
     DATA mv_closed TYPE abap_bool.
     DATA mv_error TYPE string.
+    "! The last set_session_stateful( ) value; `-` when it was never called
+    DATA mv_stateful TYPE string VALUE `-`.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~check_on_navigated.
     result = mv_start.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~set_session_stateful.
+    mv_stateful = val.
   ENDMETHOD.
   METHOD z2ui5_if_client~check_on_event.
     result = xsdbool( mv_start = abap_false ).
@@ -120,6 +126,8 @@ CLASS ltd_delete_service DEFINITION FINAL FOR TESTING.
 ENDCLASS.
 
 CLASS ltd_delete_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~logoff ##NEEDED.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~preview_delete.
     rs_preview = ms_preview.
     rs_preview-key = iv_key.
@@ -358,8 +366,12 @@ CLASS ltd_favorites_service DEFINITION FINAL FOR TESTING.
     DATA mv_reads TYPE i.
     DATA mv_fail TYPE abap_bool.
     DATA mv_fail_read TYPE abap_bool.
+    DATA mv_logoffs TYPE i.
 ENDCLASS.
 CLASS ltd_favorites_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~logoff.
+    mv_logoffs = mv_logoffs + 1.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~list_repos.
     mv_reads = mv_reads + 1.
     IF mv_fail_read = abap_true.
@@ -404,9 +416,18 @@ CLASS ltcl_favorites DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION S
     METHODS empty_matching_favorites FOR TESTING.
     METHODS show_all_keeps_search FOR TESTING.
     METHODS refresh_reloads_flags FOR TESTING.
+    METHODS list_goes_stateless FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_favorites IMPLEMENTATION.
+  METHOD list_goes_stateless.
+    " leaving a repository ends the session's Git credentials, logged in or not
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_logoffs exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `` ).
+  ENDMETHOD.
+
   METHOD setup.
     mo_app = NEW #( ).
     mo_client = NEW #( ).

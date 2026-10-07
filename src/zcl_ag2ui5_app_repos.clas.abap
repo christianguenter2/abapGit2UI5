@@ -84,6 +84,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     me->client = client.
     IF client->check_on_navigated( ).
+      " back on the list, a repository was left: the Git credentials of the
+      " session login go, and the session needs no state any more
+      service( )->logoff( ).
+      client->set_session_stateful( abap_false ).
       mv_layout = zcl_ag2ui5_settings=>get_instance( )->get(
                     iv_key     = zif_ag2ui5_settings=>c_key-repos_layout
                     iv_default = `TILES` ).
