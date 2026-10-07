@@ -297,6 +297,9 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     FIND REGEX `<Table[^>]*items="\{LINES\}"` IN lv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
     cl_abap_unit_assert=>assert_char_np( act = lv_view exp = `*items="{SBS}"*` ).
+    " without growing, UI5 renders only the model's first 100 rows of a long file
+    FIND REGEX `<Table[^>]*items="\{LINES\}"[^>]*growing="true"` IN lv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
   ENDMETHOD.
 
   METHOD view_side_by_side.
@@ -306,6 +309,8 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     FIND REGEX `<Table[^>]*items="\{SBS\}"` IN mo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*items="{LINES}"*` ).
+    FIND REGEX `<Table[^>]*items="\{SBS\}"[^>]*growing="true"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD back_leaves.

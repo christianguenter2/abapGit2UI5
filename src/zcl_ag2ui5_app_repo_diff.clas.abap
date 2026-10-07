@@ -513,8 +513,11 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     IF mv_layout = `SBS`.
       " on narrow screens Git pops in below the system
       DATA(sbs) = io_content->ele( `Table`
-          )->a( n = `items`   v = `{SBS}`
-          )->a( n = `visible` v = `{= ${SBS}.length > 0 }` ).
+          )->a( n = `items`            v = `{SBS}`
+          )->a( n = `visible`          v = `{= ${SBS}.length > 0 }`
+          " UI5 renders 100 rows of a list binding at most; growing shows the rest
+          )->a( n = `growing`          v = `true`
+          )->a( n = `growingThreshold` v = `500` ).
       DATA(sbs_columns) = sbs->ele( `columns` ).
       sbs_columns->ele( `Column`
           )->a( n = `width` v = `4rem`
@@ -562,8 +565,11 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     ENDIF.
 
     DATA(inline) = io_content->ele( `Table`
-        )->a( n = `items`   v = `{LINES}`
-        )->a( n = `visible` v = `{= ${LINES}.length > 0 }` ).
+        )->a( n = `items`            v = `{LINES}`
+        )->a( n = `visible`          v = `{= ${LINES}.length > 0 }`
+        " UI5 renders 100 rows of a list binding at most; growing shows the rest
+        )->a( n = `growing`          v = `true`
+        )->a( n = `growingThreshold` v = `500` ).
     DATA(columns) = inline->ele( `columns` ).
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
