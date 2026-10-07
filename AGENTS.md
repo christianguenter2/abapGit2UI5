@@ -43,6 +43,9 @@ present. It is Git-ignored.
   - `create_package`: normalize and validate lengths before converting to SAP
     fields, refuse existing packages, check the parent and repository hierarchy,
     and validate the transport against a fresh workbench request list
+  - `set_favorite`: validate raw key/state before fixed-length conversion,
+    reload the registration and compare the requested state with current-user
+    abapGit favorites; only write when it differs
   - `delete_repo`: reload metadata, recompute the preview and compare identity,
     action, objects and transport requirement with `assert_delete_preview`;
     validate keys before fixed-length conversion and require the exact package

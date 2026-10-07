@@ -53,6 +53,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       branch_link     TYPE string,
       deserialized_at TYPE string,
       offline         TYPE abap_bool,
+      favorite        TYPE abap_bool,
     END OF ty_repo,
     ty_repos TYPE STANDARD TABLE OF ty_repo WITH EMPTY KEY.
 
@@ -434,6 +435,16 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
   METHODS list_repos
     RETURNING
       VALUE(rt_repos) TYPE ty_repos
+    RAISING
+      zcx_abapgit_exception.
+
+  "! Set the current user's favorite. String state is validated before conversion.
+  METHODS set_favorite
+    IMPORTING
+      iv_key TYPE string
+      iv_favorite TYPE string
+    RETURNING
+      VALUE(rv_favorite) TYPE abap_bool
     RAISING
       zcx_abapgit_exception.
 

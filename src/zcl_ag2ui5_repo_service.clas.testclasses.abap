@@ -2753,3 +2753,135 @@ CLASS ltcl_branch_links IMPLEMENTATION.
       iv_url = `https://git.example.com/owner/repo` iv_branch = `refs/heads/main` ) ).
   ENDMETHOD.
 ENDCLASS.
+
+
+CLASS ltd_favorite_user DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_abapgit_persist_user PARTIALLY IMPLEMENTED.
+    DATA mt_favorites TYPE zif_abapgit_persist_user=>ty_favorites.
+    DATA mv_writes TYPE i.
+    DATA mv_fail TYPE abap_bool.
+ENDCLASS.
+
+CLASS ltd_favorite_user IMPLEMENTATION.
+  METHOD zif_abapgit_persist_user~is_favorite_repo.
+    rv_yes = xsdbool( line_exists( mt_favorites[ table_line = iv_repo_key ] ) ).
+  ENDMETHOD.
+  METHOD zif_abapgit_persist_user~toggle_favorite.
+    IF mv_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Persistence failed` ).
+    ENDIF.
+    mv_writes = mv_writes + 1.
+    IF line_exists( mt_favorites[ table_line = iv_repo_key ] ).
+      DELETE mt_favorites WHERE table_line = iv_repo_key.
+    ELSE.
+      INSERT iv_repo_key INTO TABLE mt_favorites.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_favorite_mutation DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_user TYPE REF TO ltd_favorite_user.
+    DATA mi_original TYPE REF TO zif_abapgit_persist_user.
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+    CLASS-DATA mv_exists TYPE abap_bool.
+    CLASS-DATA mv_authorized TYPE abap_bool.
+    METHODS setup.
+    METHODS teardown.
+    METHODS set_and_remove FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS repeated_set_is_noop FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS malformed_keys FOR TESTING.
+    METHODS invalid_states FOR TESTING.
+    METHODS missing_registration FOR TESTING.
+    METHODS authorization_refused FOR TESTING.
+    METHODS current_user_isolated FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS persistence_failure FOR TESTING.
+    METHODS unrelated_favorites_retained FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS rejected IMPORTING iv_key TYPE string DEFAULT `42` iv_state TYPE string DEFAULT `X`.
+ENDCLASS.
+
+CLASS ltcl_favorite_mutation IMPLEMENTATION.
+  METHOD setup.
+    TEST-INJECTION favorite_authorization.
+      IF ltcl_favorite_mutation=>mv_authorized = abap_false.
+        zcx_abapgit_exception=>raise( `Not authorized` ).
+      ENDIF.
+    END-TEST-INJECTION.
+    TEST-INJECTION favorite_registration.
+      IF ltcl_favorite_mutation=>mv_exists = abap_false.
+        zcx_abapgit_exception=>raise( `Repository no longer registered` ).
+      ENDIF.
+    END-TEST-INJECTION.
+    mv_exists = abap_true.
+    mv_authorized = abap_true.
+    mo_user = NEW #( ).
+    mi_original = zcl_abapgit_persist_factory=>get_user( ).
+    zcl_abapgit_persist_injector=>set_current_user( mo_user ).
+    mi_service = NEW zcl_ag2ui5_repo_service( ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_abapgit_persist_injector=>set_current_user( mi_original ).
+  ENDMETHOD.
+  METHOD rejected.
+    TRY.
+        mi_service->set_favorite( iv_key = iv_key iv_favorite = iv_state ).
+        cl_abap_unit_assert=>fail( `Favorite request should be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = mo_user->mv_writes ).
+  ENDMETHOD.
+  METHOD set_and_remove.
+    cl_abap_unit_assert=>assert_true( mi_service->set_favorite( iv_key = `42` iv_favorite = `X` ) ).
+    cl_abap_unit_assert=>assert_false( mi_service->set_favorite( iv_key = `42` iv_favorite = ` ` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = mo_user->mv_writes ).
+  ENDMETHOD.
+  METHOD repeated_set_is_noop.
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `` ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = mo_user->mv_writes ).
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `X` ).
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `X` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_user->mv_writes ).
+  ENDMETHOD.
+  METHOD malformed_keys.
+    rejected( iv_key = `` ).
+    rejected( iv_key = `bad` ).
+    rejected( iv_key = `42 ` ).
+    rejected( iv_key = `000000000042extra` ).
+    rejected( iv_key = `0000000000042` ).
+  ENDMETHOD.
+  METHOD invalid_states.
+    rejected( iv_state = `true` ).
+    rejected( iv_state = `false` ).
+    rejected( iv_state = `XX` ).
+    rejected( iv_state = `Xextra` ).
+  ENDMETHOD.
+  METHOD missing_registration.
+    mv_exists = abap_false.
+    rejected( ).
+  ENDMETHOD.
+  METHOD authorization_refused.
+    mv_authorized = abap_false.
+    rejected( ).
+  ENDMETHOD.
+  METHOD current_user_isolated.
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `X` ).
+    DATA(lo_other) = NEW ltd_favorite_user( ).
+    zcl_abapgit_persist_injector=>set_current_user( lo_other ).
+    cl_abap_unit_assert=>assert_false( mi_service->set_favorite( iv_key = `42` iv_favorite = `` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 0 act = lo_other->mv_writes ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_user->mt_favorites ) ).
+  ENDMETHOD.
+  METHOD persistence_failure.
+    mo_user->mv_fail = abap_true.
+    rejected( ).
+    cl_abap_unit_assert=>assert_initial( mo_user->mt_favorites ).
+  ENDMETHOD.
+  METHOD unrelated_favorites_retained.
+    INSERT CONV #( `7` ) INTO TABLE mo_user->mt_favorites.
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `X` ).
+    mi_service->set_favorite( iv_key = `42` iv_favorite = `` ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_user->mt_favorites ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `7` act = mo_user->mt_favorites[ 1 ] ).
+  ENDMETHOD.
+ENDCLASS.

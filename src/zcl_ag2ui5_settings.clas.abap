@@ -64,7 +64,8 @@ CLASS zcl_ag2ui5_settings IMPLEMENTATION.
         rt_values = VALUE #( ( `OBJECT` ) ( `FILE` ) ( `TYPE` ) ).
       WHEN zif_ag2ui5_settings=>c_key-diff_layout.
         rt_values = VALUE #( ( `INLINE` ) ( `SBS` ) ).
-      WHEN zif_ag2ui5_settings=>c_key-status_changes_first
+      WHEN zif_ag2ui5_settings=>c_key-repos_favorites_only
+        OR zif_ag2ui5_settings=>c_key-status_changes_first
         OR zif_ag2ui5_settings=>c_key-diff_show_all.
         rt_values = VALUE #( ( `X` ) ( `` ) ).
     ENDCASE.

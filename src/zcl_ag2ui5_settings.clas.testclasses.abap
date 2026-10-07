@@ -50,6 +50,7 @@ CLASS ltcl_settings DEFINITION FINAL FOR TESTING
     METHODS row_carries_current_user FOR TESTING.
     METHODS every_key_has_values FOR TESTING.
     METHODS overview_allow_list FOR TESTING.
+    METHODS favorites_allow_list FOR TESTING.
 ENDCLASS.
 
 CLASS zcl_ag2ui5_settings DEFINITION LOCAL FRIENDS ltcl_settings.
@@ -124,6 +125,7 @@ CLASS ltcl_settings IMPLEMENTATION.
     " a key added to the interface but not to the allow-list could never be saved
     DATA(lt_keys) = VALUE string_table(
       ( zif_ag2ui5_settings=>c_key-repos_layout )
+      ( zif_ag2ui5_settings=>c_key-repos_favorites_only )
       ( zif_ag2ui5_settings=>c_key-status_view )
       ( zif_ag2ui5_settings=>c_key-status_overview )
       ( zif_ag2ui5_settings=>c_key-status_sort )
@@ -134,6 +136,22 @@ CLASS ltcl_settings IMPLEMENTATION.
       cl_abap_unit_assert=>assert_not_initial( act = zcl_ag2ui5_settings=>allowed_values( lv_key )
                                                msg = lv_key ).
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD favorites_allow_list.
+    cl_abap_unit_assert=>assert_equals( exp = `` act = mi_cut->get(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_default = `` ) ).
+    cl_abap_unit_assert=>assert_true( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_value = `X` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `X` act = mi_cut->get(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_default = `` ) ).
+    cl_abap_unit_assert=>assert_true( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_value = `` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `` act = mi_cut->get(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_default = `X` ) ).
+    cl_abap_unit_assert=>assert_false( mi_cut->set(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_value = `true` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = sy-uname act = mo_store->mt_rows[ 1 ]-user ).
   ENDMETHOD.
 
   METHOD overview_allow_list.

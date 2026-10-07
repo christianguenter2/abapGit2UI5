@@ -5,6 +5,7 @@ INTERFACE zif_ag2ui5_settings
   CONSTANTS:
     BEGIN OF c_key,
       repos_layout         TYPE string VALUE `REPOS_LAYOUT`,
+      repos_favorites_only TYPE string VALUE `REPOS_FAVORITES_ONLY`,
       status_view          TYPE string VALUE `STATUS_VIEW`,
       status_overview      TYPE string VALUE `STATUS_OVERVIEW`,
       status_sort          TYPE string VALUE `STATUS_SORT`,

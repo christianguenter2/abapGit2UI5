@@ -1,6 +1,7 @@
 CLASS ltcl_offline DEFINITION DEFERRED.
 CLASS ltcl_delete DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline ltcl_delete.
+CLASS ltcl_favorites DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline ltcl_delete ltcl_favorites.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -14,6 +15,7 @@ CLASS ltd_settings DEFINITION FINAL FOR TESTING.
       ty_pairs TYPE STANDARD TABLE OF ty_pair WITH EMPTY KEY.
     DATA mt_preset TYPE ty_pairs.
     DATA mt_saved TYPE ty_pairs.
+    DATA mv_reject TYPE abap_bool.
     METHODS saved
       IMPORTING
         iv_key          TYPE string
@@ -29,6 +31,9 @@ CLASS ltd_settings IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_settings~set.
+    IF mv_reject = abap_true.
+      RETURN.
+    ENDIF.
     INSERT VALUE #( key = iv_key value = iv_value ) INTO TABLE mt_saved.
     rv_saved = abap_true.
   ENDMETHOD.
@@ -54,6 +59,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
     DATA mv_toast TYPE string.
     DATA mv_arg TYPE string.
+    DATA mv_arg2 TYPE string.
     DATA mv_popup TYPE string.
     DATA mv_closed TYPE abap_bool.
     DATA mv_error TYPE string.
@@ -91,7 +97,7 @@ CLASS ltd_client IMPLEMENTATION.
     mo_called = app.
   ENDMETHOD.
   METHOD z2ui5_if_client~get_event_arg.
-    result = mv_arg.
+    result = COND #( WHEN v = 2 THEN mv_arg2 ELSE mv_arg ).
   ENDMETHOD.
   METHOD z2ui5_if_client~get.
     result = ms_get.
@@ -339,4 +345,224 @@ CLASS ltcl_new IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `Offline repository x created` act = lo_client->mv_toast ).
   ENDMETHOD.
 
+ENDCLASS.
+
+
+CLASS ltd_favorites_service DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
+    DATA mt_repos TYPE zif_ag2ui5_repo_service=>ty_repos.
+    DATA mv_key TYPE string.
+    DATA mv_state TYPE string.
+    DATA mv_calls TYPE i.
+    DATA mv_reads TYPE i.
+    DATA mv_fail TYPE abap_bool.
+    DATA mv_fail_read TYPE abap_bool.
+ENDCLASS.
+CLASS ltd_favorites_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~list_repos.
+    mv_reads = mv_reads + 1.
+    IF mv_fail_read = abap_true.
+      zcx_abapgit_exception=>raise( `Test list refresh failure` ).
+    ENDIF.
+    rt_repos = mt_repos.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~set_favorite.
+    mv_key = iv_key.
+    mv_state = iv_favorite.
+    mv_calls = mv_calls + 1.
+    IF mv_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Test persistence failure` ).
+    ENDIF.
+    LOOP AT mt_repos ASSIGNING FIELD-SYMBOL(<ls_repo>) WHERE key = iv_key.
+      <ls_repo>-favorite = xsdbool( iv_favorite = `X` ).
+      rv_favorite = <ls_repo>-favorite.
+    ENDLOOP.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_favorites DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_repos.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_favorites_service.
+    DATA mo_settings TYPE REF TO ltd_settings.
+    METHODS setup.
+    METHODS teardown.
+    METHODS event IMPORTING iv_event TYPE string.
+    METHODS favorites_first FOR TESTING.
+    METHODS search_and_filter FOR TESTING.
+    METHODS case_insensitive_search FOR TESTING.
+    METHODS start_reads_filter FOR TESTING.
+    METHODS filter_defaults_to_all FOR TESTING.
+    METHODS filter_event_saves FOR TESTING.
+    METHODS filter_failure_restores FOR TESTING.
+    METHODS star_sets_without_navigation FOR TESTING.
+    METHODS star_failure_restores FOR TESTING.
+    METHODS confirmed_star_survives_error FOR TESTING.
+    METHODS last_favorite_removed FOR TESTING.
+    METHODS empty_matching_favorites FOR TESTING.
+    METHODS show_all_keeps_search FOR TESTING.
+    METHODS refresh_reloads_flags FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_favorites IMPLEMENTATION.
+  METHOD setup.
+    mo_app = NEW #( ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_settings = NEW #( ).
+    zcl_ag2ui5_settings=>inject( mo_settings ).
+    mo_app->mi_service = mo_service.
+    mo_app->client = mo_client.
+    mo_service->mt_repos = VALUE #(
+      ( key = `1` name = `Ordinary` package = `$A` url = `https://example.com/one` )
+      ( key = `3` name = `Later`    package = `$Z` favorite = abap_true offline = abap_true )
+      ( key = `2` name = `First`    package = `$B` favorite = abap_true ) ).
+    mo_app->load_repos( ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD event.
+    mo_client->mv_event = iv_event.
+    mo_app->z2ui5_if_app~main( mo_client ).
+  ENDMETHOD.
+  METHOD favorites_first.
+    cl_abap_unit_assert=>assert_equals( exp = `2` act = mo_app->mt_repos[ 1 ]-key ).
+    cl_abap_unit_assert=>assert_equals( exp = `3` act = mo_app->mt_repos[ 2 ]-key ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 3 ]-key ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://favorite` act = mo_app->mt_repos[ 1 ]-favorite_icon ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://unfavorite` act = mo_app->mt_repos[ 3 ]-favorite_icon ).
+    " Tie-breakers make order deterministic, independent of service input.
+    DATA(lt_rows) = zcl_ag2ui5_app_repos=>filtered_repos(
+      it_rows = VALUE #( ( key = `2` name = `Beta` package = `$SAME` favorite = abap_true )
+                        ( key = `3` name = `Alpha` package = `$SAME` favorite = abap_true )
+                        ( key = `1` name = `Alpha` package = `$SAME` favorite = abap_true ) )
+      iv_search = `` iv_favorites_only = abap_false ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = lt_rows[ 1 ]-key ).
+    cl_abap_unit_assert=>assert_equals( exp = `3` act = lt_rows[ 2 ]-key ).
+    cl_abap_unit_assert=>assert_equals( exp = `2` act = lt_rows[ 3 ]-key ).
+  ENDMETHOD.
+  METHOD search_and_filter.
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->mv_search = `Later`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_app->mt_repos ) ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-offline ).
+    mo_app->mv_search = `Ordinary`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_repos ).
+  ENDMETHOD.
+  METHOD case_insensitive_search.
+    mo_app->mv_search = `first`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_equals( exp = `2` act = mo_app->mt_repos[ 1 ]-key ).
+    mo_app->mv_search = `$z`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_equals( exp = `3` act = mo_app->mt_repos[ 1 ]-key ).
+    mo_app->mv_search = `EXAMPLE.COM`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 1 ]-key ).
+  ENDMETHOD.
+  METHOD start_reads_filter.
+    mo_settings->mt_preset = VALUE #( ( key = zif_ag2ui5_settings=>c_key-repos_favorites_only value = `X` ) ).
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_favorites_only ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( mo_app->mt_repos ) ).
+  ENDMETHOD.
+  METHOD filter_defaults_to_all.
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_favorites_only ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( mo_app->mt_repos ) ).
+  ENDMETHOD.
+  METHOD filter_event_saves.
+    mo_client->mv_arg = `X`.
+    event( `FAVORITES_FILTER` ).
+    cl_abap_unit_assert=>assert_equals( exp = `X` act = mo_settings->saved(
+      zif_ag2ui5_settings=>c_key-repos_favorites_only ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 2 act = lines( mo_app->mt_repos ) ).
+    mo_client->mv_arg = ` `.
+    event( `FAVORITES_FILTER` ).
+    cl_abap_unit_assert=>assert_equals( exp = `` act = mo_settings->saved(
+      zif_ag2ui5_settings=>c_key-repos_favorites_only ) ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( mo_app->mt_repos ) ).
+  ENDMETHOD.
+  METHOD filter_failure_restores.
+    mo_settings->mv_reject = abap_true.
+    mo_client->mv_arg = `Xextra`.
+    mo_app->mv_favorites_only = abap_true.
+    event( `FAVORITES_FILTER` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_favorites_only ).
+    cl_abap_unit_assert=>assert_equals( exp = 3 act = lines( mo_app->mt_repos ) ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+  ENDMETHOD.
+  METHOD star_sets_without_navigation.
+    mo_client->mv_arg = `1`.
+    mo_client->mv_arg2 = `X`.
+    event( `FAVORITE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_service->mv_key ).
+    cl_abap_unit_assert=>assert_equals( exp = `X` act = mo_service->mv_state ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 1 ]-key ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
+    cl_abap_unit_assert=>assert_not_bound( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( exp = `TILES` act = mo_app->mv_layout ).
+  ENDMETHOD.
+  METHOD star_failure_restores.
+    mo_service->mv_fail = abap_true.
+    mo_client->mv_arg = `1`.
+    mo_client->mv_arg2 = `X`.
+    " Simulate the browser sending an optimistic changed row.
+    mo_app->mt_repos[ 3 ]-favorite = abap_true.
+    event( `FAVORITE` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_repos[ 3 ]-favorite ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://unfavorite` act = mo_app->mt_repos[ 3 ]-favorite_icon ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_not_bound( mo_client->mo_called ).
+  ENDMETHOD.
+  METHOD confirmed_star_survives_error.
+    mo_service->mv_fail_read = abap_true.
+    mo_client->mv_arg = `1`.
+    mo_client->mv_arg2 = `X`.
+    event( `FAVORITE` ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 1 ]-key ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
+    cl_abap_unit_assert=>assert_equals( exp = `sap-icon://favorite` act = mo_app->mt_repos[ 1 ]-favorite_icon ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+  ENDMETHOD.
+  METHOD last_favorite_removed.
+    mo_service->mt_repos = VALUE #( ( key = `1` name = `Only` favorite = abap_true ) ).
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->load_repos( ).
+    mo_client->mv_arg = `1`.
+    mo_client->mv_arg2 = ``.
+    event( `FAVORITE` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_empty ).
+    cl_abap_unit_assert=>assert_equals( exp = `No favorites yet` act = mo_app->mv_empty_text ).
+  ENDMETHOD.
+  METHOD empty_matching_favorites.
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->mv_search = `No match`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_empty ).
+    cl_abap_unit_assert=>assert_equals( exp = `No favorites match your search` act = mo_app->mv_empty_text ).
+  ENDMETHOD.
+  METHOD show_all_keeps_search.
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->mv_search = `Ordinary`.
+    mo_app->mv_layout = `LIST`.
+    event( `SHOW_ALL` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_favorites_only ).
+    cl_abap_unit_assert=>assert_equals( exp = `Ordinary` act = mo_app->mv_search ).
+    cl_abap_unit_assert=>assert_equals( exp = `LIST` act = mo_app->mv_layout ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = lines( mo_app->mt_repos ) ).
+  ENDMETHOD.
+  METHOD refresh_reloads_flags.
+    mo_service->mt_repos[ 1 ]-favorite = abap_true.
+    event( `REFRESH` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
+    cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 1 ]-key ).
+  ENDMETHOD.
 ENDCLASS.

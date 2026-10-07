@@ -105,6 +105,9 @@ the browser session is running that code.
   Ignoring a tracked file leaves its remote version in place. Saving a rule
   reloads staging and clears file selections and picked lines; commit text
   and committer details stay.
+- **Favorites:** star repositories in either list or tile layout. Favorites are
+  shared with classic abapGit for your SAP user and appear first. **Favorites
+  only** combines with search and is remembered; new users start with All.
 - Branch labels omit `refs/heads/` in the repository list, tiles and status
   page. Click a branch to open it on the remote in a new tab; the branch
   selector also offers **Open branch** for its selected branch. Links support

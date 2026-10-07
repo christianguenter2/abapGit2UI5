@@ -18,6 +18,9 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
         branch_link     TYPE string,
         deserialized_at TYPE string,
         offline         TYPE abap_bool,
+        favorite        TYPE abap_bool,
+        favorite_icon   TYPE string,
+        favorite_text   TYPE string,
         "! Navigation for every repository
         nav_type        TYPE string,
       END OF ty_row,
@@ -25,6 +28,9 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
 
     DATA mt_repos  TYPE ty_rows.
     DATA mv_search TYPE string.
+    DATA mv_favorites_only TYPE abap_bool.
+    DATA mv_empty TYPE abap_bool.
+    DATA mv_empty_text TYPE string.
     "! LIST or TILES; switched on the client, stored per user
     DATA mv_layout TYPE string VALUE `TILES`.
 
@@ -53,6 +59,12 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     METHODS on_event.
     METHODS load_repos.
     METHODS apply_search.
+    METHODS favorite_set.
+    METHODS favorites_filter IMPORTING iv_value TYPE string.
+    METHODS favorite_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
+    CLASS-METHODS filtered_repos
+      IMPORTING it_rows TYPE ty_rows iv_search TYPE string iv_favorites_only TYPE abap_bool
+      RETURNING VALUE(rt_rows) TYPE ty_rows.
     METHODS open_repo.
     METHODS service RETURNING VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
     METHODS actions_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
@@ -75,6 +87,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
       mv_layout = zcl_ag2ui5_settings=>get_instance( )->get(
                     iv_key     = zif_ag2ui5_settings=>c_key-repos_layout
                     iv_default = `TILES` ).
+      mv_favorites_only = xsdbool( zcl_ag2ui5_settings=>get_instance( )->get(
+        iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_default = `` ) = `X` ).
       " also on the way back from a pull, so "Last pull" is current
       load_repos( ).
       view_display( ).
@@ -101,6 +115,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->ele( n = `View` ns = `mvc`
             )->a( n = `xmlns`        v = `sap.m`
             )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
+            )->a( n = `xmlns:core`   v = `sap.ui.core`
             )->a( n = `xmlns:f`      v = `sap.f`
             )->a( n = `xmlns:card`   v = `sap.f.cards`
             )->a( n = `displayBlock` v = `true`
@@ -116,8 +131,17 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->ele( `layoutData`
             )->tag( `OverflowToolbarLayoutData`
                 )->a( n = `priority`   v = `NeverOverflow`
-                )->a( n = `shrinkable` v = `true` ).
+                )->a( n = `shrinkable` v = `false` ).
     header_content->tag( `ToolbarSpacer` ).
+    header_content->ele( `OverflowToolbarToggleButton`
+        )->a( n = `text`    v = `Favorites only`
+        )->a( n = `icon`    v = `sap-icon://favorite`
+        )->a( n = `tooltip` v = `Favorites only`
+        )->a( n = `pressed` v = client->_bind( mv_favorites_only )
+        )->a( n = `press`   v = client->_event( val = `FAVORITES_FILTER` arg = `${$parameters>/pressed}` )
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority` v = `Low` ).
     header_content->tag( `Button`
         )->a( n = `text`  v = `New repository`
         )->a( n = `icon`  v = `sap-icon://add`
@@ -154,13 +178,20 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     DATA(table) = content->ele( `Table`
         )->a( n = `items`      v = client->_bind( mt_repos )
         )->a( n = `noDataText` v = `No repositories found`
-        )->a( n = `visible`    v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'LIST' \}| ).
+        )->a( n = `visible`    v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'LIST' && !$\{{ client->_bind( val = mv_empty path = abap_true ) }\} \}| ).
 
     DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `3rem`
+        )->tag( n = `Icon` ns = `core`
+            )->a( n = `src` v = `sap-icon://favorite`
+            )->a( n = `tooltip` v = `Favorite` ).
     columns->ele( `Column`
         )->tag( `Text`
             )->a( n = `text` v = `Name` ).
     columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
             )->a( n = `text` v = `Package` ).
     columns->ele( `Column`
@@ -179,6 +210,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Last pull` ).
     columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
         )->a( n = `width` v = `10rem`
         )->tag( `Text`
             )->a( n = `text` v = `Actions` ).
@@ -188,6 +221,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
             )->a( n = `type`  v = `{NAV_TYPE}`
             )->a( n = `press` v = client->_event( val = `OPEN` arg = `${KEY}` )
             )->ele( `cells` ).
+    favorite_display( cells ).
     cells->tag( `ObjectIdentifier`
         )->a( n = `title` v = `{NAME}` ).
     cells->tag( `Text`
@@ -208,6 +242,17 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     tiles_display( content ).
 
+    DATA(empty) = content->ele( `VBox`
+        )->a( n = `visible` v = client->_bind( mv_empty )
+        )->a( n = `alignItems` v = `Center`
+        )->a( n = `class` v = `sapUiLargeMargin` ).
+    empty->tag( `Text`
+        )->a( n = `text` v = client->_bind( mv_empty_text ) ).
+    empty->tag( `Button`
+        )->a( n = `text` v = `Show all repositories`
+        )->a( n = `visible` v = client->_bind( mv_favorites_only )
+        )->a( n = `press` v = client->_event( `SHOW_ALL` ) ).
+
     client->view_display( view->stringify( ) ).
 
   ENDMETHOD.
@@ -216,7 +261,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     DATA(grid) = io_content->ele( n = `GridContainer` ns = `f`
         )->a( n = `items`   v = client->_bind( mt_repos )
-        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'TILES' \}|
+        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = mv_layout path = abap_true ) }\} === 'TILES' && !$\{{ client->_bind( val = mv_empty path = abap_true ) }\} \}|
         )->a( n = `class`   v = `sapUiSmallMargin` ).
     grid->ele( n = `layout` ns = `f`
         )->tag( n = `GridContainerSettings` ns = `f`
@@ -236,6 +281,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     DATA(box) = card->ele( n = `content` ns = `f`
         )->ele( `VBox`
             )->a( n = `class` v = `sapUiSmallMargin` ).
+    DATA(star) = box->ele( `HBox`
+        )->a( n = `justifyContent` v = `End` ).
+    favorite_display( star ).
+
     " a link opens in a new tab; a click on it does not open the repository
     " a URL has no blank to wrap at: cut it off at the card's inner width
     " (column 20rem less the margins); the tooltip has all of it
@@ -267,6 +316,12 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     CASE client->get_event( ).
       WHEN `SEARCH`.
         apply_search( ).
+      WHEN `FAVORITE`.
+        favorite_set( ).
+      WHEN `FAVORITES_FILTER`.
+        favorites_filter( client->get_event_arg( ) ).
+      WHEN `SHOW_ALL`.
+        favorites_filter( `` ).
       WHEN `REFRESH`.
         load_repos( ).
       WHEN `OPEN`.
@@ -302,6 +357,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     LOOP AT lt_repos INTO DATA(ls_repo).
       DATA(ls_row) = CORRESPONDING ty_row( ls_repo ).
       ls_row-nav_type = `Navigation`.
+      ls_row-favorite_icon = COND #( WHEN ls_row-favorite = abap_true
+        THEN `sap-icon://favorite` ELSE `sap-icon://unfavorite` ).
+      ls_row-favorite_text = COND #( WHEN ls_row-favorite = abap_true
+        THEN `Remove from favorites` ELSE `Add to favorites` ).
       INSERT ls_row INTO TABLE mt_all.
     ENDLOOP.
 
@@ -311,15 +370,78 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
   METHOD apply_search.
 
-    IF mv_search IS INITIAL.
-      mt_repos = mt_all.
-      RETURN.
-    ENDIF.
+    mt_repos = filtered_repos( it_rows = mt_all iv_search = mv_search iv_favorites_only = mv_favorites_only ).
+    mv_empty = xsdbool( mt_repos IS INITIAL ).
+    mv_empty_text = COND #( WHEN mv_favorites_only = abap_false THEN `No repositories found`
+      WHEN NOT line_exists( mt_all[ favorite = abap_true ] ) THEN `No favorites yet`
+      ELSE `No favorites match your search` ).
 
-    " CS ignores case
-    mt_repos = VALUE #( FOR ls_row IN mt_all
-                        WHERE ( name CS mv_search OR package CS mv_search OR url CS mv_search )
-                        ( ls_row ) ).
+  ENDMETHOD.
+
+  METHOD filtered_repos.
+
+    LOOP AT it_rows INTO DATA(ls_row).
+      IF iv_favorites_only = abap_true AND ls_row-favorite = abap_false.
+        CONTINUE.
+      ENDIF.
+      IF iv_search IS NOT INITIAL AND NOT ( ls_row-name CS iv_search OR ls_row-package CS iv_search OR ls_row-url CS iv_search ).
+        CONTINUE.
+      ENDIF.
+      INSERT ls_row INTO TABLE rt_rows.
+    ENDLOOP.
+    SORT rt_rows BY favorite DESCENDING package ASCENDING name ASCENDING key ASCENDING.
+
+  ENDMETHOD.
+
+  METHOD favorite_display.
+
+    io_parent->tag( `ToggleButton`
+        )->a( n = `icon`    v = `{FAVORITE_ICON}`
+        )->a( n = `tooltip` v = `{FAVORITE_TEXT}`
+        )->a( n = `pressed` v = `{= !!${FAVORITE} }`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `press`   v = client->_event( val = `FAVORITE`
+                                                  t_arg = VALUE #( ( `${KEY}` ) ( `${$parameters>/pressed}` ) ) ) ).
+
+  ENDMETHOD.
+
+  METHOD favorite_set.
+
+    TRY.
+        DATA(lv_key) = client->get_event_arg( ).
+        DATA(lv_favorite) = service( )->set_favorite( iv_key = lv_key iv_favorite = client->get_event_arg( 2 ) ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        " Restore the server's previous rows, including the star's pressed state.
+        apply_search( ).
+        view_display( ).
+        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        RETURN.
+    ENDTRY.
+    " Keep the confirmed state even if refreshing the repository list fails.
+    LOOP AT mt_all ASSIGNING FIELD-SYMBOL(<ls_row>) WHERE key = lv_key.
+      <ls_row>-favorite = lv_favorite.
+      <ls_row>-favorite_icon = COND #( WHEN lv_favorite = abap_true
+        THEN `sap-icon://favorite` ELSE `sap-icon://unfavorite` ).
+      <ls_row>-favorite_text = COND #( WHEN lv_favorite = abap_true
+        THEN `Remove from favorites` ELSE `Add to favorites` ).
+    ENDLOOP.
+    apply_search( ).
+    load_repos( ).
+
+  ENDMETHOD.
+
+  METHOD favorites_filter.
+
+    DATA(lv_value) = COND string( WHEN iv_value = ` ` THEN `` ELSE iv_value ).
+    IF zcl_ag2ui5_settings=>get_instance( )->set(
+      iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_value = lv_value ) = abap_false.
+      mv_favorites_only = xsdbool( zcl_ag2ui5_settings=>get_instance( )->get(
+        iv_key = zif_ag2ui5_settings=>c_key-repos_favorites_only iv_default = `` ) = `X` ).
+      client->message_box_display( text = `Favorites filter could not be saved` type = `error` ).
+    ELSE.
+      mv_favorites_only = xsdbool( lv_value = `X` ).
+    ENDIF.
+    apply_search( ).
 
   ENDMETHOD.
 

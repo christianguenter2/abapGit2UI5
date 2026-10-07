@@ -1242,3 +1242,46 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   the confirmation ("Deleted ... (was at aa97183)"); `git ls-remote` shows it
   gone and the other branches unchanged. The phone layout was not checked
   live (the window could not be resized).
+
+
+## 2026-10-07 — favorite repositories
+
+- Implemented the approved shared-favorites design: stars in repository rows
+  and tiles; a remembered Favorites only toggle; favorites-first package/name/key
+  ordering; search combined with filtering; and a shared empty state with Show
+  all repositories. Online and offline repositories use the same controls.
+- Favorites remain in abapGit's current-user persistence. list_repos reads its
+  keys once. set_favorite validates the raw key and X/blank state before any
+  fixed-length conversion, reloads registration and writes only when the desired
+  state differs. Existing automatic favorites on registration are unchanged.
+  No new table was introduced. REPOS_FAVORITES_ONLY is an allow-listed frontend
+  setting; its default is All, independent of classic abapGit's list filter.
+- The setter accepts a string state at the boundary to prevent an overlong
+  browser value being truncated into a valid abap_bool. Single-space false event
+  values are accepted and normalized for the frontend filter. Failure restores
+  the server's previous rows; a successful star remains confirmed if a subsequent
+  list refresh fails. App state retains no abapGit or settings persistence object.
+- Added 24 focused tests: service 9 (mutation, repeat/noop, key/state validation,
+  missing registration, authorization, current-user isolation, persistence failure,
+  unrelated favorites); repository app 14 (sorting/search/filter, initial/default
+  and persisted preference, navigation isolation, failure recovery, last-favorite
+  removal, empty matches, Show all, refresh); settings 1 (allow-list/default/user).
+  Service mutation tests isolate authorization/registration with test seams and
+  inject a persistence double, restored in teardown. Native execution is pending.
+- npm check passes: ABAP lint 0 issues; UI5 property/render gates cover all 13
+  documents with 0 errors/warnings and the existing MessageStrip hint. Diff
+  whitespace checks pass. Inspected 1280x900 and 390x844 renders for tiles, list
+  and empty results, including long names and both star states. Phone review
+  moved Package/Actions into pop-ins, replaced the cramped Favorite heading with
+  an icon and gave the filter low overflow priority while retaining the page title.
+  Render artifacts/models are `/tmp/ag2ui5-favorites-*`.
+- Before deployment, backed up all eight affected A4H25 interface/class/test
+  sources; every live backup matches Git HEAD. Backups: `/tmp/ag2ui5-favorites/backup`.
+  Automatic approval review rejected activation: the user's implementation approval
+  was not accepted as explicit live-deployment authorization. No SAP source was
+  written. An activation/native-test approval request is pending; no Git commit,
+  merge or push has been performed for this feature.
+
+- Chris subsequently explicitly approved deployment and requested commit, push,
+  then pull into A4H25. The deployment approval request is resolved; native
+  execution and source readback results will be recorded after the pull.

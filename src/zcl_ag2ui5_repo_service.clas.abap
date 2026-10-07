@@ -2049,17 +2049,19 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~list_repos.
 
+    silence_progress( ).
     assert_authorized( ).
     DATA li_online TYPE REF TO zif_abapgit_repo_online.
 
-    silence_progress( ).
+    DATA(lt_favorites) = zcl_abapgit_persist_factory=>get_user( )->get_favorites( ).
 
     LOOP AT zcl_abapgit_repo_srv=>get_instance( )->list( ) INTO DATA(li_repo).
       DATA(ls_repo) = VALUE zif_ag2ui5_repo_service=>ty_repo(
         key     = li_repo->get_key( )
         name    = li_repo->get_name( )
         package = li_repo->get_package( )
-        offline = li_repo->is_offline( ) ).
+        offline = li_repo->is_offline( )
+        favorite = xsdbool( line_exists( lt_favorites[ table_line = li_repo->get_key( ) ] ) ) ).
 
       ls_repo-deserialized_at = format_timestamp( li_repo->ms_data-deserialized_at ).
 
@@ -2075,6 +2077,34 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDLOOP.
 
     SORT rt_repos BY package.
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~set_favorite.
+
+    TEST-SEAM favorite_authorization.
+      silence_progress( ).
+      assert_authorized( ).
+    END-TEST-SEAM.
+    " Validate strings before the fixed-length key/state conversions.
+    IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12.
+      zcx_abapgit_exception=>raise( `Choose a registered repository` ).
+    ENDIF.
+    IF iv_favorite <> `X` AND iv_favorite <> `` AND iv_favorite <> ` `.
+      zcx_abapgit_exception=>raise( `Favorite must be on or off` ).
+    ENDIF.
+    DATA(lv_key) = CONV zif_abapgit_persistence=>ty_repo-key( iv_key ).
+    TEST-SEAM favorite_registration.
+      " Reload persisted registration, rather than trusting a displayed row.
+      zcl_abapgit_repo_srv=>get_instance( )->reload( lv_key ).
+    END-TEST-SEAM.
+    DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
+    DATA(lv_current) = li_user->is_favorite_repo( lv_key ).
+    IF lv_current <> CONV abap_bool( iv_favorite ).
+      " abapGit's user persistence commits this change itself.
+      li_user->toggle_favorite( lv_key ).
+    ENDIF.
+    rv_favorite = li_user->is_favorite_repo( lv_key ).
 
   ENDMETHOD.
 
