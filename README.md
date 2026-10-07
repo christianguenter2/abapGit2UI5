@@ -19,7 +19,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 |---|---|---|
 | User interface | [HTML control in SAP GUI](https://docs.abapgit.org/user-guide/setup/sapgui.html), including SAP GUI for HTML | SAPUI5 in a browser through abap2UI5 |
 | Installation | Standalone program or developer version | Requires the abapGit developer version, abap2UI5 and its ICF service |
-| Repository browsing | Repository list and favorites | Searchable list or tiles |
+| Repository browsing | Repository list and favorites | Searchable list or compact tiles, shared favorites and a remembered Favorites only filter |
 | Status and object overview | Object groups with file details and change states | Files or Objects view, filters, sorting and changed/total file counts |
 | Line diff | Unified or split diff with context and method/section markers; repository-wide diff page | Inline or side-by-side diff, context or whole file; **Diff** page with every changed file as a collapsible panel |
 | Structural method review | Method/section markers in the line diff | Added, removed and changed declarations/implementations, with links to their source ranges |
@@ -42,7 +42,8 @@ the browser session is running that code.
 ## Supported workflows
 
 - **Repository list:** all abapGit repositories of the system, with a search,
-  as a table or as tiles (one card per repository).
+  as a table or as compact tiles (one card per repository, with the favorite
+  star in the top-right corner).
 - **Remove / Uninstall:** available in both layouts, online and offline.
   Remove unregisters the repository and keeps its SAP objects. Uninstall
   previews the objects to delete, requires the package name to be typed, and
@@ -61,10 +62,15 @@ the browser session is running that code.
 - **Offline repositories:** open an offline repository, import an abapGit or
   GitHub source ZIP through the same pull decision dialog, or export the
   current local files as a ZIP. Status and diff compare the uploaded ZIP
-  with the system; branches and staging are available for online repositories.
-- **Settings:** every toggle (list or tiles, the status page's overview, filter, sort
-  and "changes on top", the diff's layout and "show all") is remembered per
-  SAP user.
+  with the system. Choose **Import ZIP**, select the file, and press **Upload**.
+  Review the decisions and choose **Pull selected** to import. Canceling the
+  decisions keeps the ZIP available for status and diff; Back discards it, and
+  reopening the repository starts without a ZIP. **Export ZIP** downloads the
+  local package as `repository.zip` (the button may be in the header's overflow
+  menu). Branches and staging are available for online repositories.
+- **Settings:** display preferences are remembered per SAP user: list or tiles,
+  Favorites only, the status page's overview, filter, sort and "changes on top",
+  and the diff's layout and "show all".
 - **Status:** every file of the repository. Changed files (in the system, in
   Git or both, or inactive) are marked yellow, with a bar and a light
   background; the Local and Remote columns tell which side changed. "Changes
@@ -99,7 +105,8 @@ the browser session is running that code.
   Files changed in Git carry an explicit notice before selection; pulling
   first is optional, as in conventional abapGit. An optional **New branch**
   creates that branch at the checked head, follows it and pushes there, as
-  abapGit's commit page does.
+  abapGit's commit page does. After the last staged change is pushed, the app
+  returns to the repository status; if changes remain, it stays on Stage.
 - **Ignore:** staging respects abapGit's ignore rules and starting folder.
   A file's Ignore button opens its full path as an editable rule; use `*`
   for any sequence or `+` for one character. Preview the affected staging
@@ -112,37 +119,39 @@ the browser session is running that code.
 - **Favorites:** star repositories in either list or tile layout. Favorites are
   shared with classic abapGit for your SAP user and appear first. **Favorites
   only** combines with search and is remembered; new users start with All.
-- Branch labels omit `refs/heads/` in the repository list, tiles and status
-  page. Click a branch to open it on the remote in a new tab; the branch
-  selector also offers **Open branch** for its selected branch. Links support
-  GitHub, GitLab.com and Bitbucket Cloud; other hosts retain a plain short label.
-- **Branches:** on the status page, switch to another branch of the remote
-  (only the branch the repository follows changes; the status then shows what
-  a pull would bring), create a branch at the current head ("New branch..."),
-  or delete one after a confirmation. The default branch and the one the
-  repository follows cannot be deleted. abapGit's exit supplies the
-  credentials.
+  Adding or removing a favorite shows a confirmation toast.
+- **Branch links:** labels omit `refs/heads/`. In the repository list, tiles
+  and branch dialog, click a branch name to open it on the remote in a new tab.
+  Links support GitHub, GitLab.com and Bitbucket Cloud; other hosts retain a
+  plain short label.
+- **Branches:** the status page's button shows the followed branch and opens
+  a list of remote branches with their commits and default/followed markers.
+  Each row offers **Switch** and **Delete** where allowed. Switching changes
+  only the followed branch; status then shows what a pull would bring.
+  **New branch** creates a branch at the current head. Deletion requires a
+  confirmation; the default and followed branches cannot be deleted. abapGit's
+  exit supplies the credentials.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport
   requests. Mark all and Unmark all apply across the change groups to enabled
   rows; transport choices and the Pull anyway acknowledgment stay separate.
 
-Not part of it yet: conventional `.gitignore` interpretation,
-pushing to another branch, and creating a transport request from the dialog.
+Not part of it yet: conventional `.gitignore` interpretation, branch merging,
+tag operations, and creating a transport request from the dialog.
 
 Object names in status, staging and pull decisions link to the local object
 in Eclipse/ADT. The diff page offers the same link. Objects that are missing
 locally or cannot be resolved stay as plain text. Enable the `adt` link
 handler in Eclipse under **General > Link Handlers** to open these links.
 
-| Repositories | Status | Diff |
+| Repository list | Repository tiles | Status |
 |---|---|---|
-| ![Repository list](docs/screenshots/repos.png) | ![Status of a repository](docs/screenshots/status.png) | ![Diff of one file](docs/screenshots/diff.png) |
+| ![Repository list with favorites](docs/screenshots/repos.png) | ![Compact repository tiles](docs/screenshots/repos-tiles.png) | ![Status of a repository](docs/screenshots/status.png) |
 
-| Pull | Stage |
-|---|---|
-| ![Decision dialog](docs/screenshots/pull-dialog.png) | ![Staging page](docs/screenshots/stage.png) |
+| Diff | Pull | Stage |
+|---|---|---|
+| ![Diff of one file](docs/screenshots/diff.png) | ![Decision dialog](docs/screenshots/pull-dialog.png) | ![Staging page](docs/screenshots/stage.png) |
 
 The screenshots are rendered with `abap2ui5lint --screenshot`, using data from
 a real system.
@@ -207,14 +216,14 @@ npm install
 npm run check   # abaplint + abap2UI5 linter, no SAP system needed
 ```
 
-Unit tests (`ZCL_AG2UI5_REPO_SERVICE`) run as ABAP Unit on the system.
+The local checks need network access to fetch their ABAP dependencies from
+GitHub. They include UI5 property validation and headless rendering, but do not
+execute ABAP Unit.
 
-For an offline repository, choose **Import ZIP**, select the file, and press
-**Upload**. Review the decisions and choose **Pull selected** to import.
-Canceling the decisions keeps the ZIP available for status and diff; Back
-discards it, and reopening the repository starts without a ZIP. **Export
-ZIP** downloads the local package as `repository.zip` (the button may be in
-the header's overflow menu).
+Run ABAP Unit on the SAP system for `ZCL_AG2UI5_REPO_SERVICE`,
+`ZCL_AG2UI5_SETTINGS`, `ZCL_AG2UI5_APP_REPOS`, `ZCL_AG2UI5_APP_STATUS`,
+`ZCL_AG2UI5_APP_DIFF`, `ZCL_AG2UI5_APP_REPO_DIFF`, `ZCL_AG2UI5_APP_STAGE`
+and `ZCL_AG2UI5_APP_NEW_REPO`.
 
 The design is in `docs/superpowers/specs/`. The results of the end-to-end test
 are in `docs/findings.md`.

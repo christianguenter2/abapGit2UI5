@@ -1419,3 +1419,17 @@ Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
 - Stage 34/34 (3 new), status 57/57 (1 new); all suites 383/383.
   `npm run check` 0 errors. Readbacks match. Chrome: Stage and Back unchanged.
   No live push was made.
+
+
+## 2026-10-07 — README refresh
+
+- Corrected stale branch selector/Open branch instructions and the limitation
+  claiming push to another branch was unsupported. Documented the current
+  branch list, shared favorites/filter/toasts, compact tiles and post-push return.
+- Moved ZIP usage into Supported workflows; expanded Development to all eight
+  ABAP Unit suites and explained dependency downloads and local render checks.
+- Refreshed repository list/status screenshots and added compact tiles using
+  fresh read-only A4H25 service data. Inspected all three 1280x600 renders.
+  Scratch copies resolve the screenshot tool's helper/conditional limitations;
+  production code and SAP data/settings were unchanged. Existing Diff/Pull/Stage
+  images are retained. README local links and diff whitespace checks pass.
