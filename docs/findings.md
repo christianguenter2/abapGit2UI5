@@ -1358,3 +1358,11 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   ABAP lint 0 issues, UI5 properties/render 0 errors/warnings across 13 documents,
   existing MessageStrip hint only. Native tests have not been rerun; this
   follow-up is implemented locally and not yet activated on A4H25.
+
+- Toast follow-up committed and pushed as `6eb1833`. The scoped abort-mode
+  A4H25 pull imported nothing due to one SYSTEM_EDIT conflict. Live production
+  source matched `723fef8` (compact tiles) and the test include matched `156e572`;
+  no uncommitted source changes were present. Activated both through the documented
+  ADT fallback, without overriding pull conflicts. Both readbacks match Git.
+  Repository app ABAP Unit passed 27/27 with no failures/skips/test warnings.
+  Activation had two existing warnings (ABAP Doc and STRING/CLIKE).

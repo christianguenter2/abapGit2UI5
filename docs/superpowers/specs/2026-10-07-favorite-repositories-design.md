@@ -129,4 +129,4 @@ Custom ordering, groups, shared/team favorites and status-page stars are deferre
 After a successful star change, show “Repository added to favorites” or
 “Repository removed from favorites”, based on the service's confirmed state.
 A failed save only shows the error; a successful save still gets its toast if
-refreshing the repository list fails. This follow-up is implemented locally.
+refreshing the repository list fails. This follow-up is deployed on A4H25; repository app tests passed 27/27.
