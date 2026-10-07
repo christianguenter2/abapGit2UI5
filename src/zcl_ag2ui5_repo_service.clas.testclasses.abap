@@ -2781,12 +2781,14 @@ CLASS ltd_favorite_user IMPLEMENTATION.
 ENDCLASS.
 
 CLASS ltcl_favorite_mutation DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PUBLIC SECTION.
+    " Test injections execute in the production seam context.
+    CLASS-DATA mv_exists TYPE abap_bool.
+    CLASS-DATA mv_authorized TYPE abap_bool.
   PRIVATE SECTION.
     DATA mo_user TYPE REF TO ltd_favorite_user.
     DATA mi_original TYPE REF TO zif_abapgit_persist_user.
     DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
-    CLASS-DATA mv_exists TYPE abap_bool.
-    CLASS-DATA mv_authorized TYPE abap_bool.
     METHODS setup.
     METHODS teardown.
     METHODS set_and_remove FOR TESTING RAISING zcx_abapgit_exception.
