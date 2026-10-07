@@ -1267,7 +1267,7 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   and persisted preference, navigation isolation, failure recovery, last-favorite
   removal, empty matches, Show all, refresh); settings 1 (allow-list/default/user).
   Service mutation tests isolate authorization/registration with test seams and
-  inject a persistence double, restored in teardown. Native execution is pending.
+  inject a persistence double, restored in teardown. Native results are below.
 - npm check passes: ABAP lint 0 issues; UI5 property/render gates cover all 13
   documents with 0 errors/warnings and the existing MessageStrip hint. Diff
   whitespace checks pass. Inspected 1280x900 and 390x844 renders for tiles, list
@@ -1285,3 +1285,20 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
 - Chris subsequently explicitly approved deployment and requested commit, push,
   then pull into A4H25. The deployment approval request is resolved; native
   execution and source readback results will be recorded after the pull.
+
+- Deployment completed: feature commit `156e572` and native test-seam fix
+  `dda330c` are pushed on main. The normal pull aborted on SYSTEM_EDIT flags;
+  fresh SAP sources matched the pre-feature commit. Chris approved ignore mode
+  for this deployment. The first import exposed SAP visibility checks that
+  abaplint did not catch: injected code executes in production seam context and
+  cannot access private test flags. Moved the two flags into the test class's
+  PUBLIC section. The scoped service retry succeeded with no failed objects.
+- All eight affected SAP sources match the deployment snapshot. A4H25 ABAP
+  Unit passed 237/237: service 199, repository app 27, settings 11; no failures,
+  skips or warnings. npm check remains clean after the visibility fix.
+- Live Chrome: removed `$UMLAUT` from favorites without navigating, enabled
+  Favorites only and confirmed the fixture disappeared; reloaded and confirmed
+  the filter and favorite state persisted. Restored All and the original starred
+  fixture, inspected list stars, then restored the original Tiles layout. The
+  browser search keyboard action timed out, so combined-search/empty behavior
+  is covered by unit tests and headless renders rather than a live search check.

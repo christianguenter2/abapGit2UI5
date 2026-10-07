@@ -1,6 +1,6 @@
 # Favorite repositories: draft design
 
-Date: 2026-10-07. Status: approved in chat; implemented locally; commit, push and A4H25 pull explicitly approved in chat.
+Date: 2026-10-07. Status: implemented, pushed and deployed to A4H25; native tests and live star/filter checks passed.
 
 ## Recommendation
 
