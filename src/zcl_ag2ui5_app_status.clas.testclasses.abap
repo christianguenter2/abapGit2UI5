@@ -703,9 +703,48 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS semantic_load_failure FOR TESTING.
     METHODS return_after_push_reloads FOR TESTING.
     METHODS return_without_push_keeps FOR TESTING.
+    METHODS repo_diff_passes_changed FOR TESTING.
+    METHODS diff_off_offline_without_zip FOR TESTING.
+    METHODS diff_disabled_without_changes FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
+  METHOD repo_diff_passes_changed.
+    " every changed file, in file order, whatever the filter shows
+    mo_app->mv_offline = abap_false.
+    mo_app->mv_view = `CHANGES`.
+    mo_client->mv_event = `REPO_DIFF`.
+    mo_app->on_event( ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lo_diff->mt_files ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 1 ]-file exp = `/other/a.xml` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 2 ]-file exp = `/src/a.abap` ).
+  ENDMETHOD.
+
+  METHOD diff_off_offline_without_zip.
+    mo_app->mv_offline = abap_true.
+    CLEAR mo_app->mv_zip.
+    mo_client->mv_event = `REPO_DIFF`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    mo_app->view_display( ).
+    FIND REGEX `<Button[^>]*text="Diff"[^>]*enabled="false"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD diff_disabled_without_changes.
+    mo_app->mv_offline = abap_false.
+    LOOP AT mo_app->mt_status ASSIGNING FIELD-SYMBOL(<ls_status>).
+      <ls_status>-changed = abap_false.
+    ENDLOOP.
+    mo_app->view_display( ).
+    FIND REGEX `<Button[^>]*text="Diff"[^>]*enabled="false"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+    mo_client->mv_event = `REPO_DIFF`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+  ENDMETHOD.
+
   METHOD return_after_push_reloads.
     " a push may have moved the repository to a new branch
     CAST ltd_offline_service( mo_app->mi_service )->ms_status-branch_display = `feature-x`.

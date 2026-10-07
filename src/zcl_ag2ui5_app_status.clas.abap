@@ -160,6 +160,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS popup_decisions_display.
     METHODS popup_branches_display.
     METHODS load_branches.
+    "! Some file differs, and an offline repository has its ZIP
+    METHODS can_repo_diff
+      RETURNING
+        VALUE(rv_can) TYPE abap_bool.
     METHODS switch_branch
       IMPORTING
         iv_branch TYPE string.
@@ -384,6 +388,12 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->tag( `SegmentedButtonItem`
                 )->a( n = `key`  v = `CHANGES`
                 )->a( n = `text` v = `Changes only` ).
+    table_toolbar->tag( `Button`
+        )->a( n = `text`    v = `Diff`
+        )->a( n = `icon`    v = `sap-icon://compare`
+        )->a( n = `tooltip` v = `All changes of the repository on one page`
+        )->a( n = `enabled` b = can_repo_diff( )
+        )->a( n = `press`   v = client->_event( `REPO_DIFF` ) ).
     table_toolbar->tag( `ToolbarSpacer` ).
     " one menu for the order: the sort key (files only) and changes on top,
     " the current choices ticked
@@ -1036,6 +1046,20 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `VIEW`.
         save_view_settings( ).
         rows_build( ).
+      WHEN `REPO_DIFF`.
+        IF can_repo_diff( ) = abap_false.
+          RETURN.
+        ENDIF.
+        " every changed file in file order, independent of filter and sort
+        DATA(lt_changed) = mt_status.
+        DELETE lt_changed WHERE changed = abap_false.
+        client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
+          iv_key   = mv_key
+          iv_title = ms_head-name
+          iv_zip   = mv_zip
+          it_files = zcl_ag2ui5_repo_service=>sort_status_rows( it_rows          = lt_changed
+                                                               iv_by            = `FILE`
+                                                               iv_changes_first = abap_true ) ) ).
       WHEN `SORT`.
         " the choice comes from the browser: only the known ones
         CASE client->get_event_arg( ).
@@ -1416,6 +1440,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
     ENDTRY.
 
+  ENDMETHOD.
+
+  METHOD can_repo_diff.
+    rv_can = xsdbool( line_exists( mt_status[ changed = abap_true ] )
+                      AND NOT ( mv_offline = abap_true AND mv_zip IS INITIAL ) ).
   ENDMETHOD.
 
   METHOD service.
