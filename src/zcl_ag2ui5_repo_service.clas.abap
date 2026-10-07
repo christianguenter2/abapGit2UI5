@@ -7,6 +7,21 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    "! abapGit asks for credentials and neither its user exit nor login( )
+    "! supplied any: abapGit's own text, the only sign it gives
+    CLASS-METHODS login_required
+      IMPORTING
+        ix_error      TYPE REF TO zcx_abapgit_exception
+      RETURNING
+        VALUE(rv_yes) TYPE abap_bool.
+
+    "! The host of a Git URL, for texts: github.com, git.example.com:8443
+    CLASS-METHODS url_host
+      IMPORTING
+        iv_url         TYPE string
+      RETURNING
+        VALUE(rv_host) TYPE string.
+
     "! Display only: keep the full ref for all repository operations.
     CLASS-METHODS branch_display
       IMPORTING iv_branch TYPE string
@@ -447,21 +462,6 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         zcx_abapgit_exception.
 
     METHODS silence_progress.
-
-    "! abapGit asks for credentials and neither its user exit nor login( )
-    "! supplied any: abapGit's own text, the only sign it gives
-    CLASS-METHODS login_required
-      IMPORTING
-        ix_error      TYPE REF TO zcx_abapgit_exception
-      RETURNING
-        VALUE(rv_yes) TYPE abap_bool.
-
-    "! The host of a Git URL, for texts: github.com, git.example.com:8443
-    CLASS-METHODS url_host
-      IMPORTING
-        iv_url         TYPE string
-      RETURNING
-        VALUE(rv_host) TYPE string.
 
     "! abapGit's own startup authorization (its user exit can restrict it).
     "! Also the expiry of login( ): credentials unused for 30 minutes go
