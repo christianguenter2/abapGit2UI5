@@ -1450,3 +1450,29 @@ Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
   writes `ICF_TIME` as `00:30:00`; the timeout was set once through
   `cl_icf_tree=>change_node`, then the Git file was taken from abapGit's own
   serialization. Chrome: repository list and round trips through the new node.
+
+## Session login (2026-10-07)
+
+Spec `docs/superpowers/specs/2026-10-07-session-login-design.md`, plan
+`docs/superpowers/plans/2026-10-07-session-login.md`.
+
+- Service: `login_required( )` (abapGit's `Unauthorized access. Check your
+  credentials`), `url_host( )`, `login( )` (checks the inputs, then
+  `zcl_abapgit_login_manager=>set_basic`), `logoff( )`; expiry after 30 minutes
+  without a service call in `assert_authorized( )`. `commit_push` lost
+  `iv_user`/`iv_token` and no longer clears the login manager.
+- New `ZCL_AG2UI5_APP_LOGIN`: Git user, token (password field), Log in /
+  Cancel; token cleared first on every event; Log in makes the session
+  stateful and leaves with `LOGGED_IN:<host>`.
+- Status, Stage, Diff, repository diff and New repository open the login app
+  for that error (`show_error( )`); back, they reload what failed (Stage only
+  when its list is empty, to keep the selection) and say `Logged in to <host>
+  - repeat the action if it did not run`. The repository list logs off and
+  switches the session to stateless on every start and return. Stage lost its
+  Git user / token fields.
+- Native suites 413/413 (login 8, service 207, status 60, stage 37, diff 28,
+  repository diff 20, new repository 14, list 28, settings 11). `npm run
+  check` 0 errors. All readbacks match. Chrome on `/sap/bc/zabapgit2ui5`:
+  Stage without credential fields, Stage/Status/list navigation, the login
+  page rendered and refusing empty input. A full login against a private
+  repository without exit credentials was not possible on A4H25.

@@ -27,7 +27,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 | Pull decisions | Separate dialogs for overwrite, deletion, package and other checks | One dialog grouped by risk, with individual selections and abapGit's defaults |
 | Ignore rules | Native `.abapgit.xml` rules | Same rules, with editable patterns and previews before saving or removing |
 | Branches and tags | Switch, create, delete and merge branches; tag operations | Switch, create at the current head and delete branches; no merge or tag UI |
-| Authentication | [Username/password or token dialog](https://docs.abapgit.org/user-guide/projects/online/authentication.html) when credentials are needed | Username/token for one push; authenticated reads and branch operations need an abapGit user exit |
+| Authentication | [Username/password or token dialog](https://docs.abapgit.org/user-guide/projects/online/authentication.html) when credentials are needed | Credentials from an abapGit user exit, otherwise a login page when abapGit asks; kept in session memory for at most 30 minutes without use |
 | Offline ZIPs | Import and export | Binary upload/download, status and diff against the uploaded ZIP, selective import |
 | Repository and package lifecycle | Register repositories, create packages, remove and uninstall | Online/offline registration, package creation, Remove and guarded Uninstall with a deletion preview |
 | Transports | SAP transport request dialogs; stage/export by transport and transport-to-branch tools | Select an existing request for pull, package creation or uninstall; no request creation or transport-based staging |
@@ -97,8 +97,8 @@ the browser session is running that code.
   Comments, formatting, XML metadata and other object types remain in the raw
   diffs. This reports structure, without predicting runtime behavior.
 - **Stage, commit, push:** select files that differ between SAP and Git, enter a commit
-  message, then push with a Git user and token. The credentials are used for
-  that one push only and never stored. "Pick lines" commits only some changes
+  message, then push. Credentials come from abapGit's user exit or the session
+  login (see below). "Pick lines" commits only some changes
   of a file: both halves of a changed line go together, as in abapGit.
   Staging commits the SAP version: it can also revert a Git-only change,
   restore a remotely deleted file or remove a file that exists only in Git.
@@ -208,11 +208,13 @@ frontend is refused. It would replace code that is running in the same
 session. Use abapGit in SAP GUI for those.
 
 Using the frontend requires abapGit's startup authorization (see
-`ZCL_ABAPGIT_AUTH_EXIT`). There is no general login dialog for fetching private
-repositories: authenticated reads, repository creation and branch operations
-need credentials supplied by an abapGit user exit. Staging offers a Git user
-and token for the push call only; they are cleared after that call and never
-stored by this frontend.
+`ZCL_ABAPGIT_AUTH_EXIT`). Credentials for private repositories come from an
+abapGit user exit. Without one, a page asks for the Git user and token when
+abapGit needs them. They stay in abapGit's login manager in this session's
+server memory only (the session becomes stateful for that): at most 30 minutes
+without use, until you return to the repository list, or until the session
+ends. They are never stored. The action that needed them is not repeated
+automatically; pages that could not load reload after the login.
 
 ## Development
 

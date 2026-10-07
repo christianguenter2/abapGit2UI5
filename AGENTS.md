@@ -40,6 +40,8 @@ present. It is Git-ignored.
   - `create_repo` for a new repository: `normalize_new_repo`,
     `new_repo_errors`, then abapGit's own checks and the self-update guard
     for the package. Nothing is written while one fails
+  - `login`: user, token and URL non-empty, no control characters (they go
+    into an HTTP header)
   - `create_package`: normalize and validate lengths before converting to SAP
     fields, refuse existing packages, check the parent and repository hierarchy,
     and validate the transport against a fresh workbench request list
@@ -54,10 +56,19 @@ present. It is Git-ignored.
     into the PROTECTED file list from the status page; Open uses that row,
     never the posted panel data
 - **Secrets:** abap2UI5 writes the app state after every event into its draft
-  table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_STAGE->on_event`
+  table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_LOGIN->on_event`
   therefore takes the token out of `mv_token` first, for every event, and the
-  app tests cover every event. The service sets the credentials in abapGit's
-  login manager for the one call and clears them in `CLEANUP`.
+  app tests cover every event. `login( )` puts the credentials only into
+  abapGit's login manager (static, keyed by host); the login app makes the
+  session stateful so it survives the next request. They go after 30 minutes
+  without a service call (`assert_authorized`), when the repository list is
+  shown again (`logoff( )`, stateless again), or with the session (ICF node
+  `/sap/bc/zabapgit2ui5`, 30 minute timeout). No other app holds a token.
+- **Login:** abapGit's only sign of missing credentials is the text
+  `Unauthorized access. Check your credentials`; `login_required( )` checks it,
+  and every app's `show_error( )` opens the login app for it. Back with
+  `LOGGED_IN:<host>`, apps reload what failed to load; actions are not
+  replayed (Stage keeps its selection and does not reload).
 - After `push( )` the service calls `COMMIT WORK AND WAIT`, as abapGit does.
   abap2UI5 rolls back after `main( )`.
 - **Package creation:** this is a separate action from repository registration.
