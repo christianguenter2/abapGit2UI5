@@ -1029,10 +1029,9 @@ Potential distinguishing features are collected in
 pull impact preview, recovery checkpoints and a repository cockpit. These
 are candidates for discussion, not committed slices.
 
-1. **Pushing to another branch** (creating one exists now).
-2. **Creating a transport request** from the pull dialog. Today the user is
+1. **Creating a transport request** from the pull dialog. Today the user is
    pointed to SE09.
-3. **Conventional `.gitignore` interpretation**, if desired beyond abapGit's
+2. **Conventional `.gitignore` interpretation**, if desired beyond abapGit's
    native `.abapgit.xml` rules.
 
 Upstream work (abapGit, abap2UI5, abapgit-agent): see
@@ -1170,3 +1169,28 @@ See [the design](superpowers/specs/2026-10-06-semantic-diff-design.md) and
   `/tmp/ag2ui5-branch-links-deploy`; readbacks `/tmp/ag2ui5-branch-links-readback`.
   The predeployment service test backup also retains four unrelated draft
   push_branch tests that were absent from local HEAD and the service source.
+
+## Commit to a new branch (2026-10-07)
+
+Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
+`docs/superpowers/plans/2026-10-07-push-new-branch.md`.
+
+- The Stage app's commit form has an optional **New branch** input. Its
+  placeholder names the followed branch (bound: Git allows braces in names).
+  The success toast names the branch pushed to; the input is cleared with the
+  commit text.
+- `commit_push` checks the name with `push_branch( )` (normalize, Git ref
+  rules, not on a fresh branch list) before anything is written, runs the
+  existing staging checks, and only then creates the branch at the head the
+  selection was checked against (`iv_from`). Exit, push and commit follow in
+  abapGit's order, so a push exit sees the new branch. Blank input keeps the
+  old behavior.
+- A failure after the branch was created commits abapGit's record of
+  following it and says so in the message; nothing was pushed then.
+- Only new branches, as in abapGit: pushing to another existing branch would
+  need staging against that branch's tree.
+- Built on `feature/branch-links` (`7c2a680`); display names use its
+  `branch_display( )`.
+- Native suites 314/314 (service 190, stage 28, diff 25, settings 10,
+  status 36, repositories 13, new repository 12). `npm run check` 0 errors.
+  Five source readbacks match Git. No new short dumps.

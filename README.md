@@ -23,7 +23,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 | Status and object overview | Object groups with file details and change states | Files or Objects view, filters, sorting and changed/total file counts |
 | Line diff | Unified or split diff with context and method/section markers | Inline or side-by-side diff, context or whole file |
 | Structural method review | Method/section markers in the line diff | Added, removed and changed declarations/implementations, with links to their source ranges |
-| Stage, commit and push | File selection and line patches | File selection and **Pick lines**; push to the followed branch |
+| Stage, commit and push | File selection and line patches | File selection and **Pick lines**; push to the followed branch or to a new one |
 | Pull decisions | Separate dialogs for overwrite, deletion, package and other checks | One dialog grouped by risk, with individual selections and abapGit's defaults |
 | Ignore rules | Native `.abapgit.xml` rules | Same rules, with editable patterns and previews before saving or removing |
 | Branches and tags | Switch, create, delete and merge branches; tag operations | Switch, create at the current head and delete branches; no merge or tag UI |
@@ -93,7 +93,9 @@ the browser session is running that code.
   Staging commits the SAP version: it can also revert a Git-only change,
   restore a remotely deleted file or remove a file that exists only in Git.
   Files changed in Git carry an explicit notice before selection; pulling
-  first is optional, as in conventional abapGit.
+  first is optional, as in conventional abapGit. An optional **New branch**
+  creates that branch at the checked head, follows it and pushes there, as
+  abapGit's commit page does.
 - **Ignore:** staging respects abapGit's ignore rules and starting folder.
   A file's Ignore button opens its full path as an editable rule; use `*`
   for any sequence or `+` for one character. Preview the affected staging
