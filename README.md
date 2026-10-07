@@ -177,6 +177,13 @@ Install this repository with abapGit into a local package, for example
 https://<host>:<port>/sap/bc/zabapgit2ui5?sap-client=<client>&app_start=zcl_ag2ui5_app_repos
 ```
 
+Or start transaction **ZABAPGIT2UI5** in SAP GUI: it opens this URL in the
+default browser. It builds the URL from the node's location
+(`cl_http_server=>get_location`). Where the server's own host name is not
+reachable from the browser (for example a system in a container), add an entry
+for `/sap/bc/zabapgit2ui5` in table `HTTPURLLOC` (SM30) with the host, port and
+protocol the browser uses.
+
 The abap2UI5 node `/sap/bc/z2ui5` works too, but has no session timeout of its
 own.
 

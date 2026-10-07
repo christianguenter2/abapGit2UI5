@@ -1490,3 +1490,17 @@ Spec `docs/superpowers/specs/2026-10-07-session-login-design.md`, plan
   stays in the login app's draft; collapsed-looking empty panels after a
   cancelled login in the repository diff; a stale comment in New repository;
   one token per host (abapGit's design).
+
+## Transaction ZABAPGIT2UI5 (2026-10-07)
+
+- Report `ZABAPGIT2UI5` and transaction `ZABAPGIT2UI5` open the repository
+  list on `/sap/bc/zabapgit2ui5` in the default browser (`CALL_BROWSER`). The
+  URL comes from `ZCL_AG2UI5_HTTP=>start_url( )` (unit-tested, 2/2) with
+  `cl_http_server=>get_location` for the node and the logon client.
+- A4H25 reported its container host `vhcala4hci`, which the browser cannot
+  reach; one `HTTPURLLOC` entry (client 001, `/sap/bc/zabapgit2ui5`, HTTPS,
+  `vhcala4hci25`, 50001, sort key 0010) fixes it there. Only needed where the
+  server name is not reachable from the browser.
+- Created through abapgit-mcp; abapGit's serialization of PROG and TRAN
+  equals the Git files; class readbacks match; lint clean. The browser start
+  from SAP GUI is checked by Chris (no SAP GUI here).
