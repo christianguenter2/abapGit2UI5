@@ -12,6 +12,9 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_view TYPE string.
     DATA mv_toast TYPE string.
     DATA mo_called TYPE REF TO z2ui5_if_app.
+    DATA mv_navigated TYPE abap_bool.
+    DATA mv_error TYPE string.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 
@@ -21,11 +24,15 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
-    result = abap_false.
+    result = mv_navigated.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
-    result = xsdbool( mv_init = abap_false ).
+    result = xsdbool( mv_init = abap_false AND mv_navigated = abap_false ).
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event.
@@ -48,7 +55,8 @@ CLASS ltd_client IMPLEMENTATION.
     mv_view = val.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~message_box_display ##NEEDED.
+  METHOD z2ui5_if_client~message_box_display.
+    mv_error = text.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~message_toast_display.
@@ -70,12 +78,17 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
     DATA mt_calls TYPE string_table.
+    "! /auth/ needs credentials until this is set
+    DATA mv_logged_in TYPE abap_bool.
 ENDCLASS.
 
 
 CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~get_diff.
     INSERT |{ iv_path }{ iv_filename }| INTO TABLE mt_calls.
+    IF iv_path = `/auth/` AND mv_logged_in = abap_false.
+      zcx_abapgit_exception=>raise( `Unauthorized access. Check your credentials` ).
+    ENDIF.
     IF iv_path = `/fail/`.
       zcx_abapgit_exception=>raise( `Cannot read file` ).
     ENDIF.
@@ -154,6 +167,8 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS posted_files_short FOR TESTING.
     METHODS panels_keep_view FOR TESTING.
     METHODS view_side_by_side FOR TESTING.
+    METHODS login_error_opens_login FOR TESTING.
+    METHODS logged_in_reloads FOR TESTING.
 ENDCLASS.
 
 
@@ -304,6 +319,30 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     " without growing, UI5 renders only the model's first 100 rows of a long file
     FIND REGEX `<Table[^>]*items="\{LINES\}"[^>]*growing="true"` IN lv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
+  ENDMETHOD.
+
+  METHOD login_error_opens_login.
+    " the first file asks for credentials: log in once, load nothing more
+    app( VALUE #( ( path = `/auth/` filename = `a.abap` lstate = `M` )
+                  ( path = `/auth/` filename = `b.abap` lstate = `M` )
+                  ( path = `/auth/` filename = `c.abap` lstate = `M` ) ) ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 1 ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_files[ 1 ]-note ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
+  ENDMETHOD.
+
+  METHOD logged_in_reloads.
+    app( VALUE #( ( path = `/auth/` filename = `a.abap` lstate = `M` )
+                  ( path = `/auth/` filename = `b.abap` lstate = `M` ) ) ).
+    mo_service->mv_logged_in = abap_true.
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_not_initial( mo_app->mt_files[ 1 ]-lines ).
+    cl_abap_unit_assert=>assert_not_initial( mo_app->mt_files[ 2 ]-lines ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
+                                        exp = `Logged in to github.com - repeat the action if it did not run` ).
   ENDMETHOD.
 
   METHOD view_side_by_side.

@@ -95,6 +95,8 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
     "! The counts of every loaded file, the lines of the open ones -
     "! serialized with the app, never sent
     DATA mt_loaded TYPE ty_loaded_tab.
+    "! abapGit asked for credentials: the login page is open, nothing more loads
+    DATA mv_login_open TYPE abap_bool.
 
     METHODS service
       RETURNING
@@ -170,6 +172,23 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       summary_build( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
+      " back from the login page: the open panels load now
+      DATA(lr_returned) = client->get( )-r_event_data.
+      IF lr_returned IS BOUND.
+        ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
+        DATA(lv_returned) = CONV string( <lv_returned> ).
+        IF lv_returned CP `LOGGED_IN:*`.
+          CLEAR mv_login_open.
+          LOOP AT mt_files INTO DATA(ls_file) WHERE expanded = abap_true AND note IS INITIAL AND lines IS INITIAL AND sbs IS INITIAL.
+            expand( ls_file-index ).
+          ENDLOOP.
+          summary_build( ).
+          client->message_toast_display(
+            |Logged in to { substring( val = lv_returned off = 10 ) } - repeat the action if it did not run| ).
+        ENDIF.
+      ENDIF.
+      " a cancelled login: the panels stay as they are, a new expand asks again
+      CLEAR mv_login_open.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
@@ -256,6 +275,9 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     <ls_file>-expanded = abap_true.
     READ TABLE mt_loaded INTO DATA(ls_loaded) WITH TABLE KEY index = iv_index.
     IF ( sy-subrc <> 0 OR ls_loaded-lines IS INITIAL ) AND <ls_file>-note IS INITIAL.
+      IF mv_login_open = abap_true.
+        RETURN.
+      ENDIF.
       DATA(ls_source) = mt_source[ iv_index ].
       TRY.
           DATA(ls_diff) = service( )->get_diff(
@@ -266,6 +288,13 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
                                                                       iv_rstate = ls_source-rstate )
             iv_zip           = mv_zip ).
         CATCH zcx_abapgit_exception INTO DATA(lx_error).
+          IF zcl_ag2ui5_repo_service=>login_required( lx_error ) = abap_true.
+            " abapGit's user exit has no credentials: log in once, the panel
+            " stays open and loads after the login
+            mv_login_open = abap_true.
+            client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
+            RETURN.
+          ENDIF.
           " one unreadable file does not stop the others
           <ls_file>-note = lx_error->get_text( ).
           RETURN.
