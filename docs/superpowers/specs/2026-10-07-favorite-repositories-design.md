@@ -123,3 +123,10 @@ simultaneous edits to abapGit's whole user record.
 Shared favorites with classic abapGit; default All; remember the filter; favorites
 first in All; stars on the repository overview only for this first slice.
 Custom ordering, groups, shared/team favorites and status-page stars are deferred.
+
+## Favorite confirmation toast (2026-10-07)
+
+After a successful star change, show “Repository added to favorites” or
+“Repository removed from favorites”, based on the service's confirmed state.
+A failed save only shows the error; a successful save still gets its toast if
+refreshing the repository list fails. This follow-up is implemented locally.

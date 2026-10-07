@@ -428,6 +428,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     ENDLOOP.
     apply_search( ).
     load_repos( ).
+    client->message_toast_display( COND #( WHEN lv_favorite = abap_true
+      THEN `Repository added to favorites` ELSE `Repository removed from favorites` ) ).
 
   ENDMETHOD.
 

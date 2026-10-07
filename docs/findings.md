@@ -1346,3 +1346,15 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   every name is a link. The header keeps URL and remote commit.
 - Status app 53/53 (new test: no Branch line, Remote commit kept).
   `npm run check` 0 errors. Readbacks match.
+
+
+## 2026-10-07 — favorite confirmation toasts
+
+- Successful star changes show “Repository added to favorites” or “Repository
+  removed from favorites”, using the service-confirmed state. A failed save
+  returns with its error and no success toast; a confirmed save keeps its toast
+  even if the subsequent list refresh fails.
+- Extended four existing app tests to assert these outcomes. npm check passes:
+  ABAP lint 0 issues, UI5 properties/render 0 errors/warnings across 13 documents,
+  existing MessageStrip hint only. Native tests have not been rerun; this
+  follow-up is implemented locally and not yet activated on A4H25.

@@ -509,6 +509,7 @@ CLASS ltcl_favorites IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
     cl_abap_unit_assert=>assert_not_bound( mo_client->mo_called ).
     cl_abap_unit_assert=>assert_equals( exp = `TILES` act = mo_app->mv_layout ).
+    cl_abap_unit_assert=>assert_equals( exp = `Repository added to favorites` act = mo_client->mv_toast ).
   ENDMETHOD.
   METHOD star_failure_restores.
     mo_service->mv_fail = abap_true.
@@ -521,6 +522,7 @@ CLASS ltcl_favorites IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `sap-icon://unfavorite` act = mo_app->mt_repos[ 3 ]-favorite_icon ).
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
     cl_abap_unit_assert=>assert_not_bound( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_toast ).
   ENDMETHOD.
   METHOD confirmed_star_survives_error.
     mo_service->mv_fail_read = abap_true.
@@ -531,6 +533,7 @@ CLASS ltcl_favorites IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
     cl_abap_unit_assert=>assert_equals( exp = `sap-icon://favorite` act = mo_app->mt_repos[ 1 ]-favorite_icon ).
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_equals( exp = `Repository added to favorites` act = mo_client->mv_toast ).
   ENDMETHOD.
   METHOD last_favorite_removed.
     mo_service->mt_repos = VALUE #( ( key = `1` name = `Only` favorite = abap_true ) ).
@@ -541,6 +544,7 @@ CLASS ltcl_favorites IMPLEMENTATION.
     event( `FAVORITE` ).
     cl_abap_unit_assert=>assert_true( mo_app->mv_empty ).
     cl_abap_unit_assert=>assert_equals( exp = `No favorites yet` act = mo_app->mv_empty_text ).
+    cl_abap_unit_assert=>assert_equals( exp = `Repository removed from favorites` act = mo_client->mv_toast ).
   ENDMETHOD.
   METHOD empty_matching_favorites.
     mo_app->mv_favorites_only = abap_true.

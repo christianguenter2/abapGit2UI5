@@ -11,3 +11,9 @@
    readbacks and classic-abapGit synchronization, and restore fixture settings.
 7. Record results and limitations in docs/findings.md. No commit or push until
    Chris accepts the result and requests it.
+
+## Favorite confirmation toast follow-up
+
+Add the toast after the successful setter/refresh path. Extend existing app
+checks for adding, removing, failed saves and successful saves with a failed
+refresh. Run npm check; native app test execution requires activation on SAP.
