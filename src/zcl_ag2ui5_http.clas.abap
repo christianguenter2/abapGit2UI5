@@ -24,8 +24,8 @@ CLASS zcl_ag2ui5_http DEFINITION
     CLASS-METHODS start_url
       IMPORTING
         iv_location   TYPE string
-        iv_client     TYPE sy-mandt
-        iv_language   TYPE sy-langu
+        iv_client     TYPE sy-mandt DEFAULT sy-mandt
+        iv_language   TYPE sy-langu DEFAULT sy-langu
       RETURNING
         VALUE(rv_url) TYPE string.
 
