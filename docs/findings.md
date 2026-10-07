@@ -1199,6 +1199,18 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
 - Native suites 319/319 (service 190, stage 31, diff 25, settings 10,
   status 38, repositories 13, new repository 12). `npm run check` 0 errors.
   Source readbacks match Git. No new short dumps.
+- Live on `$UMLAUT` (Chris's OK): New branch `feature/test1234` was refused
+  ("already exists") with nothing written. Committing only
+  `zcl_test_umlaut.clas.xml` with New branch `ag2ui5-push-test-20261007`
+  showed "Pushed 408af62 to ag2ui5-push-test-20261007"; `git ls-remote` had
+  the branch at `408af62` and `feature/test1234` unchanged at `a7730ef`. Back
+  reloaded the status header (branch and remote commit). Then the app switched
+  back to `feature/test1234` and deleted the throwaway branch (gone remotely).
+  The class source is unchanged; staging still lists the same three files, the
+  XML now also as remote-modified (abapGit recorded the pushed checksum).
+- Seen live: entering the followed branch's own name is refused, and the
+  input is then cleared (the follow-up read finds that branch followed), so a
+  retry pushes to it. Harmless, but the field could keep the name instead.
 - Deferred minors from the review: the wrapped push error drops
   `ix_previous` and can be cut at 200 characters; whitespace-only input still
   lists the remote branches; `placeholder_bound` checks the attribute, not
