@@ -11,6 +11,16 @@ CLASS zcl_ag2ui5_http DEFINITION
 
     "! The start URL of abapGit2UI5: the repository list on this node.
     "! iv_location is protocol, host and port as the browser reaches them
+    "! The current request came through this node (set by the handler).
+    "! Only here may a login keep credentials in a stateful session: the node
+    "! ends idle sessions after 30 minutes
+    CLASS-METHODS is_own_node
+      RETURNING
+        VALUE(rv_yes) TYPE abap_bool.
+    CLASS-METHODS mark_own_node
+      IMPORTING
+        iv_yes TYPE abap_bool.
+
     CLASS-METHODS start_url
       IMPORTING
         iv_location   TYPE string
@@ -20,6 +30,8 @@ CLASS zcl_ag2ui5_http DEFINITION
         VALUE(rv_url) TYPE string.
 
   PROTECTED SECTION.
+    "! Server side, unlike the path the browser reports
+    CLASS-DATA gv_own_node TYPE abap_bool.
   PRIVATE SECTION.
 ENDCLASS.
 
@@ -37,8 +49,18 @@ CLASS zcl_ag2ui5_http IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD is_own_node.
+    rv_yes = gv_own_node.
+  ENDMETHOD.
+
+  METHOD mark_own_node.
+    gv_own_node = iv_yes.
+  ENDMETHOD.
+
   METHOD if_http_extension~handle_request.
 
+    mark_own_node( abap_true ).
+    zcl_ag2ui5_repo_service=>request_start( ).
     z2ui5_cl_http_handler=>run( server ).
 
   ENDMETHOD.

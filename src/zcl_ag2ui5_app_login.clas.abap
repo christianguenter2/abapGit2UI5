@@ -11,6 +11,9 @@ CLASS zcl_ag2ui5_app_login DEFINITION
     INTERFACES z2ui5_if_app.
 
     DATA mv_title TYPE string.
+    "! Opened on another ICF node: why there is no login here
+    DATA mv_node_hint TYPE string.
+    DATA mv_can_login TYPE abap_bool.
     DATA mv_user  TYPE string.
     "! Bound to a password field; on_event( ) clears it first on every event,
     "! so it is never part of the state abap2UI5 saves
@@ -48,7 +51,9 @@ CLASS zcl_ag2ui5_app_login DEFINITION
     METHODS service
       RETURNING
         VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
-    METHODS on_event.
+    METHODS on_event
+      IMPORTING
+        iv_token TYPE string.
     METHODS log_in
       IMPORTING
         iv_token TYPE string.
@@ -78,6 +83,12 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    " a typed token arrives with every round trip - with an event, without
+    " one, or on the way back - and abap2UI5 saves the app state after it
+    " (into its draft table): it is taken out of the attribute first, always
+    DATA(lv_token) = mv_token.
+    CLEAR mv_token.
+
     IF client->check_on_init( ).
       " the host for the texts; a registered repository knows its URL
       DATA(lv_url) = mv_url.
@@ -93,12 +104,18 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
       ENDIF.
       mv_host = zcl_ag2ui5_repo_service=>url_host( lv_url ).
       mv_title = |Log in to { COND #( WHEN mv_host IS NOT INITIAL THEN mv_host ELSE `the Git server` ) }|.
+      mv_can_login = zcl_ag2ui5_http=>is_own_node( ).
+      IF mv_can_login = abap_false.
+        mv_node_hint = |Logging in works only through { c_node }: only that ICF node ends an idle | &&
+                       |session after 30 minutes. Open abapGit2UI5 there (transaction ZABAPGIT2UI5).|.
+      ENDIF.
       view_display( ).
     ELSEIF client->check_on_navigated( ).
       view_display( ).
     ELSEIF client->check_on_event( ).
-      on_event( ).
+      on_event( lv_token ).
     ENDIF.
+    CLEAR lv_token.
 
   ENDMETHOD.
 
@@ -108,19 +125,13 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
 
   METHOD on_event.
 
-    " a typed token arrives with whatever button is pressed, and abap2UI5
-    " saves the app state after every event (into its draft table) - so it is
-    " taken out of the attribute before anything else, for every event
-    DATA(lv_token) = mv_token.
-    CLEAR mv_token.
-
     CASE client->get_event( ).
       WHEN `LOGIN`.
-        log_in( lv_token ).
+        log_in( iv_token ).
       WHEN `CANCEL`.
+        CLEAR mv_user.
         client->nav_app_leave( ).
     ENDCASE.
-    CLEAR lv_token.
 
   ENDMETHOD.
 
@@ -131,8 +142,9 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
       RETURN.
     ENDIF.
     " /sap/bc/z2ui5 has no session timeout of its own: a stateful session
-    " left there would keep the credentials in memory for good
-    IF to_lower( client->get( )-s_config-pathname ) NP |{ c_node }*|.
+    " left there would keep the credentials in memory for good. The handler
+    " of the own node marks the request; the browser's path does not count
+    IF zcl_ag2ui5_http=>is_own_node( ) = abap_false.
       client->message_box_display(
         text = |To log in, open abapGit2UI5 through { c_node }: only that ICF node ends an idle session after 30 minutes.|
         type = `error` ).
@@ -151,6 +163,8 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
     " the next request; the ICF node ends the session after 30 minutes
     client->set_session_stateful( abap_true ).
     set_stateful( abap_true ).
+    " some hosts take a token as the user name: nothing of it stays in the draft
+    CLEAR mv_user.
     client->nav_app_leave( r_data = |LOGGED_IN:{ mv_host }| ).
 
   ENDMETHOD.
@@ -186,6 +200,12 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
 
     DATA(content) = page->ele( `content` ).
     content->tag( `MessageStrip`
+        )->a( n = `text`     v = client->_bind( mv_node_hint )
+        )->a( n = `type`     v = `Warning`
+        )->a( n = `showIcon` v = `true`
+        )->a( n = `visible`  v = |\{= !!$\{{ client->_bind( val = mv_node_hint path = abap_true ) }\} \}|
+        )->a( n = `class`    v = `sapUiSmallMargin` ).
+    content->tag( `MessageStrip`
         )->a( n = `text`     v = `abapGit's user exit supplied no credentials for this server. ` &&
                                  `User and token stay in this session's server memory only, at most 30 minutes ` &&
                                  `without use, and are dropped when you go back to the repository list. ` &&
@@ -210,9 +230,10 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
         )->a( n = `type`  v = `Password` ).
     form->tag( `Label` ).
     form->tag( `Button`
-        )->a( n = `text`  v = `Log in`
-        )->a( n = `type`  v = `Emphasized`
-        )->a( n = `press` v = client->_event( `LOGIN` ) ).
+        )->a( n = `text`    v = `Log in`
+        )->a( n = `type`    v = `Emphasized`
+        )->a( n = `enabled` v = client->_bind( mv_can_login )
+        )->a( n = `press`   v = client->_event( `LOGIN` ) ).
     form->tag( `Button`
         )->a( n = `text`  v = `Cancel`
         )->a( n = `press` v = client->_event( `CANCEL` ) ).

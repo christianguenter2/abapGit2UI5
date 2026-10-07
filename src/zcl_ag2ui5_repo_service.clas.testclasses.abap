@@ -2926,7 +2926,9 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT
     METHODS expiry_clears FOR TESTING RAISING zcx_abapgit_exception.
     METHODS logoff_clears FOR TESTING RAISING zcx_abapgit_exception.
     METHODS login_required_variants FOR TESTING.
-    METHODS authorized_resets_repo_cache FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS request_start_resets_cache FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS proxy_error_no_login FOR TESTING.
+    METHODS login_refuses_url_controls FOR TESTING RAISING zcx_abapgit_exception.
     METHODS new_repo_login_raises FOR TESTING.
     "! Test values only - the login manager keeps them in this session's memory
     METHODS fixture
@@ -2959,20 +2961,40 @@ CLASS ltcl_login IMPLEMENTATION.
         zcx_abapgit_exception=>raise( `Unauthorized access to resource (HTTP 401). Check your credentials` ).
       CATCH zcx_abapgit_exception INTO DATA(lx_401).
     ENDTRY.
-    TRY.
-        RAISE EXCEPTION TYPE zcx_abapgit_auth_required EXPORTING iv_url = c_url.
-      CATCH zcx_abapgit_exception INTO DATA(lx_required).
-    ENDTRY.
     cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_401 ) ).
+    " created by name: older abapGit versions have no such class
+    DATA lx_required TYPE REF TO zcx_abapgit_exception.
+    TRY.
+        CREATE OBJECT lx_required TYPE ('ZCX_ABAPGIT_AUTH_REQUIRED') EXPORTING iv_url = c_url.
+      CATCH cx_sy_create_object_error.
+        RETURN.
+    ENDTRY.
     cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_required ) ).
   ENDMETHOD.
 
-  METHOD authorized_resets_repo_cache.
-    " a stateful session keeps abapGit's repository list; every call reads it fresh
+  METHOD request_start_resets_cache.
+    " a stateful session keeps abapGit's repository list: each request reads it
+    " fresh once, and not again in the middle of an operation (an offline
+    " repository carries its ZIP on its instance)
     DATA(lo_srv) = NEW ltd_repo_srv( ).
     zcl_abapgit_repo_srv=>inject_instance( lo_srv ).
     NEW zcl_ag2ui5_repo_service( )->assert_authorized( ).
+    cl_abap_unit_assert=>assert_equals( act = lo_srv->mv_inits exp = 0 ).
+    zcl_ag2ui5_repo_service=>request_start( ).
     cl_abap_unit_assert=>assert_equals( act = lo_srv->mv_inits exp = 1 ).
+  ENDMETHOD.
+
+  METHOD proxy_error_no_login.
+    " a proxy wants credentials: a Git login cannot help
+    TRY.
+        zcx_abapgit_exception=>raise( `Proxy authentication required (HTTP 407). Check your credentials` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_407).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>login_required( lx_407 ) ).
+  ENDMETHOD.
+
+  METHOD login_refuses_url_controls.
+    refused( iv_user = `u` iv_token = `t` iv_url = |https://example.invalid/a{ cl_abap_char_utilities=>horizontal_tab }/r.git| ).
   ENDMETHOD.
 
   METHOD new_repo_login_raises.

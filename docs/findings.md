@@ -1504,3 +1504,25 @@ Spec `docs/superpowers/specs/2026-10-07-session-login-design.md`, plan
 - Created through abapgit-mcp; abapGit's serialization of PROG and TRAN
   equals the Git files; class readbacks match; lint clean. The browser start
   from SAP GUI is checked by Chris (no SAP GUI here).
+
+## Session login hardening (2026-10-07)
+
+Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
+1.146.0 and the code:
+
+- Token cleared in `main( )` for every round trip, not only events: abap2UI5
+  calls `main` for an empty event but `check_on_event( )` is false then. The
+  generic leave `___ZZZ_NAL` still bypasses `main`; documented in AGENTS.md
+  (only a hand-made request by the user, into the user's own draft). The Git
+  user is cleared when the login page is left. A scan of 44 login drafts after
+  Chris's live login found no token, neither as XML nor in JSON snapshots.
+- Own node decided on the server: `ZCL_AG2UI5_HTTP` marks its requests
+  (`is_own_node`), replacing the browser-reported pathname and its prefix
+  match. The login page shows the reason and disables Log in elsewhere.
+- abapGit's repository service is reset once per request by the node's
+  handler (`request_start`), no longer in every `assert_authorized` (nested
+  calls dropped an offline repository's ZIP mid-operation).
+- `zcx_abapgit_auth_required` is checked by name; HTTP 407 is not a Git login;
+  the URL is checked for control characters too; README sentence corrected.
+- Not taken: omp's "focus action overwrites the timer" (1.146 queues every
+  follow-up action); "no end-to-end test" (Chris's live login).

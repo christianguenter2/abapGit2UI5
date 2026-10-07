@@ -15,6 +15,11 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_yes) TYPE abap_bool.
 
+    "! Start of an HTTP request on the own ICF node: after a login the session
+    "! is stateful and would keep abapGit's repository list and objects; they
+    "! are read fresh once per request, never in the middle of an operation
+    CLASS-METHODS request_start.
+
     "! The host of a Git URL, for texts: github.com, git.example.com:8443
     CLASS-METHODS url_host
       IMPORTING
@@ -2376,19 +2381,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDIF.
     gv_last_use = lv_now.
 
-    " after a login the session is stateful and would keep abapGit's
-    " repository list and objects; every call reads them fresh, as before
-    zcl_abapgit_repo_srv=>get_instance( )->init( ).
+  ENDMETHOD.
 
+  METHOD request_start.
+    zcl_abapgit_repo_srv=>get_instance( )->init( ).
   ENDMETHOD.
 
   METHOD login_required.
     " no credentials: "Unauthorized access. Check your credentials"; rejected
     " ones: "Unauthorized access to resource (HTTP 401). Check your
     " credentials"; newer abapGit raises its own class
-    rv_yes = xsdbool( ix_error IS BOUND
-                      AND ( ix_error IS INSTANCE OF zcx_abapgit_auth_required
-                            OR ix_error->get_text( ) CS `Check your credentials` ) ).
+    " by name: older abapGit versions have no such class. A proxy asking
+    " for credentials (HTTP 407) is no case for a Git login
+    IF ix_error IS NOT BOUND.
+      RETURN.
+    ENDIF.
+    DATA(lv_text) = ix_error->get_text( ).
+    rv_yes = xsdbool( cl_abap_typedescr=>describe_by_object_ref( ix_error )->get_relative_name( ) = `ZCX_ABAPGIT_AUTH_REQUIRED`
+                      OR ( lv_text CS `Check your credentials` AND lv_text NS `HTTP 407` ) ).
   ENDMETHOD.
 
   METHOD url_host.
@@ -2405,8 +2415,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     IF lv_url IS INITIAL OR iv_user IS INITIAL OR iv_token IS INITIAL.
       zcx_abapgit_exception=>raise( `Enter the Git user and the token or password` ).
     ENDIF.
-    " both go into an HTTP header
-    FIND REGEX `[[:cntrl:]]` IN iv_user && iv_token.
+    " user and token go into an HTTP header, the URL into the request
+    FIND REGEX `[[:cntrl:]]` IN iv_user && iv_token && lv_url.
     IF sy-subrc = 0.
       zcx_abapgit_exception=>raise( `User and token may not contain control characters` ).
     ENDIF.

@@ -40,8 +40,8 @@ present. It is Git-ignored.
   - `create_repo` for a new repository: `normalize_new_repo`,
     `new_repo_errors`, then abapGit's own checks and the self-update guard
     for the package. Nothing is written while one fails
-  - `login`: user, token and URL non-empty, no control characters (they go
-    into an HTTP header)
+  - `login`: user, token and URL non-empty, no control characters in any of
+    them (header and request)
   - `create_package`: normalize and validate lengths before converting to SAP
     fields, refuse existing packages, check the parent and repository hierarchy,
     and validate the transport against a fresh workbench request list
@@ -55,25 +55,34 @@ present. It is Git-ignored.
   - `ZCL_AG2UI5_APP_REPO_DIFF`: panel, Open and expand arguments are indexes
     into the PROTECTED file list from the status page; Open uses that row,
     never the posted panel data
-- **Secrets:** abap2UI5 writes the app state after every event into its draft
-  table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_LOGIN->on_event`
-  therefore takes the token out of `mv_token` first, for every event, and the
-  app tests cover every event. `login( )` puts the credentials only into
+- **Secrets:** abap2UI5 writes the app state after every round trip into its
+  draft table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_LOGIN->main`
+  therefore takes the token out of `mv_token` first, on every round trip (with
+  or without event, on the way back), and clears the Git user when the page
+  is left; the app tests cover these. Remaining gap: abap2UI5's generic leave
+  event `___ZZZ_NAL` saves the app without calling `main`. The login page
+  never sends it, so only a hand-made request of the logged-on user could put
+  that user's own token into that user's draft. `login( )` puts the credentials only into
   abapGit's login manager (static, keyed by host); the login app makes the
   session stateful so it survives the next request, and only when the request
   runs through `/sap/bc/zabapgit2ui5` (30 minute session timeout; A4H25 has
-  none elsewhere). They go after 30 minutes without a service call
+  none elsewhere). `ZCL_AG2UI5_HTTP` marks such requests on the server side
+  (`is_own_node`); the path the browser reports does not count. The login
+  page says so when opened elsewhere and offers no Log in. They go after 30 minutes without a service call
   (`assert_authorized`), when the repository list is shown again
   (`logoff( )`), or with the session. No other app holds a token.
 - **Stateful session:** abap2UI5 switches a session back to stateless only in
   the app that made it stateful. The list therefore sets stateful itself and
   switches off in the next round trip (`SESSION_END` via `start_timer`) when
-  `zcl_ag2ui5_app_login=>is_stateful( )`. `assert_authorized` also calls
-  `zcl_abapgit_repo_srv=>get_instance( )->init( )`: a stateful session would
-  otherwise keep abapGit's repository list and objects between requests.
+  `zcl_ag2ui5_app_login=>is_stateful( )`. The node's handler calls
+  `zcl_ag2ui5_repo_service=>request_start( )` once per request, which resets
+  abapGit's repository service: a stateful session would otherwise keep
+  abapGit's repository list and objects between requests. Never per service
+  call: nested calls would drop an offline repository's ZIP mid-operation.
 - **Login:** abapGit signals missing or rejected credentials only by text
-  (`... Check your credentials`) or, in newer versions, by
-  `zcx_abapgit_auth_required`; `login_required( )` checks both,
+  (`... Check your credentials`, not HTTP 407 of a proxy) or, in newer
+  versions, by `zcx_abapgit_auth_required` (checked by name: older versions
+  lack it); `login_required( )` checks both,
   and every app's `show_error( )` opens the login app for it. Back with
   `LOGGED_IN:<host>`, apps reload what failed to load; actions are not
   replayed (Stage keeps its selection and does not reload).

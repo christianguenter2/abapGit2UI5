@@ -6,6 +6,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
     DATA mv_init TYPE abap_bool.
+    DATA mv_navigated TYPE abap_bool.
     DATA mv_event TYPE string.
     DATA mv_view TYPE string.
     DATA mv_message TYPE string.
@@ -23,11 +24,12 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
-    result = abap_false.
+    result = mv_navigated.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
-    result = xsdbool( mv_init = abap_false ).
+    " as abap2UI5: a round trip without an event name is no event
+    result = xsdbool( mv_init = abap_false AND mv_navigated = abap_false AND mv_event IS NOT INITIAL ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event.
@@ -120,6 +122,9 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING
     METHODS view_has_password_field FOR TESTING.
     METHODS login_needs_own_node FOR TESTING.
     METHODS login_notes_stateful FOR TESTING.
+    METHODS token_cleared_without_event FOR TESTING.
+    METHODS other_node_hint_on_open FOR TESTING.
+    METHODS user_cleared_on_leave FOR TESTING.
     METHODS teardown.
 ENDCLASS.
 
@@ -128,11 +133,13 @@ CLASS ltcl_login IMPLEMENTATION.
 
   METHOD teardown.
     zcl_ag2ui5_app_login=>set_stateful( abap_false ).
+    zcl_ag2ui5_http=>mark_own_node( abap_false ).
   ENDMETHOD.
 
   METHOD setup.
+    " the request came through /sap/bc/zabapgit2ui5, as the handler marks it
+    zcl_ag2ui5_http=>mark_own_node( abap_true ).
     mo_client = NEW #( ).
-    mo_client->ms_get-s_config-pathname = `/sap/bc/zabapgit2ui5`.
     mo_service = NEW #( ).
     mo_app = zcl_ag2ui5_app_login=>create( iv_key = `000000000042` ).
     mo_app->mi_service = mo_service.
@@ -205,8 +212,10 @@ CLASS ltcl_login IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD login_needs_own_node.
-    " /sap/bc/z2ui5 never ends an idle session on A4H25: no credentials there
-    mo_client->ms_get-s_config-pathname = `/sap/bc/z2ui5`.
+    " /sap/bc/z2ui5 never ends an idle session on A4H25: no credentials there.
+    " The browser's own idea of the path does not count
+    zcl_ag2ui5_http=>mark_own_node( abap_false ).
+    mo_client->ms_get-s_config-pathname = `/sap/bc/zabapgit2ui5`.
     mo_app->mv_user = `someone`.
     mo_app->mv_token = `secret-token`.
     fire( `LOGIN` ).
@@ -214,6 +223,40 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `-` ).
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message exp = `*/sap/bc/zabapgit2ui5*` ).
     cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+  ENDMETHOD.
+
+  METHOD token_cleared_without_event.
+    " a round trip without event, and the way back from another page, must
+    " not leave a posted token in the state abap2UI5 saves
+    mo_app->mv_token = `secret-token`.
+    fire( `` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+    mo_app->mv_token = `secret-token`.
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+  ENDMETHOD.
+
+  METHOD other_node_hint_on_open.
+    " opened on /sap/bc/z2ui5: say so at once, and offer no Log in
+    zcl_ag2ui5_http=>mark_own_node( abap_false ).
+    DATA(lo_app) = zcl_ag2ui5_app_login=>create( iv_key = `000000000042` ).
+    lo_app->mi_service = mo_service.
+    mo_client->mv_init = abap_true.
+    lo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_false( lo_app->mv_can_login ).
+    cl_abap_unit_assert=>assert_char_cp( act = lo_app->mv_node_hint exp = `*/sap/bc/zabapgit2ui5*` ).
+  ENDMETHOD.
+
+  METHOD user_cleared_on_leave.
+    " some hosts take a token as the user name: it does not stay in the draft
+    mo_app->mv_user = `someone`.
+    mo_app->mv_token = `secret-token`.
+    fire( `LOGIN` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_user ).
+    mo_app->mv_user = `someone`.
+    fire( `CANCEL` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_user ).
   ENDMETHOD.
 
   METHOD login_notes_stateful.

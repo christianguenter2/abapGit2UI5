@@ -222,8 +222,8 @@ abapGit needs them. This works only through `/sap/bc/zabapgit2ui5`, whose
 sessions end after 30 minutes without use. They stay in abapGit's login manager
 in this session's server memory only (the session becomes stateful for that):
 at most 30 minutes without a request, until you return to the repository list,
-or until the session ends. They are never stored. Credentials that abapGit
-accepted from the user exit are kept for the session in the same way. The action that needed them is not repeated
+or until the session ends. They are never stored. After a login, credentials
+that abapGit accepted from the user exit are kept for that session as well. The action that needed them is not repeated
 automatically; pages that could not load reload after the login.
 
 ## Development
