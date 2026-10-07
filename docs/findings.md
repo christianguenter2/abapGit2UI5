@@ -1234,6 +1234,10 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   open one is ignored (it used to reach the service with an empty name).
 - Status app 46/46 (8 new branch-popup tests); all suites 327/327.
   `npm run check` 0 errors. Readbacks match. Chrome on `$UMLAUT`: list, row
-  buttons, New branch mode and Back, Close; no switch, create or delete was
-  run. The phone layout was not checked live (the window could not be
-  resized).
+  buttons, New branch mode and Back, Close. Live with Chris's OK: New branch
+  `ag2ui5-branch-list-test-20261007` from `testFromMain` at `aa97183`
+  ("Created and following ..."), row Switch back to `testFromMain`
+  ("Following testFromMain now"), row Delete of the throwaway branch after
+  the confirmation ("Deleted ... (was at aa97183)"); `git ls-remote` shows it
+  gone and the other branches unchanged. The phone layout was not checked
+  live (the window could not be resized).
