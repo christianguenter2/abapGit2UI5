@@ -1217,3 +1217,23 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   the binding; AGENTS.md does not name `push_branch` yet;
   `assert_branch_name` misses `@{`, `a/.b` and `a.lock/b` (the remote refuses
   them).
+
+## Branches popup as a list (2026-10-07)
+
+- The Branches popup lists every branch of the remote instead of a dropdown:
+  name with "(default)" / "(followed)", commit, Open link, and per row
+  **Switch** (not on the followed branch) and **Delete** (not on the default
+  or the followed branch). The footer has **New branch** and **Close**; New
+  branch shows the name field with its starting point and **Create** / **Back**.
+  The fake "New branch..." entry, the picked-branch state and the separate
+  Open branch link are gone. On narrow screens commit and link fold under the
+  name (popin).
+- The row's branch name comes from the browser: the app accepts it only when
+  it is listed and the row allows the action; the service checks it again
+  against a fresh list (unchanged). A stray DELETE confirmation without an
+  open one is ignored (it used to reach the service with an empty name).
+- Status app 46/46 (8 new branch-popup tests); all suites 327/327.
+  `npm run check` 0 errors. Readbacks match. Chrome on `$UMLAUT`: list, row
+  buttons, New branch mode and Back, Close; no switch, create or delete was
+  run. The phone layout was not checked live (the window could not be
+  resized).
