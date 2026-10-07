@@ -304,6 +304,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       "! The committer abapGit remembers for this repository
       name  TYPE string,
       email TYPE string,
+      "! The branch the repository follows, without refs/heads/
+      branch TYPE string,
     END OF ty_stage.
 
   TYPES:
@@ -320,6 +322,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       body  TYPE string,
       name  TYPE string,
       email TYPE string,
+      "! Optional: create this branch at the checked head and push there
+      new_branch TYPE string,
     END OF ty_commit.
 
   TYPES:
@@ -327,6 +331,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       outcome TYPE ty_outcome,
       "! The remote head after the push, 7 characters
       commit  TYPE string,
+      "! The branch pushed to, without refs/heads/
+      branch  TYPE string,
     END OF ty_push_result.
 
   TYPES:

@@ -1774,6 +1774,10 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS invalid_names_refused FOR TESTING.
     METHODS existing_branch_refused FOR TESTING.
     METHODS case_differs_is_new FOR TESTING RAISING cx_static_check.
+    METHODS push_branch_blank_is_none FOR TESTING RAISING cx_static_check.
+    METHODS push_branch_normalized FOR TESTING RAISING cx_static_check.
+    METHODS push_branch_invalid_refused FOR TESTING.
+    METHODS push_branch_current_refused FOR TESTING.
 
 ENDCLASS.
 
@@ -1885,6 +1889,34 @@ CLASS ltcl_branches IMPLEMENTATION.
   METHOD case_differs_is_new.
     " Git refs are case-sensitive, as abapGit's check
     zcl_ag2ui5_repo_service=>assert_new_branch( iv_branch = `refs/heads/Main` it_branches = rows( ) ).
+  ENDMETHOD.
+
+  METHOD push_branch_blank_is_none.
+    cl_abap_unit_assert=>assert_initial(
+      zcl_ag2ui5_repo_service=>push_branch( iv_new_branch = `   ` it_branches = rows( ) ) ).
+  ENDMETHOD.
+
+  METHOD push_branch_normalized.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>push_branch( iv_new_branch = ` feature x ` it_branches = rows( ) )
+      exp = `refs/heads/feature-x` ).
+  ENDMETHOD.
+
+  METHOD push_branch_invalid_refused.
+    TRY.
+        zcl_ag2ui5_repo_service=>push_branch( iv_new_branch = `a..b` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `An invalid name must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD push_branch_current_refused.
+    " rows( ) follows zeta; pushing "to a new branch" zeta must not pass
+    TRY.
+        zcl_ag2ui5_repo_service=>push_branch( iv_new_branch = `zeta` it_branches = rows( ) ).
+        cl_abap_unit_assert=>fail( `The followed branch must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
   ENDMETHOD.
 
   METHOD sha1_carried.

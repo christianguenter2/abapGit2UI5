@@ -220,6 +220,17 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! The full name of the new branch for a push, or empty when none was
+    "! entered. Normalized as branch_name( ), then checked as create_branch
+    CLASS-METHODS push_branch
+      IMPORTING
+        iv_new_branch    TYPE string
+        it_branches      TYPE zif_ag2ui5_repo_service=>ty_branches
+      RETURNING
+        VALUE(rv_branch) TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
     "! Raises unless the branch is listed and is neither the remote's
     "! default nor the one the repository follows. With iv_sha1, also when
     "! the branch no longer points to that commit (it moved since shown)
@@ -1396,6 +1407,17 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD push_branch.
+
+    IF condense( iv_new_branch ) = ``.
+      RETURN.
+    ENDIF.
+    rv_branch = branch_name( iv_new_branch ).
+    assert_branch_name( rv_branch ).
+    assert_new_branch( iv_branch = rv_branch it_branches = it_branches ).
+
+  ENDMETHOD.
+
   METHOD assert_deletable.
 
     READ TABLE it_branches INTO DATA(ls_branch) WITH KEY name = iv_branch.
@@ -1758,6 +1780,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     DATA(li_repo) = get_online_repo( iv_key ).
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    rs_stage-branch = branch_display( li_repo->get_selected_branch( ) ).
 
     DATA(ls_files) = zcl_abapgit_stage_logic=>get_stage_logic( )->get( li_repo ).
     rs_stage-items = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
@@ -1802,7 +1825,16 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                                 iv_password = iv_token ).
         ENDIF.
 
+        " the name comes from the browser: checked against a fresh list
+        " before anything is written
+        DATA(lv_new_branch) = COND string(
+          WHEN is_commit-new_branch IS NOT INITIAL
+          THEN push_branch( iv_new_branch = is_commit-new_branch
+                            it_branches   = zif_ag2ui5_repo_service~list_branches( iv_key ) ) ).
+
         li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+        " the head the selection is checked against; a new branch starts here
+        DATA(lv_head) = li_repo->get_current_remote( ).
         DATA(ls_files) = zcl_abapgit_stage_logic=>get_stage_logic( )->get( li_repo ).
         DATA(lt_fresh) = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
           is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
@@ -1888,18 +1920,36 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
           author    = VALUE #( name = is_commit-name email = is_commit-email )
           comment   = commit_message( iv_title = is_commit-title iv_body = is_commit-body ) ).
 
+        IF lv_new_branch IS NOT INITIAL.
+          " as abapGit's commit page: the repository follows the new branch
+          li_repo->create_branch( iv_name = lv_new_branch iv_from = lv_head ).
+        ENDIF.
+
         " the same sequence as abapGit's own commit: exit, push, commit work, exit
-        zcl_abapgit_exit=>get_instance( )->validate_before_push( is_comment     = ls_comment
-                                                                 io_stage       = lo_stage
-                                                                 ii_repo_online = li_repo ).
-        li_repo->push( is_comment = ls_comment
-                       io_stage   = lo_stage ).
+        TRY.
+            zcl_abapgit_exit=>get_instance( )->validate_before_push( is_comment     = ls_comment
+                                                                     io_stage       = lo_stage
+                                                                     ii_repo_online = li_repo ).
+            li_repo->push( is_comment = ls_comment
+                           io_stage   = lo_stage ).
+          CATCH zcx_abapgit_exception INTO DATA(lx_push).
+            IF lv_new_branch IS INITIAL.
+              RAISE EXCEPTION lx_push.
+            ENDIF.
+            " the remote has the branch: keep abapGit's record of following it,
+            " abap2UI5 would roll it back after main( )
+            COMMIT WORK AND WAIT.
+            zcx_abapgit_exception=>raise(
+              |Branch { branch_display( lv_new_branch ) } was created and is now followed, | &&
+              |but nothing was pushed: { lx_push->get_text( ) }| ).
+        ENDTRY.
         " push( ) writes the new checksums; abap2UI5 rolls back after main( )
         COMMIT WORK AND WAIT.
         zcl_abapgit_exit=>get_instance( )->validate_after_push( li_repo ).
 
         rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
         rs_result-commit  = substring( val = li_repo->get_current_remote( ) len = 7 ).
+        rs_result-branch  = branch_display( li_repo->get_selected_branch( ) ).
       CLEANUP.
         zcl_abapgit_login_manager=>clear( ).
     ENDTRY.
