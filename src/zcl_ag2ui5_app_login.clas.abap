@@ -16,6 +16,18 @@ CLASS zcl_ag2ui5_app_login DEFINITION
     "! so it is never part of the state abap2UI5 saves
     DATA mv_token TYPE string.
 
+    "! The ICF node that ends an idle session after 30 minutes; only there the
+    "! credentials may stay in a stateful session
+    CONSTANTS c_node TYPE string VALUE `/sap/bc/zabapgit2ui5`.
+
+    "! A login made this session stateful; the repository list ends it again
+    CLASS-METHODS is_stateful
+      RETURNING
+        VALUE(rv_yes) TYPE abap_bool.
+    CLASS-METHODS set_stateful
+      IMPORTING
+        iv_yes TYPE abap_bool.
+
     "! The repository by key, or a URL not registered yet (New repository)
     CLASS-METHODS create
       IMPORTING
@@ -25,6 +37,8 @@ CLASS zcl_ag2ui5_app_login DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_login.
 
   PROTECTED SECTION.
+    "! Static: it survives the round trips only in a stateful session
+    CLASS-DATA gv_stateful TYPE abap_bool.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
     DATA mv_key TYPE string.
@@ -46,6 +60,14 @@ ENDCLASS.
 
 
 CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
+
+  METHOD is_stateful.
+    rv_yes = gv_stateful.
+  ENDMETHOD.
+
+  METHOD set_stateful.
+    gv_stateful = iv_yes.
+  ENDMETHOD.
 
   METHOD create.
     ro_app = NEW #( ).
@@ -108,6 +130,14 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
       client->message_box_display( text = `Enter the Git user and the token or password` type = `error` ).
       RETURN.
     ENDIF.
+    " /sap/bc/z2ui5 has no session timeout of its own: a stateful session
+    " left there would keep the credentials in memory for good
+    IF to_lower( client->get( )-s_config-pathname ) NP |{ c_node }*|.
+      client->message_box_display(
+        text = |To log in, open abapGit2UI5 through { c_node }: only that ICF node ends an idle session after 30 minutes.|
+        type = `error` ).
+      RETURN.
+    ENDIF.
     TRY.
         service( )->login( iv_key   = mv_key
                            iv_url   = mv_url
@@ -120,6 +150,7 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
     " the login manager is static: only a stateful session keeps it until
     " the next request; the ICF node ends the session after 30 minutes
     client->set_session_stateful( abap_true ).
+    set_stateful( abap_true ).
     client->nav_app_leave( r_data = |LOGGED_IN:{ mv_host }| ).
 
   ENDMETHOD.

@@ -2892,6 +2892,25 @@ CLASS ltcl_favorite_mutation IMPLEMENTATION.
 ENDCLASS.
 
 
+"! abapGit's repository service: counts resets, asks for credentials on request
+CLASS ltd_repo_srv DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_abapgit_repo_srv PARTIALLY IMPLEMENTED.
+    DATA mv_inits TYPE i.
+    DATA mv_url_error TYPE string.
+ENDCLASS.
+
+CLASS ltd_repo_srv IMPLEMENTATION.
+  METHOD zif_abapgit_repo_srv~init.
+    mv_inits = mv_inits + 1.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo_srv~validate_url.
+    IF mv_url_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_url_error ).
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+
 "! The session login: abapGit's error, the inputs, the expiry
 CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
   PRIVATE SECTION.
@@ -2906,6 +2925,9 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT
     METHODS expiry_keeps FOR TESTING RAISING zcx_abapgit_exception.
     METHODS expiry_clears FOR TESTING RAISING zcx_abapgit_exception.
     METHODS logoff_clears FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS login_required_variants FOR TESTING.
+    METHODS authorized_resets_repo_cache FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS new_repo_login_raises FOR TESTING.
     "! Test values only - the login manager keeps them in this session's memory
     METHODS fixture
       RAISING
@@ -2928,6 +2950,45 @@ CLASS ltcl_login IMPLEMENTATION.
   METHOD teardown.
     zcl_abapgit_login_manager=>clear( ).
     CLEAR: zcl_ag2ui5_repo_service=>gv_last_use, zcl_ag2ui5_repo_service=>gv_now.
+    zcl_abapgit_repo_srv=>inject_instance( VALUE #( ) ).
+  ENDMETHOD.
+
+  METHOD login_required_variants.
+    " rejected credentials come back as HTTP 401; newer abapGit raises its own class
+    TRY.
+        zcx_abapgit_exception=>raise( `Unauthorized access to resource (HTTP 401). Check your credentials` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_401).
+    ENDTRY.
+    TRY.
+        RAISE EXCEPTION TYPE zcx_abapgit_auth_required EXPORTING iv_url = c_url.
+      CATCH zcx_abapgit_exception INTO DATA(lx_required).
+    ENDTRY.
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_401 ) ).
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_required ) ).
+  ENDMETHOD.
+
+  METHOD authorized_resets_repo_cache.
+    " a stateful session keeps abapGit's repository list; every call reads it fresh
+    DATA(lo_srv) = NEW ltd_repo_srv( ).
+    zcl_abapgit_repo_srv=>inject_instance( lo_srv ).
+    NEW zcl_ag2ui5_repo_service( )->assert_authorized( ).
+    cl_abap_unit_assert=>assert_equals( act = lo_srv->mv_inits exp = 1 ).
+  ENDMETHOD.
+
+  METHOD new_repo_login_raises.
+    " a private repository: the app opens the login page instead of a URL error
+    DATA(lo_srv) = NEW ltd_repo_srv( ).
+    lo_srv->mv_url_error = `Unauthorized access. Check your credentials`.
+    zcl_abapgit_repo_srv=>inject_instance( lo_srv ).
+    DATA lt_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+    TRY.
+        NEW zcl_ag2ui5_repo_service( )->check_new_repo(
+          EXPORTING is_repo   = VALUE #( kind = zif_ag2ui5_repo_service=>c_repo_kind-online url = c_url package = `$X` )
+          CHANGING  ct_errors = lt_errors ).
+        cl_abap_unit_assert=>fail( `Login required must leave check_new_repo` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>login_required( lx_error ) ).
+    ENDTRY.
   ENDMETHOD.
 
   METHOD fixture.

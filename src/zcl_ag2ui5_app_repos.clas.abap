@@ -85,9 +85,15 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     me->client = client.
     IF client->check_on_navigated( ).
       " back on the list, a repository was left: the Git credentials of the
-      " session login go, and the session needs no state any more
+      " session login go, and the session needs no state any more. abap2UI5
+      " switches back only when this app made the session stateful itself:
+      " on now, off in the next round trip (SESSION_END)
       service( )->logoff( ).
-      client->set_session_stateful( abap_false ).
+      IF zcl_ag2ui5_app_login=>is_stateful( ) = abap_true.
+        client->set_session_stateful( abap_true ).
+        client->follow_up_action( val   = client->cs_event-start_timer
+                                  t_arg = VALUE #( ( `SESSION_END` ) ( `10` ) ) ).
+      ENDIF.
       mv_layout = zcl_ag2ui5_settings=>get_instance( )->get(
                     iv_key     = zif_ag2ui5_settings=>c_key-repos_layout
                     iv_default = `TILES` ).
@@ -319,6 +325,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
   METHOD on_event.
 
     CASE client->get_event( ).
+      WHEN `SESSION_END`.
+        " second half of the switch back to stateless, see main( )
+        client->set_session_stateful( abap_false ).
+        zcl_ag2ui5_app_login=>set_stateful( abap_false ).
       WHEN `SEARCH`.
         apply_search( ).
       WHEN `FAVORITE`.

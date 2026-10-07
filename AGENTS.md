@@ -60,12 +60,20 @@ present. It is Git-ignored.
   therefore takes the token out of `mv_token` first, for every event, and the
   app tests cover every event. `login( )` puts the credentials only into
   abapGit's login manager (static, keyed by host); the login app makes the
-  session stateful so it survives the next request. They go after 30 minutes
-  without a service call (`assert_authorized`), when the repository list is
-  shown again (`logoff( )`, stateless again), or with the session (ICF node
-  `/sap/bc/zabapgit2ui5`, 30 minute timeout). No other app holds a token.
-- **Login:** abapGit's only sign of missing credentials is the text
-  `Unauthorized access. Check your credentials`; `login_required( )` checks it,
+  session stateful so it survives the next request, and only when the request
+  runs through `/sap/bc/zabapgit2ui5` (30 minute session timeout; A4H25 has
+  none elsewhere). They go after 30 minutes without a service call
+  (`assert_authorized`), when the repository list is shown again
+  (`logoff( )`), or with the session. No other app holds a token.
+- **Stateful session:** abap2UI5 switches a session back to stateless only in
+  the app that made it stateful. The list therefore sets stateful itself and
+  switches off in the next round trip (`SESSION_END` via `start_timer`) when
+  `zcl_ag2ui5_app_login=>is_stateful( )`. `assert_authorized` also calls
+  `zcl_abapgit_repo_srv=>get_instance( )->init( )`: a stateful session would
+  otherwise keep abapGit's repository list and objects between requests.
+- **Login:** abapGit signals missing or rejected credentials only by text
+  (`... Check your credentials`) or, in newer versions, by
+  `zcx_abapgit_auth_required`; `login_required( )` checks both,
   and every app's `show_error( )` opens the login app for it. Back with
   `LOGGED_IN:<host>`, apps reload what failed to load; actions are not
   replayed (Stage keeps its selection and does not reload).

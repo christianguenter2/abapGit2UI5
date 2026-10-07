@@ -65,6 +65,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_error TYPE string.
     "! The last set_session_stateful( ) value; `-` when it was never called
     DATA mv_stateful TYPE string VALUE `-`.
+    DATA mv_follow TYPE string.
+    DATA mt_follow_args TYPE string_table.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -75,6 +77,14 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~set_session_stateful.
     mv_stateful = val.
   ENDMETHOD.
+
+  METHOD z2ui5_if_client~follow_up_action.
+    " only the timer is checked; the search field focus comes after it
+    IF val = z2ui5_if_client~cs_event-start_timer.
+      mv_follow = val.
+      mt_follow_args = t_arg.
+    ENDIF.
+  ENDMETHOD.
   METHOD z2ui5_if_client~check_on_event.
     result = xsdbool( mv_start = abap_false ).
   ENDMETHOD.
@@ -82,8 +92,6 @@ CLASS ltd_client IMPLEMENTATION.
     result = mv_event.
   ENDMETHOD.
   METHOD z2ui5_if_client~view_display ##NEEDED.
-  ENDMETHOD.
-  METHOD z2ui5_if_client~follow_up_action ##NEEDED.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_box_display.
     mv_error = text.
@@ -417,15 +425,33 @@ CLASS ltcl_favorites DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION S
     METHODS show_all_keeps_search FOR TESTING.
     METHODS refresh_reloads_flags FOR TESTING.
     METHODS list_goes_stateless FOR TESTING.
+    METHODS list_without_login_stays FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_favorites IMPLEMENTATION.
   METHOD list_goes_stateless.
-    " leaving a repository ends the session's Git credentials, logged in or not
+    " after a login: abap2UI5 switches back only when this app made the
+    " session stateful itself - so on now, off in the next round trip
+    zcl_ag2ui5_app_login=>set_stateful( abap_true ).
     mo_client->mv_start = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( act = mo_service->mv_logoffs exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `X` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_follow exp = mo_client->z2ui5_if_client~cs_event-start_timer ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mt_follow_args[ 1 ] exp = `SESSION_END` ).
+    mo_client->mv_start = abap_false.
+    mo_client->mv_event = `SESSION_END`.
+    mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `` ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_app_login=>is_stateful( ) ).
+  ENDMETHOD.
+
+  METHOD list_without_login_stays.
+    " no login, no stateful session: nothing to switch
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_logoffs exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `-` ).
   ENDMETHOD.
 
   METHOD setup.
@@ -443,6 +469,7 @@ CLASS ltcl_favorites IMPLEMENTATION.
     mo_app->load_repos( ).
   ENDMETHOD.
   METHOD teardown.
+    zcl_ag2ui5_app_login=>set_stateful( abap_false ).
     zcl_ag2ui5_settings=>inject( VALUE #( ) ).
   ENDMETHOD.
   METHOD event.

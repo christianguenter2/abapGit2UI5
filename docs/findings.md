@@ -1476,3 +1476,17 @@ Spec `docs/superpowers/specs/2026-10-07-session-login-design.md`, plan
   Stage without credential fields, Stage/Status/list navigation, the login
   page rendered and refusing empty input. A full login against a private
   repository without exit credentials was not possible on A4H25.
+- Final review fixes (each with a test): login only through
+  `/sap/bc/zabapgit2ui5`; the list switches back to stateless in two round
+  trips (a spike confirmed abap2UI5 ignores the switch in an app that did not
+  make the session stateful, and that on/off in two round trips works);
+  `assert_authorized` resets abapGit's repository service; New repository
+  passes login-required through `check_new_repo`; `login_required( )` also
+  accepts the HTTP 401 text and `zcx_abapgit_auth_required`; guard tests for
+  other errors in Stage, repository diff and New repository, and for a
+  rejected login opening the login page again.
+- Deferred minors: indentation of one `RETURN` in `commit_push`; `:` accepted
+  in the Git user; "30 minutes without use" counts service calls; the Git user
+  stays in the login app's draft; collapsed-looking empty panels after a
+  cancelled login in the repository diff; a stale comment in New repository;
+  one token per host (abapGit's design).

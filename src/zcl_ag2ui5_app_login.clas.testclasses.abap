@@ -13,6 +13,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_left_data TYPE string.
     "! The last set_session_stateful( ) value; `-` when it was never called
     DATA mv_stateful TYPE string VALUE `-`.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 
@@ -50,6 +51,10 @@ CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~set_session_stateful.
     mv_stateful = val.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
   ENDMETHOD.
 
   "! bindings and events are not checked here
@@ -113,13 +118,21 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING
     METHODS empty_input_stays FOR TESTING.
     METHODS service_error_stays FOR TESTING.
     METHODS view_has_password_field FOR TESTING.
+    METHODS login_needs_own_node FOR TESTING.
+    METHODS login_notes_stateful FOR TESTING.
+    METHODS teardown.
 ENDCLASS.
 
 
 CLASS ltcl_login IMPLEMENTATION.
 
+  METHOD teardown.
+    zcl_ag2ui5_app_login=>set_stateful( abap_false ).
+  ENDMETHOD.
+
   METHOD setup.
     mo_client = NEW #( ).
+    mo_client->ms_get-s_config-pathname = `/sap/bc/zabapgit2ui5`.
     mo_service = NEW #( ).
     mo_app = zcl_ag2ui5_app_login=>create( iv_key = `000000000042` ).
     mo_app->mi_service = mo_service.
@@ -189,6 +202,26 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( mo_client->mv_left ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `-` ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Enter the Git user and the token or password` ).
+  ENDMETHOD.
+
+  METHOD login_needs_own_node.
+    " /sap/bc/z2ui5 never ends an idle session on A4H25: no credentials there
+    mo_client->ms_get-s_config-pathname = `/sap/bc/z2ui5`.
+    mo_app->mv_user = `someone`.
+    mo_app->mv_token = `secret-token`.
+    fire( `LOGIN` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_stateful exp = `-` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message exp = `*/sap/bc/zabapgit2ui5*` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+  ENDMETHOD.
+
+  METHOD login_notes_stateful.
+    " the repository list ends the stateful session again
+    mo_app->mv_user = `someone`.
+    mo_app->mv_token = `secret-token`.
+    fire( `LOGIN` ).
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_app_login=>is_stateful( ) ).
   ENDMETHOD.
 
   METHOD view_has_password_field.

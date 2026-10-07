@@ -210,10 +210,12 @@ session. Use abapGit in SAP GUI for those.
 Using the frontend requires abapGit's startup authorization (see
 `ZCL_ABAPGIT_AUTH_EXIT`). Credentials for private repositories come from an
 abapGit user exit. Without one, a page asks for the Git user and token when
-abapGit needs them. They stay in abapGit's login manager in this session's
-server memory only (the session becomes stateful for that): at most 30 minutes
-without use, until you return to the repository list, or until the session
-ends. They are never stored. The action that needed them is not repeated
+abapGit needs them. This works only through `/sap/bc/zabapgit2ui5`, whose
+sessions end after 30 minutes without use. They stay in abapGit's login manager
+in this session's server memory only (the session becomes stateful for that):
+at most 30 minutes without a request, until you return to the repository list,
+or until the session ends. They are never stored. Credentials that abapGit
+accepted from the user exit are kept for the session in the same way. The action that needed them is not repeated
 automatically; pages that could not load reload after the login.
 
 ## Development

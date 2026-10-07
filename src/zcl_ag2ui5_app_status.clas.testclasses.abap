@@ -714,6 +714,7 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS login_error_opens_login FOR TESTING.
     METHODS other_error_message FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
+    METHODS wrong_login_reopens FOR TESTING.
     METHODS repo_diff_passes_changed FOR TESTING.
     METHODS diff_off_offline_without_zip FOR TESTING.
     METHODS diff_disabled_without_changes FOR TESTING.
@@ -735,6 +736,18 @@ CLASS ltcl_overview IMPLEMENTATION.
     mo_app->on_event( ).
     cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_error exp = `Boom` ).
+  ENDMETHOD.
+
+  METHOD wrong_login_reopens.
+    " the remote rejected the credentials: abapGit drops them, the reload
+    " asks again, and the login page opens again - no silent loop
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    lo_service->mv_status_error = `Unauthorized access to resource (HTTP 401). Check your credentials`.
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
   ENDMETHOD.
 
   METHOD logged_in_reloads.

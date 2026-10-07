@@ -168,6 +168,7 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS panels_keep_view FOR TESTING.
     METHODS view_side_by_side FOR TESTING.
     METHODS login_error_opens_login FOR TESTING.
+    METHODS other_error_in_panel FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
 ENDCLASS.
 
@@ -330,6 +331,13 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 1 ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_files[ 1 ]-note ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
+  ENDMETHOD.
+
+  METHOD other_error_in_panel.
+    " any other error stays in its panel, as before
+    app( VALUE #( ( path = `/fail/` filename = `a.abap` lstate = `M` ) ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 1 ]-note exp = `Cannot read file` ).
   ENDMETHOD.
 
   METHOD logged_in_reloads.

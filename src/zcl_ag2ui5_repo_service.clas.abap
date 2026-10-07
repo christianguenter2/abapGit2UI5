@@ -8,7 +8,7 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
     INTERFACES zif_ag2ui5_repo_service.
 
     "! abapGit asks for credentials and neither its user exit nor login( )
-    "! supplied any: abapGit's own text, the only sign it gives
+    "! supplied any, or the remote rejected them
     CLASS-METHODS login_required
       IMPORTING
         ix_error      TYPE REF TO zcx_abapgit_exception
@@ -448,7 +448,9 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       IMPORTING
         is_repo   TYPE zif_ag2ui5_repo_service=>ty_new_repo
       CHANGING
-        ct_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors.
+        ct_errors TYPE zif_ag2ui5_repo_service=>ty_field_errors
+      RAISING
+        zcx_abapgit_exception.
 
     "! Creates the checked repository as abapGit's services do, without
     "! their popups. A new repository that fails its last checks is deleted
@@ -2374,10 +2376,19 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDIF.
     gv_last_use = lv_now.
 
+    " after a login the session is stateful and would keep abapGit's
+    " repository list and objects; every call reads them fresh, as before
+    zcl_abapgit_repo_srv=>get_instance( )->init( ).
+
   ENDMETHOD.
 
   METHOD login_required.
-    rv_yes = xsdbool( ix_error IS BOUND AND ix_error->get_text( ) = `Unauthorized access. Check your credentials` ).
+    " no credentials: "Unauthorized access. Check your credentials"; rejected
+    " ones: "Unauthorized access to resource (HTTP 401). Check your
+    " credentials"; newer abapGit raises its own class
+    rv_yes = xsdbool( ix_error IS BOUND
+                      AND ( ix_error IS INSTANCE OF zcx_abapgit_auth_required
+                            OR ix_error->get_text( ) CS `Check your credentials` ) ).
   ENDMETHOD.
 
   METHOD url_host.
@@ -2963,6 +2974,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
             ENDTRY.
           ENDIF.
         CATCH zcx_abapgit_exception INTO lx_error.
+          " a private repository: the app opens the login page
+          IF login_required( lx_error ) = abap_true.
+            RAISE EXCEPTION lx_error.
+          ENDIF.
           INSERT VALUE #( field = `url` text = lx_error->get_text( ) ) INTO TABLE ct_errors.
       ENDTRY.
     ENDIF.

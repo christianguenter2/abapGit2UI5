@@ -187,6 +187,7 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS stay_when_changes_left FOR TESTING.
     METHODS stay_after_failed_push FOR TESTING.
     METHODS login_error_opens_login FOR TESTING.
+    METHODS other_error_message FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
     METHODS logged_in_keeps_selection FOR TESTING.
 
@@ -327,6 +328,13 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mv_called ) ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_message ).
+  ENDMETHOD.
+
+  METHOD other_error_message.
+    mo_service->mv_fail = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `HTTP 401 Unauthorized` ).
   ENDMETHOD.
 
   METHOD logged_in_reloads.

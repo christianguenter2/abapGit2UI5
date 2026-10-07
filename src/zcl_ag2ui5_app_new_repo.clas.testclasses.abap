@@ -128,6 +128,7 @@ CLASS ltcl_app DEFINITION FINAL FOR TESTING
     METHODS package_exception_keeps_inputs FOR TESTING.
     METHODS login_error_opens_login FOR TESTING.
     METHODS logged_in_keeps_form FOR TESTING.
+    METHODS other_error_message FOR TESTING.
 ENDCLASS.
 
 
@@ -297,6 +298,13 @@ CLASS ltcl_app IMPLEMENTATION.
     fire( `CREATE` ).
     cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
     cl_abap_unit_assert=>assert_initial( mo_app->mv_message ).
+  ENDMETHOD.
+
+  METHOD other_error_message.
+    mo_service->mv_fail = abap_true.
+    fire( `CREATE` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_message exp = `Not authorized` ).
   ENDMETHOD.
 
   METHOD logged_in_keeps_form.
