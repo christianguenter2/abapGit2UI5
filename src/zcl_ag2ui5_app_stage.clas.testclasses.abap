@@ -34,20 +34,31 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_arg1 TYPE string VALUE `/src/`.
     DATA mv_arg2 TYPE string VALUE `zcl_a.clas.abap`.
     DATA mv_left_data TYPE string.
+    DATA mv_navigated TYPE abap_bool.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get_app_prev.
+    " the app abap2UI5 returns from: here the login page
+    result = zcl_ag2ui5_app_login=>create( ).
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~check_on_init.
     result = abap_false.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
-    result = abap_false.
+    result = mv_navigated.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
-    result = abap_true.
+    result = xsdbool( mv_navigated = abap_false ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event.
@@ -107,6 +118,9 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA mv_preview_remove TYPE abap_bool.
     DATA mv_save_fail TYPE abap_bool.
     DATA ms_received_commit TYPE zif_ag2ui5_repo_service=>ty_commit.
+    "! commit_push raises this text instead of HTTP 401 when set
+    DATA mv_fail_text TYPE string.
+    DATA mv_stage_calls TYPE i.
 ENDCLASS.
 
 
@@ -116,7 +130,7 @@ CLASS ltd_service IMPLEMENTATION.
     mt_received_items = it_items.
     ms_received_commit = is_commit.
     IF mv_fail = abap_true.
-      zcx_abapgit_exception=>raise( `HTTP 401 Unauthorized` ).
+      zcx_abapgit_exception=>raise( COND #( WHEN mv_fail_text IS NOT INITIAL THEN mv_fail_text ELSE `HTTP 401 Unauthorized` ) ).
     ENDIF.
     rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
     rs_result-commit  = `abc1234`.
@@ -124,6 +138,7 @@ CLASS ltd_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~get_stage.
+    mv_stage_calls = mv_stage_calls + 1.
     rs_stage = ms_stage.
   ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~preview_ignore.
@@ -171,6 +186,9 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS leave_when_nothing_left FOR TESTING.
     METHODS stay_when_changes_left FOR TESTING.
     METHODS stay_after_failed_push FOR TESTING.
+    METHODS login_error_opens_login FOR TESTING.
+    METHODS logged_in_reloads FOR TESTING.
+    METHODS logged_in_keeps_selection FOR TESTING.
 
 ENDCLASS.
 
@@ -301,6 +319,34 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_left_data ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Pushed abc1234 to main` ).
+  ENDMETHOD.
+
+  METHOD login_error_opens_login.
+    mo_service->mv_fail = abap_true.
+    mo_service->mv_fail_text = `Unauthorized access. Check your credentials`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mv_called ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_message ).
+  ENDMETHOD.
+
+  METHOD logged_in_reloads.
+    " the first load failed for want of credentials: read the list now
+    CLEAR mo_app->mt_rows.
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_stage_calls exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message
+                                        exp = `Logged in to github.com - repeat the action if it did not run` ).
+  ENDMETHOD.
+
+  METHOD logged_in_keeps_selection.
+    " a push failed for want of credentials: the selection is kept for the retry
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_stage_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
   ENDMETHOD.
 
   METHOD stay_after_failed_push.

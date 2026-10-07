@@ -99,6 +99,10 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     "! repository follows it now, and the input must not create it again
     METHODS follow_created_branch.
     METHODS push.
+    "! A login-required error opens the login page; any other error is shown
+    METHODS show_error
+      IMPORTING
+        ix_error TYPE REF TO zcx_abapgit_exception.
     METHODS select_all
       IMPORTING
         iv_selected TYPE abap_bool.
@@ -185,6 +189,20 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
           take_patch( CAST zcl_ag2ui5_app_diff( client->get_app_prev( ) )->get_patch( ) ).
         CATCH cx_sy_move_cast_error ##NO_HANDLER.
       ENDTRY.
+      " back from the login page: reading the list failed, or a push did
+      DATA(lr_returned) = client->get( )-r_event_data.
+      IF lr_returned IS BOUND.
+        ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
+        DATA(lv_returned) = CONV string( <lv_returned> ).
+        IF lv_returned CP `LOGGED_IN:*`.
+          " a reload would drop the selection and picked lines of the push
+          IF mt_rows IS INITIAL.
+            load_stage( ).
+          ENDIF.
+          client->message_toast_display(
+            |Logged in to { substring( val = lv_returned off = 10 ) } - repeat the action if it did not run| ).
+        ENDIF.
+      ENDIF.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
@@ -429,7 +447,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         mv_ignore_preview_rule = mv_ignore_rule.
         mv_ignore_ready = abap_true.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
     ENDTRY.
   ENDMETHOD.
 
@@ -444,7 +462,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         service( )->save_ignore( iv_key = mv_key is_preview = ms_ignore_preview ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR: ms_ignore_preview, mt_ignore_files, mv_ignore_ready.
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
     clear_ignore( ).
@@ -534,7 +552,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     TRY.
         DATA(ls_stage) = service( )->get_stage( mv_key ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
@@ -575,6 +593,16 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD show_error.
+    IF zcl_ag2ui5_repo_service=>login_required( ix_error ) = abap_true.
+      " abapGit's user exit has no credentials for this remote
+      client->popup_destroy( ).
+      client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
+      RETURN.
+    ENDIF.
+    client->message_box_display( text = ix_error->get_text( ) type = `error` ).
+  ENDMETHOD.
+
   METHOD push.
 
     DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
@@ -608,7 +636,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                                                    it_items  = lt_items
                                                    is_commit = ms_commit ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         IF ms_commit-new_branch IS NOT INITIAL.
           follow_created_branch( ).
         ENDIF.
