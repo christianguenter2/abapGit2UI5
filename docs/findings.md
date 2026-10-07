@@ -1302,3 +1302,24 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   fixture, inspected list stars, then restored the original Tiles layout. The
   browser search keyboard action timed out, so combined-search/empty behavior
   is covered by unit tests and headless renders rather than a live search check.
+
+## Status page toolbar (2026-10-07)
+
+- The page header holds only actions: Back, title, Refresh, the branch
+  button, Stage (or Export ZIP) and Pull. The branch button shows the followed
+  branch's short name (bound, so braces in a name cannot break the view) with
+  the tooltip Branches, and opens the branch list.
+- The view controls moved into the table's own header toolbar: Files /
+  Objects, All / Changes only and one sort menu button. The menu ticks the
+  current choice: Object, File and Type (files view only) and Changes on top.
+  It replaces the Sort by label, its dropdown and the Changes on top toggle.
+  The SORT event accepts only those keys; the choice is saved as before.
+  `mv_sort` and `mv_changes_first` are no longer bound and became PROTECTED.
+- Status app 52/52 (6 new tests: header holds actions only, table toolbar
+  holds the view controls, sort saves, toggles, refuses unknown keys, ticks
+  the current choice); all suites 357/357 after the favorites test seam fix
+  (`dda330c`). `npm run check` 0 errors. Readbacks match.
+- Chrome on `$UMLAUT`: header and table toolbar as described; sort by File
+  with and without Changes on top reorders the rows; the objects view offers
+  only Changes on top; the branch button shows `main` and opens the list.
+  Chris's settings were restored to Object with Changes on top.
