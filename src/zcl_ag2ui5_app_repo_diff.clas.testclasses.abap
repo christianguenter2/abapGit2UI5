@@ -149,6 +149,10 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS state_texts FOR TESTING.
     METHODS back_leaves FOR TESTING.
     METHODS view_panels_from_template FOR TESTING.
+    METHODS collapse_drops_lines FOR TESTING.
+    METHODS single_expand_capped FOR TESTING.
+    METHODS posted_files_short FOR TESTING.
+    METHODS panels_keep_view FOR TESTING.
     METHODS view_side_by_side FOR TESTING.
 ENDCLASS.
 
@@ -311,6 +315,49 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*items="{LINES}"*` ).
     FIND REGEX `<Table[^>]*items="\{SBS\}"[^>]*growing="true"` IN mo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD collapse_drops_lines.
+    " the draft keeps no lines of a closed panel; opening it again reloads
+    app( files( 1 ) ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_loaded[ index = 1 ]-lines ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-summary exp = `1 file, +1 -0` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_files[ 1 ]-lines ) exp = 2 ).
+  ENDMETHOD.
+
+  METHOD single_expand_capped.
+    app( files( 30 ) ).
+    fire( `EXPAND_ALL` ).
+    fire( iv_event = `PANEL` iv_arg1 = `26` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_files[ 26 ]-expanded ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 25 ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_toast exp = `At most 25 files*` ).
+  ENDMETHOD.
+
+  METHOD posted_files_short.
+    " the browser posts the file table; a shortened one must not dump
+    app( files( 2 ) ).
+    CLEAR mo_app->mt_files.
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    fire( iv_event = `PANEL` iv_arg1 = `2` iv_arg2 = `X` ).
+    fire( `LAYOUT` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 2 ).
+  ENDMETHOD.
+
+  METHOD panels_keep_view.
+    " a new view scrolls the page to the top; abap2UI5 pushes the model anyway
+    app( files( 5 ) ).
+    LOOP AT VALUE string_table( ( `PANEL` ) ( `EXPAND_ALL` ) ( `COLLAPSE_ALL` ) ) INTO DATA(lv_event).
+      CLEAR mo_client->mv_view.
+      fire( iv_event = lv_event iv_arg1 = `4` iv_arg2 = `X` ).
+      cl_abap_unit_assert=>assert_initial( act = mo_client->mv_view msg = |{ lv_event } rendered the view| ).
+    ENDLOOP.
+    mo_app->mv_layout = `SBS`.
+    fire( `LAYOUT` ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD back_leaves.

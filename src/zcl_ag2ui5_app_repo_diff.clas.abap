@@ -79,6 +79,7 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
       BEGIN OF ty_loaded,
         index         TYPE i,
         remote_is_new TYPE abap_bool,
+        "! Compacted; dropped when the panel closes, so the draft stays small
         lines         TYPE zif_ag2ui5_repo_service=>ty_diff_lines,
         new_count     TYPE i,
         old_count     TYPE i,
@@ -91,7 +92,8 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
     DATA mv_zip TYPE xstring.
     "! The files as the status page handed them over; the source of truth
     DATA mt_source TYPE zif_ag2ui5_repo_service=>ty_status_rows.
-    "! Every loaded file's lines - serialized with the app, never sent
+    "! The counts of every loaded file, the lines of the open ones -
+    "! serialized with the app, never sent
     DATA mt_loaded TYPE ty_loaded_tab.
 
     METHODS service
@@ -209,14 +211,19 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         LOOP AT mt_files INTO ls_file WHERE expanded = abap_true.
           rows_build( ls_file-index ).
         ENDLOOP.
+        summary_build( ).
+        " the panels get the other table
+        view_display( ).
+        RETURN.
       WHEN `OPEN`.
         open( checked_index( client->get_event_arg( ) ) ).
         RETURN.
       WHEN OTHERS.
         RETURN.
     ENDCASE.
+    " no new view: it would scroll the page to the top; abap2UI5 sends the
+    " changed model after the event by itself
     summary_build( ).
-    view_display( ).
 
   ENDMETHOD.
 
@@ -234,8 +241,21 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
   METHOD expand.
 
     ASSIGN mt_files[ iv_index ] TO FIELD-SYMBOL(<ls_file>).
+    " the browser posts the file table: it may not have the row
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    " the posted table already marks a panel opened in the browser as open
+    DATA(lv_open) = REDUCE i( INIT n = 0 FOR f IN mt_files
+                              WHERE ( expanded = abap_true AND index <> iv_index ) NEXT n = n + 1 ).
+    IF lv_open >= c_max_expanded.
+      <ls_file>-expanded = abap_false.
+      client->message_toast_display( |At most { c_max_expanded } files are open at once: collapse one first| ).
+      RETURN.
+    ENDIF.
     <ls_file>-expanded = abap_true.
-    IF NOT line_exists( mt_loaded[ index = iv_index ] ) AND <ls_file>-note IS INITIAL.
+    READ TABLE mt_loaded INTO DATA(ls_loaded) WITH TABLE KEY index = iv_index.
+    IF ( sy-subrc <> 0 OR ls_loaded-lines IS INITIAL ) AND <ls_file>-note IS INITIAL.
       DATA(ls_source) = mt_source[ iv_index ].
       TRY.
           DATA(ls_diff) = service( )->get_diff(
@@ -254,12 +274,13 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         <ls_file>-note = `Binary file - no line diff`.
         RETURN.
       ENDIF.
-      DATA(ls_loaded) = VALUE ty_loaded(
+      ls_loaded = VALUE ty_loaded(
         index         = iv_index
         remote_is_new = ls_diff-remote_is_new
-        lines         = ls_diff-lines
+        lines         = zcl_ag2ui5_repo_service=>compact( ls_diff-lines )
         new_count     = COND #( WHEN ls_diff-remote_is_new = abap_true THEN ls_diff-remote_count ELSE ls_diff-local_count )
         old_count     = COND #( WHEN ls_diff-remote_is_new = abap_true THEN ls_diff-local_count ELSE ls_diff-remote_count ) ).
+      DELETE mt_loaded WHERE index = iv_index.
       INSERT ls_loaded INTO TABLE mt_loaded.
       <ls_file>-counts = |+{ ls_loaded-new_count } -{ ls_loaded-old_count }|.
     ENDIF.
@@ -270,8 +291,16 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
   METHOD collapse.
 
     ASSIGN mt_files[ iv_index ] TO FIELD-SYMBOL(<ls_file>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
     <ls_file>-expanded = abap_false.
     CLEAR: <ls_file>-lines, <ls_file>-sbs.
+    " the counts stay for the summary; opening again reloads the lines
+    READ TABLE mt_loaded ASSIGNING FIELD-SYMBOL(<ls_loaded>) WITH TABLE KEY index = iv_index.
+    IF sy-subrc = 0.
+      CLEAR <ls_loaded>-lines.
+    ENDIF.
 
   ENDMETHOD.
 
@@ -316,12 +345,15 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
   METHOD rows_build.
 
     ASSIGN mt_files[ iv_index ] TO FIELD-SYMBOL(<ls_file>).
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
     CLEAR: <ls_file>-lines, <ls_file>-sbs.
     READ TABLE mt_loaded INTO DATA(ls_loaded) WITH TABLE KEY index = iv_index.
     IF sy-subrc <> 0 OR <ls_file>-expanded = abap_false.
       RETURN.
     ENDIF.
-    DATA(lt_lines) = zcl_ag2ui5_repo_service=>compact( ls_loaded-lines ).
+    DATA(lt_lines) = ls_loaded-lines.
 
     IF mv_layout = `SBS`.
       LOOP AT zcl_ag2ui5_repo_service=>to_side_by_side( it_lines         = lt_lines

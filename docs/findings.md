@@ -1388,7 +1388,21 @@ Spec `docs/superpowers/specs/2026-10-07-repository-diff-design.md`, plan
   non-growing table); the panel tables now grow (500 rows, then More).
 - The class was created through abapgit-mcp `write_objects` (empty shell with
   a placeholder test include), then the real sources were written over ADT.
-- Native suites 375/375 (repository diff 14, status 56). `npm run check` 0
+- Final review fixes: the draft keeps only compacted lines, and only for
+  open panels (collapsing drops them, opening again reloads); a single expand
+  is capped at 25 open panels too; every access to the posted file table is
+  guarded. Expand, collapse, Expand all and Collapse all no longer send a new
+  view (it scrolled the page to the top; abap2UI5 pushes the model anyway);
+  only the layout switch does.
+- Deferred minors from the review: a failed load keeps its error until the
+  page is opened again (no retry); the summary counts failed files neither as
+  loaded nor as not loaded; `expand( sy-index )` passes a system field by
+  reference; the page ignores the saved diff layout; `get_diff` recomputes
+  the method summary and, offline, decodes the ZIP for every file; toast says
+  "1 files"; test gaps (collapse twice, re-expand failed/binary, `false`
+  argument, navigation back after Open); panels are not refreshed after
+  coming back from Open.
+- Native suites 379/379 (repository diff 18, status 56). `npm run check` 0
   errors. Readbacks match. The only new short dump is the expected RED run of
   the status test before the Diff event existed. Chrome on `$UMLAUT` and
   `$ABAPGIT2UI5` (read only): panels, collapse/expand, side by side, Open and
