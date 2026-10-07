@@ -243,6 +243,7 @@ CLASS ltcl_header DEFINITION FINAL FOR TESTING
     METHODS back_never_overflows FOR TESTING.
     METHODS header_holds_actions_only FOR TESTING.
     METHODS table_holds_view_controls FOR TESTING.
+    METHODS branch_shown_once FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_header IMPLEMENTATION.
@@ -288,6 +289,16 @@ CLASS ltcl_header IMPLEMENTATION.
     FIND REGEX `<Button[^>]*tooltip="Branches"[^>]*icon="sap-icon://split"|<Button[^>]*icon="sap-icon://split"[^>]*tooltip="Branches"`
       IN lv_header.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_header ).
+  ENDMETHOD.
+
+  METHOD branch_shown_once.
+    " the branch button is the one place for the branch: no header line
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_navigated = abap_true.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_char_np( act = lo_client->mv_view exp = `*title="Branch"*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lo_client->mv_view exp = `*title="Remote commit"*` ).
   ENDMETHOD.
 
   METHOD table_holds_view_controls.

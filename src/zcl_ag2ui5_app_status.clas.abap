@@ -349,15 +349,6 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `text`   v = client->_bind( ms_head-url )
                 )->a( n = `href`   v = client->_bind( ms_head-url )
                 )->a( n = `target` v = `_blank` ).
-    attributes->ele( `ObjectAttribute`
-        )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
-        )->a( n = `title` v = `Branch`
-        )->ele( `customContent`
-            )->tag( `Link`
-                )->a( n = `text`   v = client->_bind( ms_head-branch_display )
-                )->a( n = `href`   v = client->_bind( ms_head-branch_link )
-                )->a( n = `enabled` b = xsdbool( ms_head-branch_link IS NOT INITIAL )
-                )->a( n = `target` v = `_blank` ).
     attributes->tag( `ObjectAttribute`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Remote commit`

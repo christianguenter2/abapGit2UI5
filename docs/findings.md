@@ -1337,3 +1337,12 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   and phone 390x844 scratch renders were inspected with a long name and online/
   offline repositories, both favorite states. Artifacts: /tmp/ag2ui5-compact-tiles-*.
   Implemented locally; not yet activated on A4H25.
+
+## Branch shown once on the status page (2026-10-07)
+
+- The "Branch:" line under the URL is gone: the toolbar button with the
+  followed branch's name is the one place that shows and changes the branch.
+  The link to the branch on the remote stays in the Branches popup, where
+  every name is a link. The header keeps URL and remote commit.
+- Status app 53/53 (new test: no Branch line, Remote commit kept).
+  `npm run check` 0 errors. Readbacks match.
