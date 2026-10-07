@@ -33,7 +33,8 @@ CLASS lcl_app IMPLEMENTATION.
   METHOD start_url.
     rv_url = zcl_ag2ui5_http=>start_url(
       iv_location = cl_http_server=>if_http_server~get_location( application = zcl_ag2ui5_app_login=>c_node )
-      iv_client   = sy-mandt ).
+      iv_client   = sy-mandt
+      iv_language = sy-langu ).
   ENDMETHOD.
 
   METHOD open_browser.

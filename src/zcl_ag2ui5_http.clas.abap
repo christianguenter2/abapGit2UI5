@@ -15,6 +15,7 @@ CLASS zcl_ag2ui5_http DEFINITION
       IMPORTING
         iv_location   TYPE string
         iv_client     TYPE sy-mandt
+        iv_language   TYPE sy-langu
       RETURNING
         VALUE(rv_url) TYPE string.
 
@@ -32,7 +33,7 @@ CLASS zcl_ag2ui5_http IMPLEMENTATION.
     IF lv_location CP `*/`.
       lv_location = substring( val = lv_location len = strlen( lv_location ) - 1 ).
     ENDIF.
-    rv_url = |{ lv_location }{ zcl_ag2ui5_app_login=>c_node }?sap-client={ iv_client }&app_start=zcl_ag2ui5_app_repos|.
+    rv_url = |{ lv_location }{ zcl_ag2ui5_app_login=>c_node }?sap-client={ iv_client }&sap-language={ iv_language }&app_start=zcl_ag2ui5_app_repos|.
 
   ENDMETHOD.
 
