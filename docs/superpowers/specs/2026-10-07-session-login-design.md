@@ -32,52 +32,50 @@ before that error. An exit that supplies credentials never reaches it.
 
 ### Service (`ZIF_AG2UI5_REPO_SERVICE`, `ZCL_AG2UI5_REPO_SERVICE`)
 
-- New exception class `ZCX_AG2UI5_LOGIN_REQUIRED`, inheriting from
-  `zcx_abapgit_exception` (existing CATCH blocks keep working), with the
-  repository's display host as attribute `mv_host`. Every service method that
-  reaches the remote (status, stage, diff, preview/pull, branch list, switch,
-  create, delete, commit_push, new repository online checks) translates abapGit's
-  `Unauthorized access. Check your credentials` into it. The text check is in
-  one helper, `login_required( ix_error, iv_url )`, unit-tested.
-- `login( iv_key, iv_user, iv_token )`: checks authorization and the inputs
-  (both non-empty, no control characters), then
-  `zcl_abapgit_login_manager=>set_basic( repository URL )`, and records
-  `sy-datum/uzeit` as last use. Nothing is checked against the remote here; the
-  retried action does that, and a 401 there removes the credentials again
-  (abapGit) and raises login required anew.
+- `CLASS-METHODS login_required( ix_error ) RETURNING abap_bool`: true only
+  for abapGit's `Unauthorized access. Check your credentials`. The apps route
+  every caught `zcx_abapgit_exception` through it; no new exception class and
+  no wrapping of each service method is needed (revised 2026-10-07: same
+  behavior, far less code).
+- `login( iv_key | iv_url, iv_user, iv_token )`: authorization, inputs
+  non-empty without control characters, then
+  `zcl_abapgit_login_manager=>set_basic( repository URL )`. Nothing is checked
+  against the remote here; the next remote call does, and abapGit removes
+  rejected credentials and raises the same error again.
 - `logoff( )`: `zcl_abapgit_login_manager=>clear( )`.
-- Expiry (option 2): a static last-use timestamp in the service. Every service
-  call first checks it: older than 30 minutes → `clear( )`. Every successful
-  remote call refreshes it.
+- Expiry (option 2): `assert_authorized( )`, which every service method calls
+  first, clears the login manager when the static last-use time is older than
+  30 minutes and then sets it to now. Time is injectable for tests.
 - `commit_push` loses `iv_user` / `iv_token` and no longer clears the login
-  manager; the credentials stay for the session.
+  manager.
+- Host for texts: `CLASS-METHODS url_host( iv_url )`.
 
 ### New app `ZCL_AG2UI5_APP_LOGIN`
 
-- Opened with `nav_app_call` by any app that caught login required:
-  `create( iv_key iv_host )`. Page: "Log in to <host>", Git user, token or
-  password (type Password), Log in, Cancel. A short text says the credentials
-  stay in this browser session's server memory for at most 30 minutes and are
-  never stored.
-- `on_event` takes the token out of `mv_token` first, for every event (as
-  Stage does today). Log in: `service( )->login( )`, then
-  `client->set_session_stateful( abap_true )`, then
-  `nav_app_leave( r_data = `LOGGED_IN` )`. Cancel: `nav_app_leave( )`.
-- Errors (empty fields) stay on the page with a message box.
+- `create( iv_key iv_url iv_host )`; page "Log in to <host>" with Git user,
+  token or password (type Password), Log in, Cancel, and a text that the
+  credentials stay in this session's server memory for at most 30 minutes
+  without use and are never stored.
+- `on_event` takes the token out of `mv_token` first, for every event. Log in:
+  `service( )->login( )`, `client->set_session_stateful( abap_true )`,
+  `nav_app_leave( r_data = |LOGGED_IN:<host>| )`. Cancel: `nav_app_leave( )`.
+  Errors stay on the page.
 
 ### Apps
 
-- Status, Stage, Diff, repository diff, New repository and the repository list
-  catch `ZCX_AG2UI5_LOGIN_REQUIRED` before their generic `zcx_abapgit_exception`
-  handling, remember the event and its arguments in PROTECTED `ms_pending`,
-  and open the login app. On navigation back with `LOGGED_IN` they repeat the
-  pending event once; without it (Cancel) they clear it and show
-  `Not logged in - <action> was not done`.
+- Status, Stage, Diff, repository diff, New repository and the repository
+  list send every caught `zcx_abapgit_exception` through one method
+  `show_error( )`: login required opens the login app, anything else shows the
+  message box as today.
+- Back from the login app with `LOGGED_IN:<host>`, the app reloads its data
+  (status, staging, the diff, branch list as applicable) and shows
+  `Logged in to <host> - repeat the action if it did not run`. Actions are not
+  replayed: abap2UI5 can raise a server event only by name, and the inputs and
+  selection are still on the page.
 - Stage: the Git user and token fields go; Commit & push needs only title and
   committer. The token rules in AGENTS.md move to the login app.
 - Repository list (option 3): on start and on navigation back it calls
   `service( )->logoff( )` and `client->set_session_stateful( abap_false )`.
-  Leaving a repository therefore ends the session's credentials.
 
 ## Out of scope
 
@@ -89,12 +87,12 @@ abapGit).
 
 - Service: `login_required` maps the abapGit text and nothing else; `login`
   refuses empty or control-character input; expiry clears after 30 minutes and
-  not before (time injected); `commit_push` signature without token.
+  not before (time injected); `url_host`.
 - Login app: token cleared on every event; Log in calls the service and leaves
   with `LOGGED_IN` and stateful; Cancel leaves without; empty input stays.
-- Status app (representative for the catch/retry): an action raising login
-  required opens the login app and keeps the pending event; `LOGGED_IN` retries
-  it once; Cancel clears it.
+- Each app: a login-required error opens the login app (not a message box);
+  back with `LOGGED_IN:<host>` reloads and shows the toast; other errors still
+  show the message box.
 - Stage: no token field; push without token.
 - Repository list: logoff and stateless on start and on return.
 - Live: a private repository on A4H25 without exit credentials is needed for an
