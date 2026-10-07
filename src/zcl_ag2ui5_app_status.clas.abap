@@ -99,19 +99,20 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         current TYPE abap_bool,
         sha1    TYPE string,
         link    TYPE string,
+        "! The commit, 7 characters
+        commit  TYPE string,
+        "! Not the branch the repository follows
+        can_switch TYPE abap_bool,
+        "! Neither the remote's default nor the followed branch
+        can_delete TYPE abap_bool,
       END OF ty_branch_row,
       ty_branch_rows TYPE STANDARD TABLE OF ty_branch_row WITH EMPTY KEY.
-    "! The branch dialog: the remote's branches, and the one picked
+    "! The branch dialog: the remote's branches, each with its actions
     DATA mt_branches     TYPE ty_branch_rows.
-    DATA mv_branch       TYPE string.
-    DATA mv_branch_link  TYPE string.
-    "! New branch... is picked: the name field shows, the button creates
+    "! New branch was pressed: the name field replaces the list
     DATA mv_new_mode     TYPE abap_bool.
     DATA mv_new_name     TYPE string.
     DATA mv_start_text   TYPE string.
-    DATA mv_branch_button TYPE string VALUE `Switch`.
-    "! An existing branch that is neither the default nor the current one
-    DATA mv_can_delete   TYPE abap_bool.
 
     CLASS-METHODS create
       IMPORTING
@@ -138,7 +139,6 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
     "! The toggles of the header, stored for the user
     METHODS save_view_settings.
-    CONSTANTS c_new_branch TYPE string VALUE `NEW`.
     "! The branch the open delete confirmation is about, set on the server
     DATA mv_delete_branch TYPE string.
     "! The commit the confirmation showed; the service refuses if it moved
@@ -160,11 +160,11 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS popup_decisions_display.
     METHODS popup_branches_display.
     METHODS load_branches.
-    METHODS switch_branch.
+    METHODS switch_branch
+      IMPORTING
+        iv_branch TYPE string.
     METHODS create_branch.
     METHODS delete_branch.
-    "! Name field, button text and Delete follow the picked entry
-    METHODS branch_buttons.
 
     "! One group of the decision dialog; nothing when the group is empty
     METHODS group_display
@@ -766,7 +766,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `xmlns:core` v = `sap.ui.core`
         )->ele( `Dialog`
             )->a( n = `title`        v = `Branches`
-            )->a( n = `contentWidth` v = `28rem` ).
+            )->a( n = `contentWidth` v = `40rem` ).
 
     DATA(box) = dialog->ele( `content`
         )->ele( `VBox`
@@ -774,49 +774,80 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     box->tag( `Text`
         )->a( n = `text`  v = `Switch: only the branch the repository follows changes. Create and delete act on GitHub.`
         )->a( n = `class` v = `sapUiSmallMarginBottom` ).
-    box->tag( `Label`
-        )->a( n = `text` v = `Branch` ).
-    box->ele( `Select`
-        )->a( n = `selectedKey` v = client->_bind( mv_branch )
-        )->a( n = `width`       v = `100%`
-        )->a( n = `items`       v = client->_bind( mt_branches )
-        )->a( n = `change`      v = client->_event( `BRANCH_PICK` )
-        )->ele( `items`
-            )->tag( n = `Item` ns = `core`
-                )->a( n = `key`  v = `{NAME}`
-                )->a( n = `text` v = `{TEXT}` ).
-    box->tag( `Link`
-        )->a( n = `text`    v = `Open branch`
-        )->a( n = `href`    v = client->_bind( mv_branch_link )
-        )->a( n = `target`  v = `_blank`
-        )->a( n = `visible` v = |\{= !!$\{{ client->_bind( val = mv_branch_link path = abap_true ) }\} \}| ).
-    box->tag( `Text`
-        )->a( n = `text`    v = client->_bind( mv_start_text )
-        )->a( n = `visible` v = client->_bind( mv_new_mode )
-        )->a( n = `class`   v = `sapUiSmallMarginTop` ).
-    box->tag( `Label`
-        )->a( n = `text`     v = `Name`
-        )->a( n = `required` v = `true`
-        )->a( n = `visible`  v = client->_bind( mv_new_mode ) ).
-    box->tag( `Input`
-        )->a( n = `value`       v = client->_bind( mv_new_name )
-        )->a( n = `placeholder` v = `feature/my-change`
-        )->a( n = `visible`     v = client->_bind( mv_new_mode ) ).
 
-    " three buttons: beginButton and endButton hold only two
-    DATA(buttons) = dialog->ele( `buttons` ).
-    buttons->tag( `Button`
-        )->a( n = `text`  v = client->_bind( mv_branch_button )
-        )->a( n = `type`  v = `Emphasized`
-        )->a( n = `press` v = client->_event( `SWITCH_BRANCH` ) ).
-    buttons->tag( `Button`
+    DATA(table) = box->ele( `Table`
+        )->a( n = `items`   v = client->_bind( mt_branches )
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}| ).
+    DATA(columns) = table->ele( `columns` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Branch` ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Commit` ).
+    columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true` ).
+    columns->ele( `Column`
+        )->a( n = `hAlign` v = `End` ).
+    DATA(cells) = table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{TEXT}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{COMMIT}` ).
+    cells->tag( `Link`
+        )->a( n = `text`    v = `Open`
+        )->a( n = `href`    v = `{LINK}`
+        )->a( n = `target`  v = `_blank`
+        )->a( n = `visible` v = `{= !!${LINK} }` ).
+    DATA(actions) = cells->ele( `HBox`
+        )->a( n = `justifyContent` v = `End` ).
+    actions->tag( `Button`
+        )->a( n = `text`    v = `Switch`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `visible` v = `{CAN_SWITCH}`
+        )->a( n = `press`   v = client->_event( val = `BRANCH_SWITCH` arg = `${NAME}` ) ).
+    actions->tag( `Button`
         )->a( n = `text`    v = `Delete`
         )->a( n = `type`    v = `Reject`
-        )->a( n = `visible` v = client->_bind( mv_can_delete )
-        )->a( n = `press`   v = client->_event( `BRANCH_DELETE` ) ).
+        )->a( n = `visible` v = `{CAN_DELETE}`
+        )->a( n = `press`   v = client->_event( val = `BRANCH_DELETE` arg = `${NAME}` ) ).
+
+    DATA(new_box) = box->ele( `VBox`
+        )->a( n = `visible` v = client->_bind( mv_new_mode ) ).
+    new_box->tag( `Text`
+        )->a( n = `text`  v = client->_bind( mv_start_text )
+        )->a( n = `class` v = `sapUiSmallMarginBottom` ).
+    new_box->tag( `Label`
+        )->a( n = `text`     v = `Name`
+        )->a( n = `required` v = `true` ).
+    new_box->tag( `Input`
+        )->a( n = `value`       v = client->_bind( mv_new_name )
+        )->a( n = `placeholder` v = `feature/my-change` ).
+
+    DATA(buttons) = dialog->ele( `buttons` ).
     buttons->tag( `Button`
-        )->a( n = `text`  v = `Cancel`
-        )->a( n = `press` v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
+        )->a( n = `text`    v = `New branch`
+        )->a( n = `icon`    v = `sap-icon://add`
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}|
+        )->a( n = `press`   v = client->_event( `BRANCH_NEW` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text`    v = `Close`
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}|
+        )->a( n = `press`   v = client->follow_up_action( val = z2ui5_if_client=>cs_event-popup_close ) ).
+    buttons->tag( `Button`
+        )->a( n = `text`    v = `Create`
+        )->a( n = `type`    v = `Emphasized`
+        )->a( n = `visible` v = client->_bind( mv_new_mode )
+        )->a( n = `press`   v = client->_event( `BRANCH_CREATE` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text`    v = `Back`
+        )->a( n = `visible` v = client->_bind( mv_new_mode )
+        )->a( n = `press`   v = client->_event( `BRANCH_BACK` ) ).
 
     client->popup_display( popup->stringify( ) ).
 
@@ -831,44 +862,38 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
-    CLEAR: mt_branches, mv_branch.
+    CLEAR mt_branches.
     LOOP AT lt_branches INTO DATA(ls_branch).
-      INSERT VALUE #( name    = ls_branch-name
-                      text    = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)` )
-                      default = ls_branch-default
-                      current = ls_branch-current
-                      sha1    = ls_branch-sha1
-                      link    = ls_branch-link )
+      INSERT VALUE #( name       = ls_branch-name
+                      text       = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)`
+                                                                WHEN ls_branch-current = abap_true THEN ` (followed)` )
+                      default    = ls_branch-default
+                      current    = ls_branch-current
+                      sha1       = ls_branch-sha1
+                      link       = ls_branch-link
+                      commit     = substring( val = ls_branch-sha1 len = nmin( val1 = 7 val2 = strlen( ls_branch-sha1 ) ) )
+                      can_switch = xsdbool( ls_branch-current = abap_false )
+                      can_delete = xsdbool( ls_branch-current = abap_false AND ls_branch-default = abap_false ) )
         INTO TABLE mt_branches.
-      IF ls_branch-current = abap_true.
-        mv_branch = ls_branch-name.
-      ENDIF.
     ENDLOOP.
-    INSERT VALUE #( name = c_new_branch text = `New branch...` ) INTO TABLE mt_branches.
     mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
-    CLEAR mv_new_name.
-    branch_buttons( ).
+    CLEAR: mv_new_name, mv_new_mode.
     popup_branches_display( ).
 
   ENDMETHOD.
 
   METHOD switch_branch.
 
-    IF mv_branch = c_new_branch.
-      create_branch( ).
-      RETURN.
-    ENDIF.
-
     TRY.
         service( )->switch_branch( iv_key    = mv_key
-                                   iv_branch = mv_branch ).
+                                   iv_branch = iv_branch ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         client->message_box_display( text = lx_error->get_text( ) type = `error` ).
         RETURN.
     ENDTRY.
 
     client->popup_destroy( ).
-    client->message_toast_display( |Following { VALUE #( mt_branches[ name = mv_branch ]-text OPTIONAL ) } now| ).
+    client->message_toast_display( |Following { zcl_ag2ui5_repo_service=>branch_display( iv_branch ) } now| ).
     load_status( ).
 
   ENDMETHOD.
@@ -887,17 +912,6 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     client->popup_destroy( ).
     client->message_toast_display( |Created and following { substring( val = lv_branch off = 11 ) }| ).
     load_status( ).
-
-  ENDMETHOD.
-
-  METHOD branch_buttons.
-
-    mv_new_mode      = xsdbool( mv_branch = c_new_branch ).
-    mv_branch_button = COND #( WHEN mv_new_mode = abap_true THEN `Create` ELSE `Switch` ).
-    READ TABLE mt_branches INTO DATA(ls_picked) WITH KEY name = mv_branch.
-    mv_can_delete = xsdbool( sy-subrc = 0 AND mv_new_mode = abap_false
-                             AND ls_picked-default = abap_false AND ls_picked-current = abap_false ).
-    mv_branch_link = ls_picked-link.
 
   ENDMETHOD.
 
@@ -1081,12 +1095,25 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         IF mv_offline = abap_false.
           load_branches( ).
         ENDIF.
-      WHEN `BRANCH_PICK`.
-        branch_buttons( ).
+      WHEN `BRANCH_SWITCH`.
+        " the row's name comes from the browser: only a listed, switchable one
+        READ TABLE mt_branches INTO DATA(ls_switch) WITH KEY name = client->get_event_arg( ).
+        IF sy-subrc = 0 AND ls_switch-can_switch = abap_true.
+          switch_branch( ls_switch-name ).
+        ENDIF.
+      WHEN `BRANCH_NEW`.
+        CLEAR mv_new_name.
+        mv_new_mode = abap_true.
+      WHEN `BRANCH_BACK`.
+        mv_new_mode = abap_false.
+      WHEN `BRANCH_CREATE`.
+        IF mv_new_mode = abap_true.
+          create_branch( ).
+        ENDIF.
       WHEN `BRANCH_DELETE`.
-        READ TABLE mt_branches INTO DATA(ls_delete) WITH KEY name = mv_branch.
-        IF sy-subrc = 0 AND mv_can_delete = abap_true.
-          mv_delete_branch = mv_branch.
+        READ TABLE mt_branches INTO DATA(ls_delete) WITH KEY name = client->get_event_arg( ).
+        IF sy-subrc = 0 AND ls_delete-can_delete = abap_true.
+          mv_delete_branch = ls_delete-name.
           mv_delete_sha1   = ls_delete-sha1.
           client->message_box_display(
             text             = |Delete branch { ls_delete-text } (at {
@@ -1098,12 +1125,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             onclose          = `BRANCH_DELETE_CLOSE` ).
         ENDIF.
       WHEN `BRANCH_DELETE_CLOSE`.
-        IF client->get_event_arg( ) = `DELETE`.
+        " only a confirmation this page opened deletes
+        IF client->get_event_arg( ) = `DELETE` AND mv_delete_branch IS NOT INITIAL.
           delete_branch( ).
         ENDIF.
         CLEAR: mv_delete_branch, mv_delete_sha1.
-      WHEN `SWITCH_BRANCH`.
-        switch_branch( ).
       WHEN `PULL`.
         IF mv_offline = abap_true.
           popup_upload_display( ).

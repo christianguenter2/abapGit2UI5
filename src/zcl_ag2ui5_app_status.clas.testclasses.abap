@@ -1,7 +1,8 @@
 CLASS ltcl_overview DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview.
+CLASS ltcl_branches DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview ltcl_branches.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -781,5 +782,152 @@ CLASS ltcl_overview IMPLEMENTATION.
     mo_client->mt_args = VALUE #( ( `/src/` ) ( `a.abap` ) ).
     mo_app->on_event( ).
     cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+  ENDMETHOD.
+ENDCLASS.
+
+
+"! Branches of a remote: main is the default, zeta is followed, alpha is free
+CLASS ltd_branch_service DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
+    DATA mv_switched TYPE string.
+    DATA mv_created TYPE string.
+    DATA mv_deleted TYPE string.
+    DATA mv_deleted_sha1 TYPE string.
+ENDCLASS.
+
+CLASS ltd_branch_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~list_branches.
+    rt_branches = VALUE #(
+      ( name = `refs/heads/main`  display = `main`  default = abap_true sha1 = `1111111aaaa` )
+      ( name = `refs/heads/alpha` display = `alpha` sha1 = `3333333bbbb` link = `https://example.com/tree/alpha` )
+      ( name = `refs/heads/zeta`  display = `zeta`  current = abap_true sha1 = `2222222cccc` ) ).
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~switch_branch.
+    mv_switched = iv_branch.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~create_branch.
+    mv_created = iv_name.
+    rv_branch = |refs/heads/{ iv_name }|.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~delete_branch.
+    mv_deleted = iv_branch.
+    mv_deleted_sha1 = iv_sha1.
+    rv_sha1 = iv_sha1.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~get_status ##NEEDED.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_branches DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_status.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_branch_service.
+    METHODS setup.
+    METHODS teardown.
+    METHODS fire IMPORTING iv_event TYPE string iv_arg TYPE string OPTIONAL.
+    METHODS rows_and_actions FOR TESTING.
+    METHODS list_not_dropdown FOR TESTING.
+    METHODS switch_from_row FOR TESTING.
+    METHODS switch_refuses_unlisted FOR TESTING.
+    METHODS delete_from_row FOR TESTING.
+    METHODS delete_refuses_protected FOR TESTING.
+    METHODS new_and_back FOR TESTING.
+    METHODS create_in_new_mode FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_branches IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_app = zcl_ag2ui5_app_status=>create( `1` ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app->client = mo_client.
+    mo_app->mi_service = mo_service.
+    fire( `BRANCHES` ).
+  ENDMETHOD.
+
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
+  METHOD fire.
+    mo_client->mv_event = iv_event.
+    mo_client->mt_args = COND #( WHEN iv_arg IS SUPPLIED THEN VALUE #( ( iv_arg ) ) ).
+    mo_app->on_event( ).
+  ENDMETHOD.
+
+  METHOD rows_and_actions.
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_branches ) exp = 3 ).
+    DATA(ls_main) = mo_app->mt_branches[ name = `refs/heads/main` ].
+    DATA(ls_alpha) = mo_app->mt_branches[ name = `refs/heads/alpha` ].
+    DATA(ls_zeta) = mo_app->mt_branches[ name = `refs/heads/zeta` ].
+    cl_abap_unit_assert=>assert_equals( act = ls_main-text exp = `main (default)` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_zeta-text exp = `zeta (followed)` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_alpha-commit exp = `3333333` ).
+    cl_abap_unit_assert=>assert_true( ls_main-can_switch ).
+    cl_abap_unit_assert=>assert_false( ls_main-can_delete ).
+    cl_abap_unit_assert=>assert_true( ls_alpha-can_switch ).
+    cl_abap_unit_assert=>assert_true( ls_alpha-can_delete ).
+    cl_abap_unit_assert=>assert_false( ls_zeta-can_switch ).
+    cl_abap_unit_assert=>assert_false( ls_zeta-can_delete ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+  ENDMETHOD.
+
+  METHOD list_not_dropdown.
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_popup exp = `*<Table*` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*<Select*` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*New branch...*` ).
+  ENDMETHOD.
+
+  METHOD switch_from_row.
+    fire( iv_event = `BRANCH_SWITCH` iv_arg = `refs/heads/alpha` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_switched exp = `refs/heads/alpha` ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_destroyed ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast exp = `Following alpha now` ).
+  ENDMETHOD.
+
+  METHOD switch_refuses_unlisted.
+    " the argument comes from the browser
+    fire( iv_event = `BRANCH_SWITCH` iv_arg = `refs/heads/forged` ).
+    fire( iv_event = `BRANCH_SWITCH` iv_arg = `refs/heads/zeta` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_switched ).
+  ENDMETHOD.
+
+  METHOD delete_from_row.
+    fire( iv_event = `BRANCH_DELETE` iv_arg = `refs/heads/alpha` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_error exp = `Delete branch alpha (at 3333333)*` ).
+    fire( iv_event = `BRANCH_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_deleted exp = `refs/heads/alpha` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_deleted_sha1 exp = `3333333bbbb` ).
+  ENDMETHOD.
+
+  METHOD delete_refuses_protected.
+    LOOP AT VALUE string_table( ( `refs/heads/main` ) ( `refs/heads/zeta` ) ( `refs/heads/forged` ) ) INTO DATA(lv_name).
+      fire( iv_event = `BRANCH_DELETE` iv_arg = lv_name ).
+      cl_abap_unit_assert=>assert_initial( act = mo_client->mv_error msg = |{ lv_name } offered for deletion| ).
+    ENDLOOP.
+    fire( iv_event = `BRANCH_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted ).
+  ENDMETHOD.
+
+  METHOD new_and_back.
+    mo_app->mv_new_name = `old`.
+    fire( `BRANCH_NEW` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_new_mode ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_new_name ).
+    fire( `BRANCH_BACK` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+  ENDMETHOD.
+
+  METHOD create_in_new_mode.
+    fire( `BRANCH_NEW` ).
+    mo_app->mv_new_name = `feature/x`.
+    fire( `BRANCH_CREATE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_created exp = `feature/x` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast exp = `Created and following feature/x` ).
   ENDMETHOD.
 ENDCLASS.
