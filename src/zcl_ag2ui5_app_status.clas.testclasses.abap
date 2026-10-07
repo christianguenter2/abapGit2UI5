@@ -2,7 +2,8 @@ CLASS ltcl_overview DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
 CLASS ltcl_branches DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview ltcl_branches.
+CLASS ltcl_settings DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview ltcl_branches ltcl_settings.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -130,6 +131,10 @@ CLASS ltcl_settings DEFINITION FINAL FOR TESTING
     METHODS create_reads_settings FOR TESTING.
     METHODS create_without_settings FOR TESTING.
     METHODS view_event_saves FOR TESTING.
+    METHODS sort_event_saves FOR TESTING.
+    METHODS sort_toggles_changes_first FOR TESTING.
+    METHODS sort_refuses_unknown FOR TESTING.
+    METHODS sort_marks_current FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_settings IMPLEMENTATION.
@@ -178,6 +183,53 @@ CLASS ltcl_settings IMPLEMENTATION.
       exp = `` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_changes_first ) ).
   ENDMETHOD.
 
+  METHOD sort_event_saves.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_event = `SORT`.
+    lo_client->mt_args = VALUE #( ( `FILE` ) ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `FILE` act = lo_app->mv_sort ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `FILE` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_sort ) ).
+  ENDMETHOD.
+
+  METHOD sort_toggles_changes_first.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_event = `SORT`.
+    lo_client->mt_args = VALUE #( ( `CHANGES_FIRST` ) ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_false( lo_app->mv_changes_first ).
+    cl_abap_unit_assert=>assert_equals(
+      exp = `` act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_changes_first ) ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_true( lo_app->mv_changes_first ).
+  ENDMETHOD.
+
+  METHOD sort_refuses_unknown.
+    " the argument comes from the browser
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_event = `SORT`.
+    lo_client->mt_args = VALUE #( ( `DROP TABLE` ) ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `OBJECT` act = lo_app->mv_sort ).
+    cl_abap_unit_assert=>assert_initial( mo_settings->mt_saved ).
+  ENDMETHOD.
+
+  METHOD sort_marks_current.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_event = `SORT`.
+    lo_client->mt_args = VALUE #( ( `FILE` ) ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    FIND REGEX `<MenuItem[^>]*text="File"[^>]*icon="sap-icon://accept"` IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+    FIND REGEX `<MenuItem[^>]*text="Object"[^>]*icon="sap-icon://accept"` IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 4 msg = lo_client->mv_view ).
+  ENDMETHOD.
+
 ENDCLASS.
 
 
@@ -189,6 +241,8 @@ CLASS ltcl_header DEFINITION FINAL FOR TESTING
     METHODS setup.
     METHODS teardown.
     METHODS back_never_overflows FOR TESTING.
+    METHODS header_holds_actions_only FOR TESTING.
+    METHODS table_holds_view_controls FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_header IMPLEMENTATION.
@@ -214,6 +268,34 @@ CLASS ltcl_header IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
     " Pull never moves into the menu
     FIND REGEX `<Button[^>]*type="Emphasized"[^>]*[^/>]>\s*<layoutData>\s*<OverflowToolbarLayoutData[^>]*priority="NeverOverflow"`
+      IN lo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD header_holds_actions_only.
+    " how the list looks belongs to the table, the page header acts
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_navigated = abap_true.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    FIND REGEX `<customHeader>.*</customHeader>` IN lo_client->mv_view MATCH OFFSET DATA(lv_off) MATCH LENGTH DATA(lv_len).
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
+    DATA(lv_header) = substring( val = lo_client->mv_view off = lv_off len = lv_len ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*SegmentedButton*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*<Select*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*ToggleButton*` ).
+    " the branch button names the branch; its tooltip says what it opens
+    FIND REGEX `<Button[^>]*tooltip="Branches"[^>]*icon="sap-icon://split"|<Button[^>]*icon="sap-icon://split"[^>]*tooltip="Branches"`
+      IN lv_header.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_header ).
+  ENDMETHOD.
+
+  METHOD table_holds_view_controls.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_client->mv_navigated = abap_true.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    FIND REGEX `<Table[^>]*>\s*<headerToolbar>\s*<OverflowToolbar[^>]*>.*SegmentedButton.*<MenuButton[^>]*sap-icon://sort.*</headerToolbar>`
       IN lo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
   ENDMETHOD.
@@ -351,7 +433,9 @@ CLASS ltcl_offline IMPLEMENTATION.
     mo_client->mv_navigated = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="true" text="Export ZIP"` ) ).
-    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Branches"` ) ).
+    " the branch button shows the branch name; Branches is its tooltip
+    FIND REGEX `<Button visible="false"[^>]*tooltip="Branches"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Stage"` ) ).
   ENDMETHOD.
 
@@ -368,7 +452,9 @@ CLASS ltcl_offline IMPLEMENTATION.
     mo_client->mv_navigated = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Export ZIP"` ) ).
-    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="true" text="Branches"` ) ).
+    " the branch button shows the branch name; Branches is its tooltip
+    FIND REGEX `<Button visible="true"[^>]*tooltip="Branches"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD upload_preview.

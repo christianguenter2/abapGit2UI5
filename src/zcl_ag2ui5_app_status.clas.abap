@@ -75,9 +75,6 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_overview TYPE string VALUE `FILES`.
     "! ALL or CHANGES
     DATA mv_view         TYPE string VALUE `ALL`.
-    "! OBJECT, FILE or TYPE
-    DATA mv_sort         TYPE string VALUE `OBJECT`.
-    DATA mv_changes_first TYPE abap_bool VALUE abap_true.
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
     DATA ms_decisions    TYPE ty_decisions.
@@ -121,6 +118,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    "! OBJECT, FILE or TYPE; set through the sort menu, not bound
+    DATA mv_sort         TYPE string VALUE `OBJECT`.
+    DATA mv_changes_first TYPE abap_bool VALUE abap_true.
     DATA mv_files_open TYPE abap_bool.
     METHODS popup_files_display.
     METHODS open_object_files.
@@ -288,58 +288,19 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `priority`   v = `NeverOverflow`
                 )->a( n = `shrinkable` v = `true` ).
     header_content->tag( `ToolbarSpacer` ).
-    header_content->ele( `SegmentedButton`
-        )->a( n = `selectedKey` v = client->_bind( mv_overview )
-        )->a( n = `selectionChange` v = client->_event( `OVERVIEW` )
-        )->ele( `items`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key` v = `FILES`
-                )->a( n = `text` v = `Files`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key` v = `OBJECTS`
-                )->a( n = `text` v = `Objects` ).
-    header_content->ele( `SegmentedButton`
-        )->a( n = `selectedKey`     v = client->_bind( mv_view )
-        )->a( n = `selectionChange` v = client->_event( `VIEW` )
-        )->ele( `items`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `ALL`
-                )->a( n = `text` v = `All`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `CHANGES`
-                )->a( n = `text` v = `Changes only` ).
-    header_content->tag( `Label`
-        )->a( n = `visible` b = xsdbool( mv_overview = `FILES` )
-        )->a( n = `text` v = `Sort by` ).
-    header_content->ele( `Select`
-        )->a( n = `visible` b = xsdbool( mv_overview = `FILES` )
-        )->a( n = `selectedKey` v = client->_bind( mv_sort )
-        )->a( n = `change`      v = client->_event( `VIEW` )
-        )->ele( `items`
-            )->tag( n = `Item` ns = `core`
-                )->a( n = `key`  v = `OBJECT`
-                )->a( n = `text` v = `Object`
-            )->tag( n = `Item` ns = `core`
-                )->a( n = `key`  v = `FILE`
-                )->a( n = `text` v = `File`
-            )->tag( n = `Item` ns = `core`
-                )->a( n = `key`  v = `TYPE`
-                )->a( n = `text` v = `Type` ).
-    header_content->tag( `ToggleButton`
-        )->a( n = `text`    v = `Changes on top`
-        )->a( n = `pressed` v = client->_bind( mv_changes_first )
-        )->a( n = `press`   v = client->_event( `VIEW` ) ).
     " icon only in the bar, with its text in the overflow menu
     header_content->tag( `OverflowToolbarButton`
         )->a( n = `icon`    v = `sap-icon://refresh`
         )->a( n = `text`    v = `Refresh status`
         )->a( n = `tooltip` v = `Refresh status`
         )->a( n = `press`   v = client->_event( `REFRESH` ) ).
+    " the button names the followed branch and opens the branch list
     header_content->tag( `Button`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
-        )->a( n = `text`  v = `Branches`
-        )->a( n = `icon`  v = `sap-icon://split`
-        )->a( n = `press` v = client->_event( `BRANCHES` ) ).
+        )->a( n = `text`    v = client->_bind( ms_head-branch_display )
+        )->a( n = `tooltip` v = `Branches`
+        )->a( n = `icon`    v = `sap-icon://split`
+        )->a( n = `press`   v = client->_event( `BRANCHES` ) ).
     header_content->tag( `Button`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `text`    v = `Stage`
@@ -408,6 +369,58 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `growing`             v = `true`
         )->a( n = `growingThreshold`    v = `200`
         )->a( n = `growingScrollToLoad` v = `true` ).
+
+    " how the list looks: overview, filter and sort sit on the table
+    DATA(table_toolbar) = table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar` ).
+    table_toolbar->ele( `SegmentedButton`
+        )->a( n = `selectedKey`     v = client->_bind( mv_overview )
+        )->a( n = `selectionChange` v = client->_event( `OVERVIEW` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `FILES`
+                )->a( n = `text` v = `Files`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `OBJECTS`
+                )->a( n = `text` v = `Objects` ).
+    table_toolbar->ele( `SegmentedButton`
+        )->a( n = `selectedKey`     v = client->_bind( mv_view )
+        )->a( n = `selectionChange` v = client->_event( `VIEW` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `ALL`
+                )->a( n = `text` v = `All`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `CHANGES`
+                )->a( n = `text` v = `Changes only` ).
+    table_toolbar->tag( `ToolbarSpacer` ).
+    " one menu for the order: the sort key (files only) and changes on top,
+    " the current choices ticked
+    DATA(sort_items) = table_toolbar->ele( `MenuButton`
+        )->a( n = `icon`    v = `sap-icon://sort`
+        )->a( n = `tooltip` v = `Sort`
+        )->ele( `menu`
+            )->ele( `Menu`
+                )->ele( `items` ).
+    IF mv_overview = `FILES`.
+      sort_items->tag( `MenuItem`
+          )->a( n = `text`  v = `Object`
+          )->a( n = `icon`  v = COND #( WHEN mv_sort = `OBJECT` THEN `sap-icon://accept` )
+          )->a( n = `press` v = client->_event( val = `SORT` arg = `OBJECT` ) ).
+      sort_items->tag( `MenuItem`
+          )->a( n = `text`  v = `File`
+          )->a( n = `icon`  v = COND #( WHEN mv_sort = `FILE` THEN `sap-icon://accept` )
+          )->a( n = `press` v = client->_event( val = `SORT` arg = `FILE` ) ).
+      sort_items->tag( `MenuItem`
+          )->a( n = `text`  v = `Type`
+          )->a( n = `icon`  v = COND #( WHEN mv_sort = `TYPE` THEN `sap-icon://accept` )
+          )->a( n = `press` v = client->_event( val = `SORT` arg = `TYPE` ) ).
+    ENDIF.
+    sort_items->tag( `MenuItem`
+        )->a( n = `text`          v = `Changes on top`
+        )->a( n = `icon`          v = COND #( WHEN mv_changes_first = abap_true THEN `sap-icon://accept` )
+        )->a( n = `startsSection` b = xsdbool( mv_overview = `FILES` )
+        )->a( n = `press`         v = client->_event( val = `SORT` arg = `CHANGES_FIRST` ) ).
 
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
@@ -1032,6 +1045,20 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `VIEW`.
         save_view_settings( ).
         rows_build( ).
+      WHEN `SORT`.
+        " the choice comes from the browser: only the known ones
+        CASE client->get_event_arg( ).
+          WHEN `OBJECT` OR `FILE` OR `TYPE`.
+            mv_sort = client->get_event_arg( ).
+          WHEN `CHANGES_FIRST`.
+            mv_changes_first = xsdbool( mv_changes_first = abap_false ).
+          WHEN OTHERS.
+            RETURN.
+        ENDCASE.
+        save_view_settings( ).
+        rows_build( ).
+        " the ticks in the menu are part of the view
+        view_display( ).
       WHEN `OVERVIEW`.
         IF mv_overview <> `FILES` AND mv_overview <> `OBJECTS`.
           mv_overview = `FILES`.
