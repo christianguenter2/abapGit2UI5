@@ -783,14 +783,17 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Branch` ).
     columns->ele( `Column`
+        )->a( n = `width`          v = `6rem`
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
             )->a( n = `text` v = `Commit` ).
     columns->ele( `Column`
+        )->a( n = `width`          v = `4rem`
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true` ).
     columns->ele( `Column`
+        )->a( n = `width`  v = `9rem`
         )->a( n = `hAlign` v = `End` ).
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
