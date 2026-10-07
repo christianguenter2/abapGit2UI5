@@ -789,24 +789,19 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Commit` ).
     columns->ele( `Column`
-        )->a( n = `width`          v = `4rem`
-        )->a( n = `minScreenWidth` v = `Tablet`
-        )->a( n = `demandPopin`    v = `true` ).
-    columns->ele( `Column`
         )->a( n = `width`  v = `9rem`
         )->a( n = `hAlign` v = `End` ).
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
             )->ele( `cells` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{TEXT}` ).
+    " the name opens the branch on the remote; without a link it stays text
+    cells->tag( `Link`
+        )->a( n = `text`    v = `{TEXT}`
+        )->a( n = `href`    v = `{LINK}`
+        )->a( n = `enabled` v = `{= !!${LINK} }`
+        )->a( n = `target`  v = `_blank` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{COMMIT}` ).
-    cells->tag( `Link`
-        )->a( n = `text`    v = `Open`
-        )->a( n = `href`    v = `{LINK}`
-        )->a( n = `target`  v = `_blank`
-        )->a( n = `visible` v = `{= !!${LINK} }` ).
     DATA(actions) = cells->ele( `HBox`
         )->a( n = `justifyContent` v = `End` ).
     actions->tag( `Button`

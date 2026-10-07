@@ -881,6 +881,9 @@ CLASS ltcl_branches IMPLEMENTATION.
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_popup exp = `*<Table*` ).
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*<Select*` ).
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*New branch...*` ).
+    " the name is the link to the branch; no separate Open link
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*text="Open"*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_popup exp = `*<Link*text="{TEXT}"*href="{LINK}"*` ).
   ENDMETHOD.
 
   METHOD switch_from_row.

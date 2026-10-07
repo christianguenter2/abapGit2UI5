@@ -1221,13 +1221,14 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
 ## Branches popup as a list (2026-10-07)
 
 - The Branches popup lists every branch of the remote instead of a dropdown:
-  name with "(default)" / "(followed)", commit, Open link, and per row
+  name with "(default)" / "(followed)" as the link to the branch on the
+  remote (plain text where there is no link), commit, and per row
   **Switch** (not on the followed branch) and **Delete** (not on the default
   or the followed branch). The footer has **New branch** and **Close**; New
   branch shows the name field with its starting point and **Create** / **Back**.
   The fake "New branch..." entry, the picked-branch state and the separate
-  Open branch link are gone. On narrow screens commit and link fold under the
-  name (popin).
+  Open links are gone. On narrow screens the commit folds under the name
+  (popin).
 - The row's branch name comes from the browser: the app accepts it only when
   it is listed and the row allows the action; the service checks it again
   against a fresh list (unchanged). A stray DELETE confirmation without an
