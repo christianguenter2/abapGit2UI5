@@ -4,7 +4,9 @@ CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_columns DEFINITION DEFERRED.
 CLASS ltcl_settings DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_semantic ltcl_patch ltcl_columns ltcl_settings ltcl_header ltcl_object_links.
+CLASS ltcl_login DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_semantic ltcl_patch ltcl_columns ltcl_settings ltcl_header ltcl_object_links
+                                                   ltcl_login.
 
 "! abap2UI5 client for one event with its arguments
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
@@ -14,20 +16,34 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mt_args TYPE string_table.
     DATA mv_left TYPE abap_bool.
     DATA mv_view TYPE string.
+    DATA mv_init TYPE abap_bool.
+    DATA mv_navigated TYPE abap_bool.
+    DATA mv_error TYPE string.
+    DATA mv_toast TYPE string.
+    DATA mo_called TYPE REF TO z2ui5_if_app.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 
 CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~check_on_init.
-    result = abap_false.
+    result = mv_init.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
-    result = abap_false.
+    result = mv_navigated.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
-    result = abap_true.
+    result = xsdbool( mv_init = abap_false AND mv_navigated = abap_false ).
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~nav_app_call.
+    mo_called = app.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event.
@@ -46,10 +62,12 @@ CLASS ltd_client IMPLEMENTATION.
     mv_view = val.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~message_box_display ##NEEDED.
+  METHOD z2ui5_if_client~message_box_display.
+    mv_error = text.
   ENDMETHOD.
 
-  METHOD z2ui5_if_client~message_toast_display ##NEEDED.
+  METHOD z2ui5_if_client~message_toast_display.
+    mv_toast = text.
   ENDMETHOD.
   "! the view is built but not checked here
   METHOD z2ui5_if_client~_bind ##NEEDED.
@@ -608,5 +626,84 @@ CLASS ltcl_semantic IMPLEMENTATION.
     mo_app->mv_patch = abap_true.
     mo_app->view_display( ).
     cl_abap_unit_assert=>assert_false( xsdbool( mo_client->mv_view CS `Structural changes` ) ).
+  ENDMETHOD.
+ENDCLASS.
+
+
+"! get_diff raises a given text, or returns one line
+CLASS ltd_login_service DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
+    DATA mv_error TYPE string.
+    DATA mv_calls TYPE i.
+ENDCLASS.
+
+CLASS ltd_login_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~get_diff.
+    mv_calls = mv_calls + 1.
+    IF mv_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_error ).
+    ENDIF.
+    rs_diff-lines = VALUE #( ( local_num = `1` remote_num = `1` text = `x` kind = zif_ag2ui5_repo_service=>c_line_kind-same ) ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_diff.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_login_service.
+    METHODS setup.
+    METHODS teardown.
+    METHODS start.
+    METHODS login_error_opens_login FOR TESTING.
+    METHODS other_error_message FOR TESTING.
+    METHODS logged_in_reloads FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_login IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app = zcl_ag2ui5_app_diff=>create( iv_key = `1` iv_path = `/src/` iv_filename = `a.abap`
+                                          iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` ).
+    mo_app->mi_service = mo_service.
+  ENDMETHOD.
+
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
+  METHOD start.
+    mo_client->mv_init = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    mo_client->mv_init = abap_false.
+  ENDMETHOD.
+
+  METHOD login_error_opens_login.
+    mo_service->mv_error = `Unauthorized access. Check your credentials`.
+    start( ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
+  ENDMETHOD.
+
+  METHOD other_error_message.
+    mo_service->mv_error = `Boom`.
+    start( ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_error exp = `Boom` ).
+  ENDMETHOD.
+
+  METHOD logged_in_reloads.
+    mo_service->mv_error = `Unauthorized access. Check your credentials`.
+    start( ).
+    CLEAR mo_service->mv_error.
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_calls exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
+                                        exp = `Logged in to github.com - repeat the action if it did not run` ).
   ENDMETHOD.
 ENDCLASS.

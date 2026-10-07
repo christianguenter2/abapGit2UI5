@@ -109,6 +109,14 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
 
   PROTECTED SECTION.
     DATA client TYPE REF TO z2ui5_if_client.
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+    METHODS service
+      RETURNING
+        VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
+    "! A login-required error opens the login page; any other error is shown
+    METHODS show_error
+      IMPORTING
+        ix_error TYPE REF TO zcx_abapgit_exception.
     DATA mv_focus TYPE string.
     DATA ms_focus TYPE zif_ag2ui5_repo_service=>ty_semantic_change.
     DATA mt_semantic TYPE zif_ag2ui5_repo_service=>ty_semantic_changes.
@@ -266,11 +274,35 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
       load_diff( ).
       view_display( ).
     ELSEIF client->check_on_navigated( ).
+      " back from the login page: the diff could not be read before
+      DATA(lr_returned) = client->get( )-r_event_data.
+      IF lr_returned IS BOUND.
+        ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
+        DATA(lv_returned) = CONV string( <lv_returned> ).
+        IF lv_returned CP `LOGGED_IN:*`.
+          load_diff( ).
+          client->message_toast_display(
+            |Logged in to { substring( val = lv_returned off = 10 ) } - repeat the action if it did not run| ).
+        ENDIF.
+      ENDIF.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD service.
+    ri_service = COND #( WHEN mi_service IS BOUND THEN mi_service ELSE NEW zcl_ag2ui5_repo_service( ) ).
+  ENDMETHOD.
+
+  METHOD show_error.
+    IF zcl_ag2ui5_repo_service=>login_required( ix_error ) = abap_true.
+      " abapGit's user exit has no credentials for this remote
+      client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
+      RETURN.
+    ENDIF.
+    client->message_box_display( text = ix_error->get_text( ) type = `error` ).
   ENDMETHOD.
 
   METHOD view_display.
@@ -598,14 +630,14 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
   METHOD load_diff.
 
     TRY.
-        DATA(ls_diff) = NEW zcl_ag2ui5_repo_service( )->zif_ag2ui5_repo_service~get_diff(
+        DATA(ls_diff) = service( )->get_diff(
           iv_key      = mv_key
           iv_zip      = mv_zip
           iv_path     = mv_path
           iv_filename = mv_filename
           iv_remote_is_new = mv_remote_is_new ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        client->message_box_display( text = lx_error->get_text( ) type = `error` ).
+        show_error( lx_error ).
         RETURN.
     ENDTRY.
 
