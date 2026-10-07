@@ -271,19 +271,20 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     " a click on the header opens the repository, as a table row does
     DATA(card) = grid->ele( n = `Card` ns = `f`
         )->a( n = `width` v = `100%` ).
-    card->ele( n = `header` ns = `f`
-        )->tag( n = `Header` ns = `card`
+    DATA(header) = card->ele( n = `header` ns = `f`
+        )->ele( n = `Header` ns = `card`
             )->a( n = `title`    v = `{NAME}`
             )->a( n = `subtitle` v = `{PACKAGE}`
             )->a( n = `iconSrc`  v = `{= ${OFFLINE} ? 'sap-icon://disconnected' : 'sap-icon://cloud' }`
             )->a( n = `press`    v = client->_event( val = `OPEN` arg = `${KEY}` ) ).
 
+    " Header actions stay separate from the repository-opening press event.
+    DATA(header_actions) = header->ele( n = `toolbar` ns = `card` ).
+    favorite_display( header_actions ).
+
     DATA(box) = card->ele( n = `content` ns = `f`
         )->ele( `VBox`
-            )->a( n = `class` v = `sapUiSmallMargin` ).
-    DATA(star) = box->ele( `HBox`
-        )->a( n = `justifyContent` v = `End` ).
-    favorite_display( star ).
+            )->a( n = `class` v = `sapUiSmallMarginBeginEnd sapUiTinyMarginBottom` ).
 
     " a link opens in a new tab; a click on it does not open the repository
     " a URL has no blank to wrap at: cut it off at the card's inner width

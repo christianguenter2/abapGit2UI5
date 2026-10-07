@@ -1323,3 +1323,17 @@ Spec `docs/superpowers/specs/2026-10-07-push-new-branch-design.md`, plan
   with and without Changes on top reorders the rows; the objects view offers
   only Changes on top; the branch button shows `main` and opens the list.
   Chris's settings were restored to Object with Changes on top.
+
+
+## 2026-10-07 — compact repository tiles
+
+- Moved the existing favorite toggle into sap.f.cards.Header.toolbar, placing
+  it at the top right beside the name/package. UI5's header tap handler excludes
+  toolbar interactions, so the star remains separate from repository navigation.
+- Removed the standalone star row and content top margin, and reduced the bottom
+  margin while retaining horizontal alignment and repository metadata/actions.
+- npm check: ABAP lint 0 issues; UI5 properties/render gates 0 errors/warnings,
+  all 13 documents rendered, existing MessageStrip hint only. Desktop 1280x900
+  and phone 390x844 scratch renders were inspected with a long name and online/
+  offline repositories, both favorite states. Artifacts: /tmp/ag2ui5-compact-tiles-*.
+  Implemented locally; not yet activated on A4H25.
