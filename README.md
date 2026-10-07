@@ -103,6 +103,10 @@ the browser session is running that code.
   Ignoring a tracked file leaves its remote version in place. Saving a rule
   reloads staging and clears file selections and picked lines; commit text
   and committer details stay.
+- Branch labels omit `refs/heads/` in the repository list, tiles and status
+  page. Click a branch to open it on the remote in a new tab; the branch
+  selector also offers **Open branch** for its selected branch. Links support
+  GitHub, GitLab.com and Bitbucket Cloud; other hosts retain a plain short label.
 - **Branches:** on the status page, switch to another branch of the remote
   (only the branch the repository follows changes; the status then shows what
   a pull would bring), create a branch at the current head ("New branch..."),

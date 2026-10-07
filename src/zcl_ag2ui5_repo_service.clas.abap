@@ -7,6 +7,16 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    "! Display only: keep the full ref for all repository operations.
+    CLASS-METHODS branch_display
+      IMPORTING iv_branch TYPE string
+      RETURNING VALUE(rv_display) TYPE string.
+
+    "! Browser URL for supported remote hosts; empty if unavailable.
+    CLASS-METHODS branch_link
+      IMPORTING iv_url TYPE string iv_branch TYPE string
+      RETURNING VALUE(rv_link) TYPE string.
+
     "! One row per object; files without an object share the empty key.
     "! Counts include every file; differing nonempty states become MIXED.
     CLASS-METHODS object_status_rows
@@ -1295,6 +1305,37 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD branch_display.
+    rv_display = iv_branch.
+    IF find( val = iv_branch sub = `refs/heads/` ) = 0.
+      rv_display = substring( val = iv_branch off = 11 ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD branch_link.
+    IF iv_branch IS INITIAL OR find( val = iv_branch sub = `refs/heads/` ) <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_url) = iv_url.
+    REPLACE REGEX `/+$` IN lv_url WITH `` ##REGEX_POSIX.
+    REPLACE REGEX `\.git$` IN lv_url WITH `` ##REGEX_POSIX.
+    " Match the authority exactly; never turn another URI scheme into a link.
+    FIND REGEX `^https?://(www\.)?(github\.com|gitlab\.com|bitbucket\.org)/[^?#@]+$`
+      IN lv_url IGNORING CASE ##REGEX_POSIX.
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+    DATA(lv_branch) = cl_http_utility=>escape_url( branch_display( iv_branch ) ).
+    DATA(lv_lower) = to_lower( lv_url ).
+    IF lv_lower CP `*://gitlab.com/*` OR lv_lower CP `*://www.gitlab.com/*`.
+      rv_link = |{ lv_url }/-/tree/{ lv_branch }|.
+    ELSEIF lv_lower CP `*://bitbucket.org/*` OR lv_lower CP `*://www.bitbucket.org/*`.
+      rv_link = |{ lv_url }/src/{ lv_branch }/|.
+    ELSE.
+      rv_link = |{ lv_url }/tree/{ lv_branch }|.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD branch_rows.
 
     LOOP AT it_branches INTO DATA(ls_branch) WHERE name IS NOT INITIAL.
@@ -1388,6 +1429,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     IF rt_branches IS INITIAL.
       zcx_abapgit_exception=>raise( `The remote has no branches` ).
     ENDIF.
+
+    LOOP AT rt_branches ASSIGNING FIELD-SYMBOL(<ls_branch>).
+      <ls_branch>-link = branch_link( iv_url = li_repo->get_url( ) iv_branch = <ls_branch>-name ).
+    ENDLOOP.
 
   ENDMETHOD.
 
@@ -1972,6 +2017,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         li_online ?= li_repo.
         ls_repo-url    = li_online->get_url( ).
         ls_repo-branch = li_online->get_selected_branch( ).
+        ls_repo-branch_display = branch_display( ls_repo-branch ).
+        ls_repo-branch_link = branch_link( iv_url = ls_repo-url iv_branch = ls_repo-branch ).
       ENDIF.
 
       INSERT ls_repo INTO TABLE rt_repos.
@@ -1997,6 +2044,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       DATA(li_online) = CAST zif_abapgit_repo_online( li_repo ).
       rs_status-url           = li_online->get_url( ).
       rs_status-branch        = li_online->get_selected_branch( ).
+      rs_status-branch_display = branch_display( rs_status-branch ).
+      rs_status-branch_link = branch_link( iv_url = rs_status-url iv_branch = rs_status-branch ).
       rs_status-remote_commit = li_online->get_current_remote( ).
     ENDIF.
     rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).

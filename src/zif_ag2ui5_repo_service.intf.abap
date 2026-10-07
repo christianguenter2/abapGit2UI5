@@ -49,6 +49,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       package         TYPE string,
       url             TYPE string,
       branch          TYPE string,
+      branch_display  TYPE string,
+      branch_link     TYPE string,
       deserialized_at TYPE string,
       offline         TYPE abap_bool,
     END OF ty_repo,
@@ -91,6 +93,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       package       TYPE string,
       url           TYPE string,
       branch        TYPE string,
+      branch_display TYPE string,
+      branch_link    TYPE string,
       remote_commit TYPE string,
       offline       TYPE abap_bool,
       rows          TYPE ty_status_rows,
@@ -336,6 +340,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       current TYPE abap_bool,
       "! The commit the branch points to
       sha1    TYPE string,
+      link TYPE string,
     END OF ty_branch,
     ty_branches TYPE STANDARD TABLE OF ty_branch WITH EMPTY KEY.
 

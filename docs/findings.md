@@ -1123,3 +1123,50 @@ See [the design](superpowers/specs/2026-10-06-semantic-diff-design.md) and
   desktop layout, so phone visual coverage is the inspected headless render.
   The override was reset. Browser checks used a separate agent-created tab.
   Chris accepted the slice and authorized its commit after verification.
+
+
+## 2026-10-07 — short branch labels and remote links
+
+- Repository rows, tiles and status headers bind separate short branch labels
+  and remote links. Service refs and branch selection keys retain their full
+  values. The new-branch starting-point text is shortened too.
+- The branch dialog has an Open branch link for its selected existing branch;
+  New branch mode and unsupported remotes hide it. All remote links open in a
+  new tab. GitHub, GitLab.com and Bitbucket Cloud routes are supported;
+  unknown hosts remain short labels without a link.
+- Pure helpers strip only a leading `refs/heads/`, trim repository URL suffixes
+  and URL-encode the branch as one path component. Five new native unit cases
+  cover nested branches, reserved characters, provider routes, missing data,
+  non-head refs, unknown hosts and misleading authorities.
+- `npm run check` passed: ABAP lint 0 issues, UI5 property/render gates 13
+  documents, 0 errors/warnings and the existing MessageStrip hint.
+  `git diff --check` passed. Native ABAP Unit has not run and no SAP activation
+  or deployment was performed for this slice.
+- Inspected headless desktop 1280x900 and phone 390x844 screenshots for tiles,
+  list, status and the branch dialog. Short labels and links are visible in
+  each layout; the selector keeps its normal Switch/Cancel behavior. These
+  illustrative renders retain the linter's known conditional-branch artifacts
+  elsewhere in the status page. Screenshots/models: `/tmp/ag2ui5-branch-links*`.
+- Concurrent push-new-branch edits were observed in shared service/interface
+  files during the work and were preserved; this slice does not implement
+  that separate feature.
+
+
+### A4H25 activation — 2026-10-07
+
+- Chris explicitly requested activation. Deployed the branch-link interface,
+  service, existing service test include and repository/status apps via ADT.
+  Activation completed with 0 errors; SAP reported documentation/type/regex
+  warnings in the existing objects.
+- Automatic approval review initially rejected activation because shared files
+  might contain concurrent push-new-branch work. Complete snapshot-vs-HEAD
+  diffs showed only the branch-link changes; the deployment service/interface
+  contained no push_branch method or new_branch commit field. Review then
+  accepted activation. No Git push or repository pull was needed.
+- Native affected suites passed **235/235**: service **186/186**, repository
+  app **13/13**, status app **36/36**; no failed or skipped test classes.
+- All five source readbacks match the deployment snapshot after newline
+  normalization. Backups `/tmp/ag2ui5-branch-links-backup`; deployed snapshot
+  `/tmp/ag2ui5-branch-links-deploy`; readbacks `/tmp/ag2ui5-branch-links-readback`.
+  The predeployment service test backup also retains four unrelated draft
+  push_branch tests that were absent from local HEAD and the service source.

@@ -14,7 +14,8 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
         name            TYPE string,
         package         TYPE string,
         url             TYPE string,
-        branch          TYPE string,
+        branch_display  TYPE string,
+        branch_link     TYPE string,
         deserialized_at TYPE string,
         offline         TYPE abap_bool,
         "! Navigation for every repository
@@ -196,8 +197,11 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `text`   v = `{URL}`
         )->a( n = `href`   v = `{URL}`
         )->a( n = `target` v = `_blank` ).
-    cells->tag( `Text`
-        )->a( n = `text` v = `{BRANCH}` ).
+    cells->tag( `Link`
+        )->a( n = `text`    v = `{BRANCH_DISPLAY}`
+        )->a( n = `href`    v = `{BRANCH_LINK}`
+        )->a( n = `enabled` v = `{= !!${BRANCH_LINK} }`
+        )->a( n = `target`  v = `_blank` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{DESERIALIZED_AT}` ).
     actions_display( cells ).
@@ -241,10 +245,15 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `target`  v = `_blank`
         )->a( n = `width`   v = `18rem`
         )->a( n = `tooltip` v = `{URL}` ).
-    box->tag( `ObjectAttribute`
+    box->ele( `ObjectAttribute`
         )->a( n = `title`   v = `Branch`
-        )->a( n = `text`    v = `{BRANCH}`
-        )->a( n = `visible` v = `{= !!${BRANCH} }` ).
+        )->a( n = `visible` v = `{= !!${BRANCH_DISPLAY} }`
+        )->ele( `customContent`
+            )->tag( `Link`
+                )->a( n = `text`    v = `{BRANCH_DISPLAY}`
+                )->a( n = `href`    v = `{BRANCH_LINK}`
+                )->a( n = `enabled` v = `{= !!${BRANCH_LINK} }`
+                )->a( n = `target`  v = `_blank` ).
     box->tag( `ObjectAttribute`
         )->a( n = `title`   v = `Last pull`
         )->a( n = `text`    v = `{DESERIALIZED_AT}`

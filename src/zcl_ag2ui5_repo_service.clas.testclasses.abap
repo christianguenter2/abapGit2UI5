@@ -2664,3 +2664,60 @@ CLASS ltcl_semantic_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = ls_result-changes[ 1 ]-name exp = `RUN` ).
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_branch_links DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS display_refs FOR TESTING.
+    METHODS github_nested_branch FOR TESTING.
+    METHODS provider_urls FOR TESTING.
+    METHODS reserved_characters FOR TESTING.
+    METHODS unavailable_links FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_branch_links IMPLEMENTATION.
+  METHOD display_refs.
+    cl_abap_unit_assert=>assert_equals( exp = `feature/test1234`
+      act = zcl_ag2ui5_repo_service=>branch_display( `refs/heads/feature/test1234` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `main`
+      act = zcl_ag2ui5_repo_service=>branch_display( `main` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `refs/tags/v1`
+      act = zcl_ag2ui5_repo_service=>branch_display( `refs/tags/v1` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_display( `` ) ).
+  ENDMETHOD.
+
+  METHOD github_nested_branch.
+    cl_abap_unit_assert=>assert_equals( exp = `https://github.com/owner/repo/tree/feature%2ftest1234`
+      act = to_lower( zcl_ag2ui5_repo_service=>branch_link(
+        iv_url = `https://github.com/owner/repo.git/` iv_branch = `refs/heads/feature/test1234` ) ) ).
+  ENDMETHOD.
+
+  METHOD provider_urls.
+    cl_abap_unit_assert=>assert_equals( exp = `https://gitlab.com/group/sub/repo/-/tree/main`
+      act = zcl_ag2ui5_repo_service=>branch_link(
+        iv_url = `https://gitlab.com/group/sub/repo.git` iv_branch = `refs/heads/main` ) ).
+    cl_abap_unit_assert=>assert_equals( exp = `https://bitbucket.org/owner/repo/src/main/`
+      act = zcl_ag2ui5_repo_service=>branch_link(
+        iv_url = `https://bitbucket.org/owner/repo` iv_branch = `refs/heads/main` ) ).
+  ENDMETHOD.
+
+  METHOD reserved_characters.
+    cl_abap_unit_assert=>assert_equals( exp = `https://github.com/owner/repo/tree/feature%2fa%23b%25c`
+      act = to_lower( zcl_ag2ui5_repo_service=>branch_link(
+        iv_url = `https://github.com/owner/repo` iv_branch = `refs/heads/feature/a#b%c` ) ) ).
+  ENDMETHOD.
+
+  METHOD unavailable_links.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `` iv_branch = `refs/heads/main` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `https://github.com/owner/repo` iv_branch = `` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `https://github.com/owner/repo` iv_branch = `refs/tags/v1` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `javascript:alert(1)` iv_branch = `refs/heads/main` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `https://github.com.evil.example/owner/repo` iv_branch = `refs/heads/main` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `https://git.example.com/owner/repo` iv_branch = `refs/heads/main` ) ).
+  ENDMETHOD.
+ENDCLASS.

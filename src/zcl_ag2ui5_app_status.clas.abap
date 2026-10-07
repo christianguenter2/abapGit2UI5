@@ -12,7 +12,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         name          TYPE string,
         package       TYPE string,
         url           TYPE string,
-        branch        TYPE string,
+        branch_display TYPE string,
+        branch_link    TYPE string,
         remote_commit TYPE string,
       END OF ty_head.
 
@@ -97,11 +98,13 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         default TYPE abap_bool,
         current TYPE abap_bool,
         sha1    TYPE string,
+        link    TYPE string,
       END OF ty_branch_row,
       ty_branch_rows TYPE STANDARD TABLE OF ty_branch_row WITH EMPTY KEY.
     "! The branch dialog: the remote's branches, and the one picked
     DATA mt_branches     TYPE ty_branch_rows.
     DATA mv_branch       TYPE string.
+    DATA mv_branch_link  TYPE string.
     "! New branch... is picked: the name field shows, the button creates
     DATA mv_new_mode     TYPE abap_bool.
     DATA mv_new_name     TYPE string.
@@ -377,10 +380,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `text`   v = client->_bind( ms_head-url )
                 )->a( n = `href`   v = client->_bind( ms_head-url )
                 )->a( n = `target` v = `_blank` ).
-    attributes->tag( `ObjectAttribute`
+    attributes->ele( `ObjectAttribute`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Branch`
-        )->a( n = `text`  v = client->_bind( ms_head-branch ) ).
+        )->ele( `customContent`
+            )->tag( `Link`
+                )->a( n = `text`   v = client->_bind( ms_head-branch_display )
+                )->a( n = `href`   v = client->_bind( ms_head-branch_link )
+                )->a( n = `enabled` b = xsdbool( ms_head-branch_link IS NOT INITIAL )
+                )->a( n = `target` v = `_blank` ).
     attributes->tag( `ObjectAttribute`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Remote commit`
@@ -769,6 +777,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             )->tag( n = `Item` ns = `core`
                 )->a( n = `key`  v = `{NAME}`
                 )->a( n = `text` v = `{TEXT}` ).
+    box->tag( `Link`
+        )->a( n = `text`    v = `Open branch`
+        )->a( n = `href`    v = client->_bind( mv_branch_link )
+        )->a( n = `target`  v = `_blank`
+        )->a( n = `visible` v = |\{= !!$\{{ client->_bind( val = mv_branch_link path = abap_true ) }\} \}| ).
     box->tag( `Text`
         )->a( n = `text`    v = client->_bind( mv_start_text )
         )->a( n = `visible` v = client->_bind( mv_new_mode )
@@ -816,14 +829,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                       text    = ls_branch-display && COND #( WHEN ls_branch-default = abap_true THEN ` (default)` )
                       default = ls_branch-default
                       current = ls_branch-current
-                      sha1    = ls_branch-sha1 )
+                      sha1    = ls_branch-sha1
+                      link    = ls_branch-link )
         INTO TABLE mt_branches.
       IF ls_branch-current = abap_true.
         mv_branch = ls_branch-name.
       ENDIF.
     ENDLOOP.
     INSERT VALUE #( name = c_new_branch text = `New branch...` ) INTO TABLE mt_branches.
-    mv_start_text = |Starts from: { ms_head-branch } at { ms_head-remote_commit }|.
+    mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
     CLEAR mv_new_name.
     branch_buttons( ).
     popup_branches_display( ).
@@ -875,6 +889,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     READ TABLE mt_branches INTO DATA(ls_picked) WITH KEY name = mv_branch.
     mv_can_delete = xsdbool( sy-subrc = 0 AND mv_new_mode = abap_false
                              AND ls_picked-default = abap_false AND ls_picked-current = abap_false ).
+    mv_branch_link = ls_picked-link.
 
   ENDMETHOD.
 
