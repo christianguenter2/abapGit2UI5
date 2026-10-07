@@ -120,6 +120,10 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
         iv_index TYPE i.
     METHODS summary_build.
     METHODS view_display.
+    "! The line table of a panel, for the current layout
+    METHODS lines_display
+      IMPORTING
+        io_content TYPE REF TO z2ui5_cl_ui5_view_builder.
     CLASS-METHODS state_text
       IMPORTING
         iv_lstate      TYPE string
@@ -415,12 +419,177 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         )->ele( n = `View` ns = `mvc`
             )->a( n = `xmlns`        v = `sap.m`
             )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
-            )->a( n = `xmlns:core`   v = `sap.ui.core`
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
-    view->ele( `Page`
-        )->a( n = `title` v = client->_bind( ms_head-title ) ).
+
+    " the header is an overflow toolbar: on a narrow screen the controls
+    " move into its menu, the back button and the title stay
+    DATA(page) = view->ele( `Page` ).
+    DATA(header) = page->ele( `customHeader`
+        )->ele( `OverflowToolbar` ).
+    header->ele( `Button`
+        )->a( n = `icon`    v = `sap-icon://nav-back`
+        )->a( n = `tooltip` v = `Back`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `press`   v = client->_event( `BACK` )
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority` v = `NeverOverflow` ).
+    header->ele( `Title`
+        )->a( n = `text`  v = client->_bind( ms_head-title )
+        )->a( n = `level` v = `H2`
+        )->ele( `layoutData`
+            )->tag( `OverflowToolbarLayoutData`
+                )->a( n = `priority`   v = `NeverOverflow`
+                )->a( n = `shrinkable` v = `true` ).
+    header->tag( `ToolbarSpacer` ).
+    header->tag( `Text`
+        )->a( n = `text` v = client->_bind( ms_head-summary ) ).
+    header->ele( `SegmentedButton`
+        )->a( n = `selectedKey`     v = client->_bind( mv_layout )
+        )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `INLINE`
+                )->a( n = `text` v = `Inline`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key`  v = `SBS`
+                )->a( n = `text` v = `Side by side` ).
+    header->tag( `Button`
+        )->a( n = `text`  v = `Expand all`
+        )->a( n = `icon`  v = `sap-icon://expand-group`
+        )->a( n = `press` v = client->_event( `EXPAND_ALL` ) ).
+    header->tag( `Button`
+        )->a( n = `text`  v = `Collapse all`
+        )->a( n = `icon`  v = `sap-icon://collapse-group`
+        )->a( n = `press` v = client->_event( `COLLAPSE_ALL` ) ).
+
+    " one panel per file; each file row carries its own line rows
+    DATA(panel) = page->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `items` v = client->_bind( mt_files )
+            )->a( n = `class` v = `sapUiSmallMargin`
+            )->ele( `items`
+                )->ele( `Panel`
+                    )->a( n = `expandable` v = `true`
+                    )->a( n = `expanded`   v = `{EXPANDED}`
+                    )->a( n = `width`      v = `auto`
+                    )->a( n = `class`      v = `sapUiSmallMarginBottom`
+                    )->a( n = `expand`     v = client->_event( val   = `PANEL`
+                                                               t_arg = VALUE #( ( `${INDEX}` ) ( `${$parameters>/expand}` ) ) ) ).
+    DATA(panel_header) = panel->ele( `headerToolbar`
+        )->ele( `OverflowToolbar` ).
+    panel_header->tag( `Title`
+        )->a( n = `text` v = `{FILE}` ).
+    panel_header->tag( `Link`
+        )->a( n = `text`    v = `{OBJECT_TEXT}`
+        )->a( n = `href`    v = `{OBJECT_LINK}`
+        )->a( n = `visible` v = `{= !!${OBJECT_LINK} }` ).
+    panel_header->tag( `Text`
+        )->a( n = `text`    v = `{OBJECT_TEXT}`
+        )->a( n = `visible` v = `{= !${OBJECT_LINK} && !!${OBJECT_TEXT} }` ).
+    panel_header->tag( `Text`
+        )->a( n = `text` v = `{STATE}` ).
+    panel_header->tag( `ToolbarSpacer` ).
+    panel_header->tag( `Text`
+        )->a( n = `text` v = `{COUNTS}` ).
+    panel_header->tag( `Button`
+        )->a( n = `text`    v = `Open`
+        )->a( n = `type`    v = `Transparent`
+        )->a( n = `tooltip` v = `The whole file, with its method summary`
+        )->a( n = `press`   v = client->_event( val = `OPEN` arg = `${INDEX}` ) ).
+    DATA(content) = panel->ele( `content` ).
+    content->tag( `Text`
+        )->a( n = `text`    v = `{NOTE}`
+        )->a( n = `visible` v = `{= !!${NOTE} }` ).
+    lines_display( content ).
+
     client->view_display( view->stringify( ) ).
+
+  ENDMETHOD.
+
+  METHOD lines_display.
+
+    IF mv_layout = `SBS`.
+      " on narrow screens Git pops in below the system
+      DATA(sbs) = io_content->ele( `Table`
+          )->a( n = `items`   v = `{SBS}`
+          )->a( n = `visible` v = `{= ${SBS}.length > 0 }` ).
+      DATA(sbs_columns) = sbs->ele( `columns` ).
+      sbs_columns->ele( `Column`
+          )->a( n = `width` v = `4rem`
+          )->tag( `Text`
+              )->a( n = `text` v = `System` ).
+      sbs_columns->ele( `Column`
+          )->a( n = `width` v = `2rem` ).
+      sbs_columns->ele( `Column`
+          )->tag( `Text`
+              )->a( n = `text` v = `Code` ).
+      sbs_columns->ele( `Column`
+          )->a( n = `width`          v = `4rem`
+          )->a( n = `minScreenWidth` v = `Tablet`
+          )->a( n = `demandPopin`    v = `true`
+          )->tag( `Text`
+              )->a( n = `text` v = client->_bind( ms_head-remote_label ) ).
+      sbs_columns->ele( `Column`
+          )->a( n = `width`          v = `2rem`
+          )->a( n = `minScreenWidth` v = `Tablet`
+          )->a( n = `demandPopin`    v = `true` ).
+      sbs_columns->ele( `Column`
+          )->a( n = `minScreenWidth` v = `Tablet`
+          )->a( n = `demandPopin`    v = `true`
+          )->tag( `Text`
+              )->a( n = `text` v = `Code` ).
+      DATA(sbs_cells) = sbs->ele( `items`
+          )->ele( `ColumnListItem`
+              )->a( n = `highlight` v = `{HIGHLIGHT}`
+              )->ele( `cells` ).
+      sbs_cells->tag( `Text`
+          )->a( n = `text` v = `{SYSTEM_NUM}` ).
+      sbs_cells->tag( `ObjectStatus`
+          )->a( n = `text`  v = `{SYSTEM_MARKER}`
+          )->a( n = `state` v = `{SYSTEM_STATE}` ).
+      sbs_cells->tag( `FormattedText`
+          )->a( n = `htmlText` v = `{SYSTEM_HTML}` ).
+      sbs_cells->tag( `Text`
+          )->a( n = `text` v = `{GIT_NUM}` ).
+      sbs_cells->tag( `ObjectStatus`
+          )->a( n = `text`  v = `{GIT_MARKER}`
+          )->a( n = `state` v = `{GIT_STATE}` ).
+      sbs_cells->tag( `FormattedText`
+          )->a( n = `htmlText` v = `{GIT_HTML}` ).
+      RETURN.
+    ENDIF.
+
+    DATA(inline) = io_content->ele( `Table`
+        )->a( n = `items`   v = `{LINES}`
+        )->a( n = `visible` v = `{= ${LINES}.length > 0 }` ).
+    DATA(columns) = inline->ele( `columns` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `5rem`
+        )->tag( `Text`
+            )->a( n = `text` v = client->_bind( ms_head-remote_label ) ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `5rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Local` ).
+    columns->ele( `Column`
+        )->a( n = `width` v = `2rem` ).
+    columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Code` ).
+    DATA(cells) = inline->ele( `items`
+        )->ele( `ColumnListItem`
+            )->a( n = `highlight` v = `{HIGHLIGHT}`
+            )->ele( `cells` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{REMOTE_NUM}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{LOCAL_NUM}` ).
+    cells->tag( `Text`
+        )->a( n = `text` v = `{MARKER}` ).
+    cells->tag( `FormattedText`
+        )->a( n = `htmlText` v = `{CODE_HTML}` ).
 
   ENDMETHOD.
 

@@ -148,6 +148,8 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS summary_counts_loaded FOR TESTING.
     METHODS state_texts FOR TESTING.
     METHODS back_leaves FOR TESTING.
+    METHODS view_panels_from_template FOR TESTING.
+    METHODS view_side_by_side FOR TESTING.
 ENDCLASS.
 
 
@@ -283,6 +285,27 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
                                         exp = `both modified` ).
     cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_app_repo_diff=>state_text( iv_lstate = `D` iv_rstate = `M` )
                                         exp = `local deleted, remote modified` ).
+  ENDMETHOD.
+
+  METHOD view_panels_from_template.
+    app( files( 2 ) ).
+    DATA(lv_view) = mo_client->mv_view.
+    FIND REGEX `<customHeader>\s*<OverflowToolbar[^>]*>\s*<Button[^>]*sap-icon://nav-back` IN lv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
+    FIND REGEX `<Panel[^>]*expanded="\{EXPANDED\}"` IN lv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
+    FIND REGEX `<Table[^>]*items="\{LINES\}"` IN lv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_view ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_view exp = `*items="{SBS}"*` ).
+  ENDMETHOD.
+
+  METHOD view_side_by_side.
+    app( files( 2 ) ).
+    mo_app->mv_layout = `SBS`.
+    fire( `LAYOUT` ).
+    FIND REGEX `<Table[^>]*items="\{SBS\}"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*items="{LINES}"*` ).
   ENDMETHOD.
 
   METHOD back_leaves.
