@@ -15,6 +15,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_left_data TYPE string.
     DATA mv_popup TYPE string.
     DATA mv_popup_closed TYPE abap_bool.
+    DATA mo_called TYPE REF TO z2ui5_if_app.
+    DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
@@ -39,6 +41,12 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~popup_destroy.
     mv_popup_closed = abap_true.
   ENDMETHOD.
+  METHOD z2ui5_if_client~nav_app_call.
+    mo_called = app.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~get.
+    result = ms_get.
+  ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_leave.
     mv_left = abap_true.
     mo_left_to = app.
@@ -60,6 +68,8 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
     DATA ms_result TYPE zif_ag2ui5_repo_service=>ty_new_repo_result.
     DATA mv_fail TYPE abap_bool.
+    "! create_repo raises this text instead of "Not authorized" when set
+    DATA mv_fail_text TYPE string.
     DATA ms_received TYPE zif_ag2ui5_repo_service=>ty_new_repo.
     DATA ms_package_result TYPE zif_ag2ui5_repo_service=>ty_package_result.
     DATA ms_package_received TYPE zif_ag2ui5_repo_service=>ty_new_package.
@@ -83,7 +93,7 @@ CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~create_repo.
     ms_received = is_repo.
     IF mv_fail = abap_true.
-      zcx_abapgit_exception=>raise( `Not authorized` ).
+      zcx_abapgit_exception=>raise( COND #( WHEN mv_fail_text IS NOT INITIAL THEN mv_fail_text ELSE `Not authorized` ) ).
     ENDIF.
     rs_result = ms_result.
   ENDMETHOD.
@@ -116,6 +126,8 @@ CLASS ltcl_app DEFINITION FINAL FOR TESTING
     METHODS package_created_keeps_form FOR TESTING.
     METHODS package_errors_and_retry FOR TESTING.
     METHODS package_exception_keeps_inputs FOR TESTING.
+    METHODS login_error_opens_login FOR TESTING.
+    METHODS logged_in_keeps_form FOR TESTING.
 ENDCLASS.
 
 
@@ -278,4 +290,21 @@ CLASS ltcl_app IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
+  METHOD login_error_opens_login.
+    " a private repository and no credentials from the user exit
+    mo_service->mv_fail = abap_true.
+    mo_service->mv_fail_text = `Unauthorized access. Check your credentials`.
+    fire( `CREATE` ).
+    cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mo_called ) ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_message ).
+  ENDMETHOD.
+
+  METHOD logged_in_keeps_form.
+    mo_client->ms_get-r_event_data = NEW string( `LOGGED_IN:github.com` ).
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_repo-url exp = `https://github.com/abapGit-tests/DTEL.git` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
+                                        exp = `Logged in to github.com - repeat the action if it did not run` ).
+  ENDMETHOD.
 ENDCLASS.

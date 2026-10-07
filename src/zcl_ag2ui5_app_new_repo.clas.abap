@@ -71,6 +71,16 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
 
     me->client = client.
     IF client->check_on_navigated( ).
+      " back from the login page: the form is unchanged, Create runs again
+      DATA(lr_returned) = client->get( )-r_event_data.
+      IF lr_returned IS BOUND.
+        ASSIGN lr_returned->* TO FIELD-SYMBOL(<lv_returned>).
+        DATA(lv_returned) = CONV string( <lv_returned> ).
+        IF lv_returned CP `LOGGED_IN:*`.
+          client->message_toast_display(
+            |Logged in to { substring( val = lv_returned off = 10 ) } - repeat the action if it did not run| ).
+        ENDIF.
+      ENDIF.
       view_display( ).
     ELSEIF client->check_on_event( ).
       on_event( ).
@@ -102,6 +112,11 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
     TRY.
         DATA(ls_result) = service( )->create_repo( ms_repo ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        IF zcl_ag2ui5_repo_service=>login_required( lx_error ) = abap_true.
+          " a private repository, and abapGit's user exit has no credentials
+          client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_url = ms_repo-url ) ).
+          RETURN.
+        ENDIF.
         mv_message = lx_error->get_text( ).
         RETURN.
     ENDTRY.
