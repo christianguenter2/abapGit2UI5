@@ -109,6 +109,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       branch_display TYPE string,
       branch_link    TYPE string,
       remote_commit TYPE string,
+      labels        TYPE ty_labels,
       offline       TYPE abap_bool,
       rows          TYPE ty_status_rows,
     END OF ty_status.

@@ -425,6 +425,7 @@ CLASS ltcl_favorites DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION S
     METHODS labels_and_overflow FOR TESTING.
     METHODS labels_popover FOR TESTING.
     METHODS label_click_filter FOR TESTING.
+    METHODS header_label_return FOR TESTING.
     METHODS start_reads_filter FOR TESTING.
     METHODS filter_defaults_to_all FOR TESTING.
     METHODS filter_event_saves FOR TESTING.
@@ -527,6 +528,16 @@ CLASS ltcl_favorites IMPLEMENTATION.
     mo_app->apply_search( ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_repos ).
   ENDMETHOD.
+  METHOD header_label_return.
+    mo_service->mt_repos[ 1 ]-labels = VALUE #( ( text = `ui5` color = `purple` ) ).
+    mo_client->ms_get-r_event_data = NEW string( `LABEL_FILTER:ui5` ).
+    mo_client->mv_start = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_search exp = `ui5` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_repos ) exp = 1 ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_toast ).
+  ENDMETHOD.
+
   METHOD label_click_filter.
     mo_service->mt_repos[ 1 ]-labels = VALUE #( ( text = `core` color = `blue` ) ).
     mo_service->mt_repos[ 2 ]-labels = VALUE #( ( text = `core-tools` color = `teal` ) ).

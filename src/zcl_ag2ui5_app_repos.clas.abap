@@ -8,6 +8,8 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
   PUBLIC SECTION.
     INTERFACES z2ui5_if_app.
 
+    CLASS-METHODS labels_css RETURNING VALUE(rv_css) TYPE string.
+
     TYPES:
       BEGIN OF ty_row,
         key             TYPE string,
@@ -71,8 +73,7 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     METHODS labels_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
     METHODS label_items IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder iv_wrapping TYPE abap_bool DEFAULT abap_false.
     METHODS labels_open.
-    METHODS label_filter.
-    CLASS-METHODS labels_css RETURNING VALUE(rv_css) TYPE string.
+    METHODS label_filter IMPORTING iv_label TYPE string.
     CLASS-METHODS filtered_repos
       IMPORTING it_rows TYPE ty_rows iv_search TYPE string iv_favorites_only TYPE abap_bool
                 iv_label TYPE string OPTIONAL
@@ -118,7 +119,12 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
       DATA(lr_message) = client->get( )-r_event_data.
       IF lr_message IS BOUND.
         ASSIGN lr_message->* TO FIELD-SYMBOL(<lv_message>).
-        client->message_toast_display( CONV #( <lv_message> ) ).
+        DATA(lv_message) = CONV string( <lv_message> ).
+        IF lv_message CP `LABEL_FILTER:*`.
+          label_filter( substring( val = lv_message off = 13 ) ).
+        ELSE.
+          client->message_toast_display( lv_message ).
+        ENDIF.
       ENDIF.
       " start typing right away: the cursor behind what is in the field,
       " scheduled for after the response, when the view is rendered
@@ -351,7 +357,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         CLEAR mv_label_filter.
         apply_search( ).
       WHEN `LABEL_FILTER`.
-        label_filter( ).
+        label_filter( client->get_event_arg( ) ).
       WHEN `LABELS`.
         labels_open( ).
       WHEN `LABELS_CLOSE`.
@@ -490,7 +496,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
   METHOD label_filter.
 
-    DATA(lv_label) = client->get_event_arg( ).
+    DATA(lv_label) = iv_label.
     IF lv_label IS INITIAL.
       RETURN.
     ENDIF.

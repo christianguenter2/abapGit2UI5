@@ -58,6 +58,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_error TYPE string.
     DATA mv_toast TYPE string.
     DATA mv_left TYPE abap_bool.
+    DATA mv_leave_data TYPE string.
     DATA mv_destroyed TYPE abap_bool.
     DATA mv_follow TYPE string.
     DATA mt_args TYPE string_table.
@@ -104,6 +105,9 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_leave.
     mv_left = abap_true.
+    IF r_data IS SUPPLIED.
+      mv_leave_data = r_data.
+    ENDIF.
   ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_call.
     mo_called = app.
@@ -383,6 +387,7 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS fire IMPORTING iv_event TYPE string.
     METHODS archive RETURNING VALUE(rv_zip) TYPE xstring RAISING zcx_abapgit_exception.
     METHODS start_loads_offline FOR TESTING.
+    METHODS header_labels FOR TESTING.
     METHODS offline_controls FOR TESTING.
     METHODS online_controls FOR TESTING.
     METHODS clean_online_can_manage_rules FOR TESTING.
@@ -433,6 +438,25 @@ CLASS ltcl_offline IMPLEMENTATION.
     lo_zip->add( name = `.abapgit.xml` content = zcl_abapgit_dot_abapgit=>build_default( )->serialize( ) ).
     lo_zip->add( name = `src/ztest.bin` content = CONV xstring( '00FF0C80' ) ).
     rv_zip = lo_zip->save( ).
+  ENDMETHOD.
+
+  METHOD header_labels.
+    mo_service->ms_status-labels = VALUE #( ( text = `ui5` color = `purple` ) ).
+    mo_client->mv_init = abap_true.
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-labels exp = mo_service->ms_status-labels ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*ag2ui5RepoTags*` ).
+    mo_client->mv_init = abap_false.
+    mo_client->mv_navigated = abap_false.
+    mo_client->mt_args = VALUE #( ( `unknown` ) ).
+    fire( `HEADER_LABEL` ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_left ).
+    mo_client->mt_args = VALUE #( ( `ui5` ) ).
+    mo_app->mv_zip = '00FF'.
+    fire( `HEADER_LABEL` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_leave_data exp = `LABEL_FILTER:ui5` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_zip ).
   ENDMETHOD.
 
   METHOD start_loads_offline.

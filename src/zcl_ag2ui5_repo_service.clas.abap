@@ -2301,6 +2301,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_status-name          = li_repo->get_name( ).
     rs_status-package       = li_repo->get_package( ).
     rs_status-offline       = li_repo->is_offline( ).
+    DATA(ls_settings) = zcl_abapgit_persist_factory=>get_settings( )->read( )->get_user_settings( ).
+    rs_status-labels = repo_labels( iv_labels = li_repo->ms_data-local_settings-labels
+                                   iv_colors = ls_settings-label_colors ).
     IF rs_status-offline = abap_false.
       DATA(li_online) = CAST zif_abapgit_repo_online( li_repo ).
       rs_status-url           = li_online->get_url( ).

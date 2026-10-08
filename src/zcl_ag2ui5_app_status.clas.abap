@@ -15,6 +15,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         branch_display TYPE string,
         branch_link    TYPE string,
         remote_commit TYPE string,
+        labels        TYPE zif_ag2ui5_repo_service=>ty_labels,
       END OF ty_head.
 
     TYPES:
@@ -372,6 +373,26 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `Remote commit`
         )->a( n = `text`  v = client->_bind( ms_head-remote_commit ) ).
+
+    content->tag( n = `HTML` ns = `core`
+        )->a( n = `content` v = zcl_ag2ui5_app_repos=>labels_css( ) ).
+    DATA(tags) = content->ele( `FlexBox`
+        )->a( n = `items` v = client->_bind( ms_head-labels )
+        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = ms_head-labels path = abap_true ) }\}.length > 0 \}|
+        )->a( n = `wrap` v = `Wrap`
+        )->a( n = `class` v = `ag2ui5RepoTags ag2ui5RepoLabelsAll sapUiMediumMarginBegin sapUiSmallMarginBottom` ).
+    tags->ele( `items`
+        )->ele( `Link`
+            )->a( n = `text` v = `{TEXT}`
+            )->a( n = `tooltip` v = `{TEXT}`
+            )->a( n = `wrapping` v = `true`
+            )->a( n = `press` v = client->_event( val = `HEADER_LABEL` arg = `${TEXT}` )
+            )->a( n = `class` v = `ag2ui5RepoTag`
+            )->ele( `customData`
+                )->tag( n = `CustomData` ns = `core`
+                    )->a( n = `key` v = `tag-color`
+                    )->a( n = `value` v = `{COLOR}`
+                    )->a( n = `writeToDom` v = `true` ).
 
     DATA(table) = content->ele( `Table`
         )->a( n = `items`               v = client->_bind( mt_rows )
@@ -1069,6 +1090,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         CLEAR: mv_zip, mv_upload, mv_upload_path, mv_files_open, mt_object_files, mv_files_title,
           mt_object_summary, mt_semantic, mv_object_summary_note.
         client->nav_app_leave( ).
+      WHEN `HEADER_LABEL`.
+        DATA(lv_label) = client->get_event_arg( ).
+        IF lv_label IS NOT INITIAL AND line_exists( ms_head-labels[ text = lv_label ] ).
+          DATA(lv_label_event) = |LABEL_FILTER:{ lv_label }|.
+          CLEAR: mv_zip, mv_upload, mv_upload_path.
+          client->nav_app_leave( r_data = lv_label_event ).
+        ENDIF.
       WHEN `REFRESH`.
         load_status( ).
       WHEN `VIEW`.

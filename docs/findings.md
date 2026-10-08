@@ -1622,3 +1622,23 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   Screenshot: /tmp/ag2ui5-label-click-live.jpg. Popover clicks use the same
   renderer/event but were not separately exercised live in this follow-up.
   Chris approved committing and pushing the complete label slice.
+
+
+## Repository header labels (2026-10-08)
+
+- Status shows all local labels below package/URL/commit metadata, using the
+  overview's shared scoped palette CSS. Labels wrap and the row hides when
+  empty. The service supplies plain labels for online and offline repositories.
+- Native Links return to the overview with an exact label filter, validated
+  against freshly loaded rows. Label navigation clears uploaded ZIP bytes;
+  invalid labels do not leave. Plain navigation event data matches the
+  framework contract. No label or repository settings are written.
+- Deployed through ADT; all six source readbacks match. Native service 222/222,
+  Status 63/63 and overview 33/33 pass. npm run check passes (0 errors/warnings,
+  one existing Status hint). Tests cover DTO/header mapping, invalid labels,
+  ZIP clearing and returning to the exact-filtered overview.
+- Chrome verified maintained abap2UI5/abapGit pills and a header click returning
+  to exactly two abap2UI5 repositories. At 390px, document width is 390px and
+  labels stay in bounds. Viewport reset and separate test tab closed. No
+  fixtures changed. Desktop proof: /tmp/ag2ui5-header-labels-live.jpg;
+  backups: /tmp/ag2ui5-header-labels-backup. Chris approved commit and push.
