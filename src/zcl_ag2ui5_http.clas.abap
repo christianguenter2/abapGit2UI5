@@ -40,12 +40,18 @@ ENDCLASS.
 CLASS zcl_ag2ui5_http IMPLEMENTATION.
 
   METHOD start_url.
+    DATA: language TYPE string.
 
     DATA(lv_location) = iv_location.
     IF lv_location CP `*/`.
       lv_location = substring( val = lv_location len = strlen( lv_location ) - 1 ).
     ENDIF.
-    rv_url = |{ lv_location }{ zcl_ag2ui5_app_login=>c_node }?sap-client={ iv_client }&sap-language={ iv_language }&app_start=zcl_ag2ui5_app_repos|.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ISOLA_OUTPUT'
+      EXPORTING input  = iv_language
+      IMPORTING output = language.
+
+    rv_url = |{ lv_location }{ zcl_ag2ui5_app_login=>c_node }?sap-client={ iv_client }&sap-language={ language }&app_start=zcl_ag2ui5_app_repos|.
 
   ENDMETHOD.
 
