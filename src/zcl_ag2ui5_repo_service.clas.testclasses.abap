@@ -2322,6 +2322,8 @@ CLASS ltcl_object_status DEFINITION FINAL FOR TESTING
   DURATION SHORT RISK LEVEL HARMLESS.
   PRIVATE SECTION.
     METHODS counts_and_states FOR TESTING.
+    METHODS owner_from_first_file FOR TESTING.
+    METHODS local_only_no_owner FOR TESTING.
     METHODS mixed_states FOR TESTING.
     METHODS repository_files FOR TESTING.
     METHODS distinct_types FOR TESTING.
@@ -2330,6 +2332,20 @@ CLASS ltcl_object_status DEFINITION FINAL FOR TESTING
 ENDCLASS.
 
 CLASS ltcl_object_status IMPLEMENTATION.
+  METHOD owner_from_first_file.
+    " the object takes the owner of its first file that has one, as the Stage page does
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.abap` rstate = `M` changed_by = `` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.xml` rstate = `M` changed_by = `ALICE` )
+      ( obj_type = `CLAS` obj_name = `ZCL_B` filename = `b.abap` rstate = `M` changed_by = `UNKNOWN` ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ obj_name = `ZCL_A` ]-changed_by exp = `ALICE` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_rows[ obj_name = `ZCL_B` ]-changed_by exp = `UNKNOWN` ).
+  ENDMETHOD.
+  METHOD local_only_no_owner.
+    DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.abap` lstate = `M` changed_by = `` ) ) ).
+    cl_abap_unit_assert=>assert_initial( lt_rows[ 1 ]-changed_by ).
+  ENDMETHOD.
   METHOD counts_and_states.
     DATA(lt_rows) = zcl_ag2ui5_repo_service=>object_status_rows( VALUE #(
       ( obj_type = `CLAS` obj_name = `ZCL_A` filename = `a.abap` lstate = `M` changed = abap_true object_link = `adt://A4H/a` )

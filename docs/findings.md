@@ -1540,3 +1540,17 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   0 errors. Live on A4H25 (read only): `$UMLAUT` shows UNKNOWN for its
   remote-changed files; the join was checked on `ZAGMCP_IT_TR_DTEL` in request
   `A4HK900149` (owner DEVELOPER). Chrome: the column shows on the Stage page.
+
+## Changed by in the Objects view (2026-10-08)
+
+- The Status page's Objects view shows **Changed by** per object, using the
+  Stage page's rule: the owner of the object's first transport request; UNKNOWN
+  without one or for files that are no object; blank for local-only changes.
+  The Files view does not show it (decided with Chris).
+- Owner lookup shared: `transport_owners( it_objects )` (one read, range on the
+  object name) serves Stage and Status; `get_status` fills `changed_by` on the
+  rows, `object_status_rows` takes it from the first file that has one.
+- Native suites: service 218/218, status 62/62, stage 39/39; others unchanged.
+  `npm run check` 0 errors. Live (read only) on `$UMLAUT`: UNKNOWN for its
+  remote-changed objects. Chrome: the column shows in Objects view and not in
+  Files view; the overview was restored to Files afterwards.

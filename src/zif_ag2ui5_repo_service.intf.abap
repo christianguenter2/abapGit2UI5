@@ -70,6 +70,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       inactive TYPE abap_bool,
       "! Differs between system and Git, or is inactive
       changed  TYPE abap_bool,
+      "! Who changed the object, see ty_stage_item-changed_by
+      changed_by TYPE string,
     END OF ty_status_row,
     ty_status_rows TYPE STANDARD TABLE OF ty_status_row WITH EMPTY KEY.
 
@@ -82,6 +84,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       rstate      TYPE string,
       inactive    TYPE abap_bool,
       changed     TYPE abap_bool,
+      "! The owner of the object's first file that has one
+      changed_by  TYPE string,
       file_count  TYPE i,
       changed_count TYPE i,
     END OF ty_object_status,

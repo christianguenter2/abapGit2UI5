@@ -102,6 +102,7 @@ the browser session is running that code.
   of a file: both halves of a changed line go together, as in abapGit.
   The **Changed by** column shows who changed a file, as abapGit does: the
   owner of the transport request that contains the object, UNKNOWN without one.
+  The Objects view has the same **Changed by** column per object.
   Staging commits the SAP version: it can also revert a Git-only change,
   restore a remotely deleted file or remove a file that exists only in Git.
   Files changed in Git carry an explicit notice before selection; pulling

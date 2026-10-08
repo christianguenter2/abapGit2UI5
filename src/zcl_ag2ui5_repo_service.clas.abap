@@ -491,10 +491,10 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
-    "! The transport owners of the files that exist in Git too (see changed_by)
+    "! The transport owners of the given objects (obj_type, obj_name), see changed_by
     METHODS transport_owners
       IMPORTING
-        it_items        TYPE zif_ag2ui5_repo_service=>ty_stage_items
+        it_objects       TYPE ty_object_owners
       RETURNING
         VALUE(rt_owners) TYPE ty_object_owners.
 
@@ -1846,9 +1846,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     " only the files that also exist in Git: abapGit looks up only those
     DATA lt_objects TYPE ty_object_owners.
     DATA lr_names TYPE RANGE OF e071-obj_name.
-    LOOP AT it_items INTO DATA(ls_item) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
-      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_objects.
-      INSERT VALUE #( sign = 'I' option = 'EQ' low = CONV e071-obj_name( ls_item-obj_name ) ) INTO TABLE lr_names.
+    lt_objects = it_objects.
+    LOOP AT lt_objects INTO DATA(ls_object).
+      INSERT VALUE #( sign = 'I' option = 'EQ' low = CONV e071-obj_name( ls_object-obj_name ) ) INTO TABLE lr_names.
     ENDLOOP.
     IF lr_names IS NOT INITIAL.
       " one read for all of them, ordered by request: the first row found for
@@ -1884,9 +1884,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_stage-items = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
       is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
     rs_stage-ignore_rules = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( )-ignore.
-    DATA(lt_owners) = transport_owners( rs_stage-items ).
     " as abapGit: every remote-changed file gets a name, UNKNOWN for files that
     " are no object (.abapgit.xml, readme) and for objects without a transport
+    DATA lt_remote_objects TYPE ty_object_owners.
+    LOOP AT rs_stage-items INTO DATA(ls_item) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
+      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_remote_objects.
+    ENDLOOP.
+    DATA(lt_owners) = transport_owners( lt_remote_objects ).
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_item>) WHERE rstate IS NOT INITIAL.
       <ls_item>-changed_by = owner_of( it_owners = lt_owners
                                        iv_obj_type = <ls_item>-obj_type
@@ -2067,6 +2071,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         IF ls_member-inactive = abap_true.
           ls_object-inactive = abap_true.
         ENDIF.
+        IF ls_object-changed_by IS INITIAL.
+          ls_object-changed_by = ls_member-changed_by.
+        ENDIF.
         IF ls_object-object_link IS INITIAL.
           ls_object-object_link = ls_member-object_link.
         ENDIF.
@@ -2224,6 +2231,17 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
                                                    iv_obj_name = <ls_row>-obj_name
                                          CHANGING ct_links = lt_links ).
+    ENDLOOP.
+    " who changed each object, as the Stage page shows it (see changed_by there)
+    DATA lt_status_objects TYPE ty_object_owners.
+    LOOP AT rs_status-rows INTO DATA(ls_status_row) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
+      INSERT VALUE #( obj_type = ls_status_row-obj_type obj_name = ls_status_row-obj_name ) INTO TABLE lt_status_objects.
+    ENDLOOP.
+    DATA(lt_status_owners) = transport_owners( lt_status_objects ).
+    LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_status>) WHERE rstate IS NOT INITIAL.
+      <ls_status>-changed_by = owner_of( it_owners = lt_status_owners
+                                         iv_obj_type = <ls_status>-obj_type
+                                         iv_obj_name = <ls_status>-obj_name ).
     ENDLOOP.
 
   ENDMETHOD.

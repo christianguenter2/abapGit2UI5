@@ -701,6 +701,7 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS defaults_and_saved FOR TESTING.
     METHODS switch_saves FOR TESTING.
     METHODS counts_before_filter FOR TESTING.
+    METHODS changed_by_in_objects_only FOR TESTING.
     METHODS open_all_files FOR TESTING.
     METHODS diff_and_return FOR TESTING.
     METHODS close_clears FOR TESTING.
@@ -902,6 +903,20 @@ CLASS ltcl_overview IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `FILES`
       act = mo_settings->saved( zif_ag2ui5_settings=>c_key-status_overview ) ).
   ENDMETHOD.
+  METHOD changed_by_in_objects_only.
+    " the Objects view shows who changed an object; the Files view does not
+    mo_app->mt_status = VALUE #(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/src/` filename = `a.abap` rstate = `M` changed_by = `ALICE` ) ).
+    mo_app->mv_overview = `OBJECTS`.
+    mo_app->rows_build( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-changed_by exp = `ALICE` ).
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*{CHANGED_BY}*` ).
+    mo_app->mv_overview = `FILES`.
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*{CHANGED_BY}*` ).
+  ENDMETHOD.
+
   METHOD counts_before_filter.
     mo_app->mv_view = `CHANGES`.
     mo_app->rows_build( ).

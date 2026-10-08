@@ -35,6 +35,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         "! The bar at the row's left edge: which side changed
         highlight TYPE string,
         changed   TYPE abap_bool,
+        "! Objects view only: who changed the object, as on the Stage page
+        changed_by TYPE string,
       END OF ty_row,
       ty_rows TYPE STANDARD TABLE OF ty_row WITH EMPTY KEY.
 
@@ -448,6 +450,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
             )->a( n = `text` v = COND #( WHEN mv_overview = `OBJECTS` THEN `Files` ELSE `File` ) ).
+    " the Objects view only: who changed the object, as on the Stage page
+    IF mv_overview = `OBJECTS`.
+      columns->ele( `Column`
+          )->a( n = `minScreenWidth` v = `Tablet`
+          )->a( n = `demandPopin`    v = `true`
+          )->tag( `Text`
+              )->a( n = `text` v = `Changed by` ).
+    ENDIF.
     columns->ele( `Column`
         )->tag( `Text`
             )->a( n = `text` v = `Local` ).
@@ -490,6 +500,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
         )->a( n = `text` v = COND #( WHEN mv_overview = `OBJECTS` THEN `{FILES_TEXT}` ELSE `{FILENAME}` ) ).
+    IF mv_overview = `OBJECTS`.
+      cells->tag( `Text`
+          )->a( n = `text` v = `{CHANGED_BY}` ).
+    ENDIF.
     cells->tag( `Text`
         )->a( n = `text` v = `{LOCAL}` ).
     cells->tag( `Text`
@@ -630,6 +644,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           lstate = ls_object-lstate rstate = ls_object-rstate
           inactive = COND #( WHEN ls_object-inactive = abap_true THEN `inactive` )
           changed = ls_object-changed
+          changed_by = ls_object-changed_by
           highlight = COND #( WHEN ls_object-changed = abap_true THEN `Indication03` ELSE `None` ) ) INTO TABLE mt_rows.
       ENDLOOP.
     ELSE.
