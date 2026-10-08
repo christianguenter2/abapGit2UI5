@@ -2185,12 +2185,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
             " Do not pass arbitrary abapGit class names or CSS into the browser.
             zcl_abapgit_repo_labels=>validate_colors( |{ ls_config-label }:{ ls_config-color }| ).
             CASE to_lower( ls_config-color ).
-              WHEN `blue` OR `blue-set`. lv_color = `blue`.
-              WHEN `teal` OR `green` OR `success` OR `green-filled-set`. lv_color = `teal`.
-              WHEN `purple` OR `violet`. lv_color = `purple`.
-              WHEN `red` OR `pink` OR `rose` OR `error` OR `red-filled-set`. lv_color = `rose`.
-              WHEN `yellow` OR `orange` OR `amber` OR `warning` OR `yellow-filled-set`. lv_color = `amber`.
-              WHEN `grey` OR `gray` OR `white` OR `grey-set` OR `slate`. lv_color = `slate`.
+              WHEN `blue` OR `blue-set` OR `lightblue` OR `darkblue` OR `white-b` OR `dark-b`. lv_color = `blue`.
+              WHEN `teal` OR `green` OR `success` OR `green-filled-set` OR `lightgreen` OR `darkgreen`. lv_color = `teal`.
+              WHEN `purple` OR `violet` OR `darkviolet`. lv_color = `purple`.
+              WHEN `red` OR `pink` OR `rose` OR `error` OR `red-filled-set`
+                OR `lightred` OR `darkred` OR `white-r` OR `dark-r`. lv_color = `rose`.
+              WHEN `yellow` OR `orange` OR `amber` OR `warning` OR `yellow-filled-set`
+                OR `darkyellow` OR `dark-y` OR `brown`. lv_color = `amber`.
+              WHEN `grey` OR `gray` OR `white` OR `grey-set` OR `slate` OR `dark-w`. lv_color = `slate`.
               WHEN OTHERS.
                 DATA(ls_parsed) = zcl_abapgit_repo_labels=>parse_color( ls_config-color ).
                 DATA(lv_rgb) = COND string( WHEN ls_parsed-bg IS NOT INITIAL THEN ls_parsed-bg ELSE ls_parsed-fg ).

@@ -1642,3 +1642,19 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   labels stay in bounds. Viewport reset and separate test tab closed. No
   fixtures changed. Desktop proof: /tmp/ag2ui5-header-labels-live.jpg;
   backups: /tmp/ag2ui5-header-labels-backup. Chris approved commit and push.
+## Built-in label color names (2026-10-08)
+
+- User reported that saved colors were ignored. A fresh A4H25 read returned
+  `abap2UI5:lightblue, abapGit:lightred`. The settings read was correct;
+  the service allow-list omitted these built-in label styles.
+- Extended explicit mapping for all 21 styles advertised by abapGit's
+  personal settings. Each maps to the existing pill palette; unconfigured,
+  unsupported and invalid settings retain the automatic fallback.
+- Deployed service main/test includes through ADT after comparing both with
+  HEAD and backing them up in `/tmp/ag2ui5-builtin-colors-backup`. Both activated
+  source readbacks match. Native service tests pass 223/223; lint/render checks
+  pass with the existing unresolved MessageStrip hint.
+- Real `list_repos` and `get_status` calls for `$ABAPGIT2UI5` now return blue
+  for abap2UI5 and rose for abapGit from the user's saved settings. Settings
+  were only read, never changed. No browser visual check in this follow-up.
+- User approved committing and pushing the deployed fix.

@@ -3,6 +3,7 @@ CLASS ltcl_repo_labels DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION
     METHODS split_and_clean FOR TESTING RAISING zcx_abapgit_exception.
     METHODS stable_colors FOR TESTING RAISING zcx_abapgit_exception.
     METHODS configured_colors FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS builtin_label_colors FOR TESTING RAISING zcx_abapgit_exception.
     METHODS invalid_colors_fall_back FOR TESTING RAISING zcx_abapgit_exception.
 ENDCLASS.
 
@@ -31,6 +32,27 @@ CLASS ltcl_repo_labels IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lt_labels[ 3 ]-color exp = `blue` ).
     cl_abap_unit_assert=>assert_equals( act = lt_labels[ 4 ]-color exp = `teal` ).
     cl_abap_unit_assert=>assert_equals( act = lt_labels[ 5 ]-color exp = `slate` ).
+  ENDMETHOD.
+  METHOD builtin_label_colors.
+    DATA(lt_labels) = zcl_ag2ui5_repo_service=>repo_labels(
+      iv_labels = `abap2UI5, abapGit, unconfigured`
+      iv_colors = `abap2UI5:lightblue, abapGit:lightred` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 1 ]-color exp = `blue` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 2 ]-color exp = `rose` ).
+    DATA(lt_auto) = zcl_ag2ui5_repo_service=>repo_labels( `unconfigured` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 3 ]-color exp = lt_auto[ 1 ]-color ).
+    DATA(lt_styles) = zcl_ag2ui5_repo_service=>repo_labels(
+      iv_labels = `white, white-b, white-r, grey, dark-w, dark-y, dark-r, dark-b, lightblue, darkblue, lightgreen, darkgreen, lightred, darkred, yellow, darkyellow, orange, brown, pink, teal, darkviolet`
+      iv_colors = `white:white, white-b:white-b, white-r:white-r, grey:grey, dark-w:dark-w, dark-y:dark-y, dark-r:dark-r, dark-b:dark-b, `
+        && `lightblue:lightblue, darkblue:darkblue, lightgreen:lightgreen, darkgreen:darkgreen, lightred:lightred, darkred:darkred, `
+        && `yellow:yellow, darkyellow:darkyellow, orange:orange, brown:brown, pink:pink, teal:teal, darkviolet:darkviolet` ).
+    DATA(lt_expected) = VALUE string_table(
+      ( `slate` ) ( `blue` ) ( `rose` ) ( `slate` ) ( `slate` ) ( `amber` ) ( `rose` ) ( `blue` )
+      ( `blue` ) ( `blue` ) ( `teal` ) ( `teal` ) ( `rose` ) ( `rose` ) ( `amber` ) ( `amber` )
+      ( `amber` ) ( `amber` ) ( `rose` ) ( `teal` ) ( `purple` ) ).
+    LOOP AT lt_styles INTO DATA(ls_style).
+      cl_abap_unit_assert=>assert_equals( act = ls_style-color exp = lt_expected[ sy-tabix ] msg = ls_style-text ).
+    ENDLOOP.
   ENDMETHOD.
   METHOD invalid_colors_fall_back.
     DATA(lt_auto) = zcl_ag2ui5_repo_service=>repo_labels( `unsafe, unknown, after` ).
