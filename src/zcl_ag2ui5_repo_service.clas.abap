@@ -7,6 +7,29 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    "! The owner of an object's transport request, from E071 / E070
+    TYPES:
+      BEGIN OF ty_object_owner,
+        obj_type TYPE string,
+        obj_name TYPE string,
+        trkorr   TYPE string,
+        as4user  TYPE string,
+      END OF ty_object_owner,
+      ty_object_owners TYPE STANDARD TABLE OF ty_object_owner WITH EMPTY KEY.
+
+    "! abapGit's name for an object without a transport owner
+    CONSTANTS c_user_unknown TYPE string VALUE `UNKNOWN`.
+
+    "! Who changed the object: the owner of the first transport request in
+    "! it_owners for it, UNKNOWN when there is none or it has no owner
+    CLASS-METHODS owner_of
+      IMPORTING
+        it_owners        TYPE ty_object_owners
+        iv_obj_type      TYPE string
+        iv_obj_name      TYPE string
+      RETURNING
+        VALUE(rv_user)   TYPE string.
+
     "! abapGit asks for credentials and neither its user exit nor login( )
     "! supplied any, or the remote rejected them
     CLASS-METHODS login_required
@@ -467,6 +490,13 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         VALUE(ri_repo) TYPE REF TO zif_abapgit_repo
       RAISING
         zcx_abapgit_exception.
+
+    "! The transport owners of the files that exist in Git too (see changed_by)
+    METHODS transport_owners
+      IMPORTING
+        it_items        TYPE zif_ag2ui5_repo_service=>ty_stage_items
+      RETURNING
+        VALUE(rt_owners) TYPE ty_object_owners.
 
     METHODS silence_progress.
 
@@ -1800,6 +1830,47 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD owner_of.
+
+    " as abapGit's read_user: the first request that holds the object
+    READ TABLE it_owners INTO DATA(ls_owner)
+      WITH KEY obj_type = iv_obj_type obj_name = iv_obj_name.
+    rv_user = COND #( WHEN sy-subrc = 0 AND ls_owner-as4user IS NOT INITIAL
+                      THEN ls_owner-as4user
+                      ELSE c_user_unknown ).
+
+  ENDMETHOD.
+
+  METHOD transport_owners.
+
+    " only the files that also exist in Git: abapGit looks up only those
+    DATA lt_objects TYPE ty_object_owners.
+    DATA lr_names TYPE RANGE OF e071-obj_name.
+    LOOP AT it_items INTO DATA(ls_item) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
+      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_objects.
+      INSERT VALUE #( sign = 'I' option = 'EQ' low = CONV e071-obj_name( ls_item-obj_name ) ) INTO TABLE lr_names.
+    ENDLOOP.
+    IF lr_names IS NOT INITIAL.
+      " one read for all of them, ordered by request: the first row found for
+      " an object is its first request; the type is checked here
+      SELECT e071~object AS obj_type, e071~obj_name AS obj_name,
+             e071~trkorr AS trkorr, e070~as4user AS as4user
+        FROM e071
+        INNER JOIN e070 ON e070~trkorr = e071~trkorr
+        WHERE e071~pgmid    = 'R3TR'
+          AND e071~obj_name IN @lr_names
+        ORDER BY e071~trkorr ASCENDING
+        INTO TABLE @DATA(lt_found) ##SUBRC_OK.
+      LOOP AT lt_found INTO DATA(ls_found).
+        CHECK line_exists( lt_objects[ obj_type = ls_found-obj_type obj_name = ls_found-obj_name ] ).
+        CHECK NOT line_exists( rt_owners[ obj_type = ls_found-obj_type obj_name = ls_found-obj_name ] ).
+        INSERT VALUE #( obj_type = ls_found-obj_type obj_name = ls_found-obj_name
+                        trkorr = ls_found-trkorr as4user = ls_found-as4user ) INTO TABLE rt_owners.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
   METHOD zif_ag2ui5_repo_service~get_stage.
 
     assert_authorized( ).
@@ -1813,6 +1884,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_stage-items = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
       is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
     rs_stage-ignore_rules = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( )-ignore.
+    DATA(lt_owners) = transport_owners( rs_stage-items ).
+    " as abapGit: every remote-changed file gets a name, UNKNOWN for files that
+    " are no object (.abapgit.xml, readme) and for objects without a transport
+    LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_item>) WHERE rstate IS NOT INITIAL.
+      <ls_item>-changed_by = owner_of( it_owners = lt_owners
+                                       iv_obj_type = <ls_item>-obj_type
+                                       iv_obj_name = <ls_item>-obj_name ).
+    ENDLOOP.
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type

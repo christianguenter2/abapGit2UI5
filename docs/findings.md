@@ -1526,3 +1526,17 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   the URL is checked for control characters too; README sentence corrected.
 - Not taken: omp's "focus action overwrites the timer" (1.146 queues every
   follow-up action); "no end-to-end test" (Chris's live login).
+
+## Changed by on the Stage page (2026-10-08)
+
+- Stage shows a "Changed by" column, as abapGit's Stage page does: for each
+  file that also exists in Git, the owner of the first transport request
+  (lowest request number, `E071`/`E070`) that contains the object; UNKNOWN for
+  files without an object or without a transport, and for local objects.
+- `get_stage` fills `changed_by`; `owner_of` (pure, unit-tested) picks the
+  owner, `transport_owners` reads `E071`/`E070` once for all files, using a
+  range on the object name (not `FOR ALL ENTRIES`, which the linter flags).
+- Native suites: service 216/216, stage 39/39; others unchanged. `npm run check`
+  0 errors. Live on A4H25 (read only): `$UMLAUT` shows UNKNOWN for its
+  remote-changed files; the join was checked on `ZAGMCP_IT_TR_DTEL` in request
+  `A4HK900149` (owner DEVELOPER). Chrome: the column shows on the Stage page.

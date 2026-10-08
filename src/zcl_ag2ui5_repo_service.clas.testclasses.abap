@@ -3087,3 +3087,49 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( zcl_abapgit_login_manager=>get( c_url ) ).
   ENDMETHOD.
 ENDCLASS.
+
+
+"! Who changed an object: the owner of its first transport request, as abapGit shows it
+CLASS ltcl_changed_by DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS first_owner_wins FOR TESTING.
+    METHODS other_objects_ignored FOR TESTING.
+    METHODS no_transport_unknown FOR TESTING.
+    METHODS empty_owner_unknown FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_changed_by IMPLEMENTATION.
+
+  METHOD first_owner_wins.
+    DATA(lt_owners) = VALUE zcl_ag2ui5_repo_service=>ty_object_owners(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` trkorr = `A4HK900001` as4user = `ALICE` )
+      ( obj_type = `CLAS` obj_name = `ZCL_A` trkorr = `A4HK900002` as4user = `BOB` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>owner_of( it_owners = lt_owners iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` )
+      exp = `ALICE` ).
+  ENDMETHOD.
+
+  METHOD other_objects_ignored.
+    DATA(lt_owners) = VALUE zcl_ag2ui5_repo_service=>ty_object_owners(
+      ( obj_type = `CLAS` obj_name = `ZCL_B` trkorr = `A4HK900003` as4user = `CAROL` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>owner_of( it_owners = lt_owners iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` )
+      exp = `UNKNOWN` ).
+  ENDMETHOD.
+
+  METHOD no_transport_unknown.
+    " local objects and packages without change recording have no transport
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>owner_of( it_owners = VALUE #( ) iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` )
+      exp = `UNKNOWN` ).
+  ENDMETHOD.
+
+  METHOD empty_owner_unknown.
+    DATA(lt_owners) = VALUE zcl_ag2ui5_repo_service=>ty_object_owners(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` trkorr = `A4HK900004` as4user = `` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>owner_of( it_owners = lt_owners iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` )
+      exp = `UNKNOWN` ).
+  ENDMETHOD.
+
+ENDCLASS.

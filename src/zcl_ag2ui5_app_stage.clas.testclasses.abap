@@ -188,6 +188,7 @@ CLASS ltcl_push DEFINITION FINAL FOR TESTING
     METHODS stay_after_failed_push FOR TESTING.
     METHODS login_error_opens_login FOR TESTING.
     METHODS other_error_message FOR TESTING.
+    METHODS changed_by_shown FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
     METHODS logged_in_keeps_selection FOR TESTING.
 
@@ -328,6 +329,17 @@ CLASS ltcl_push IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_bound( CAST zcl_ag2ui5_app_login( mo_client->mv_called ) ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_message ).
+  ENDMETHOD.
+
+  METHOD changed_by_shown.
+    " the Stage page shows who changed each file, from abapGit's transport owner
+    mo_service->ms_stage-items = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` action = `ADD`
+                                             lstate = `M` changed_by = `ALICE` ) ).
+    mo_app->client = mo_client.
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-changed_by exp = `ALICE` ).
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*{CHANGED_BY}*` ).
   ENDMETHOD.
 
   METHOD other_error_message.

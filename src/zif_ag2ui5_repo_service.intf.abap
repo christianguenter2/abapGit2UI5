@@ -291,6 +291,10 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       rstate   TYPE string,
       action   TYPE ty_stage_action,
       selected TYPE abap_bool,
+      "! Who changed the object, as abapGit shows it: the owner of the first
+      "! transport request that contains it; UNKNOWN without one. Only for
+      "! files that exist in Git too (rstate)
+      changed_by  TYPE string,
       "! The picked lines (patch IDs of get_diff); empty for the whole file
       patch_ids   TYPE string_table,
       "! get_diff's fingerprint the lines were picked on

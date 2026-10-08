@@ -18,6 +18,8 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         lstate   TYPE string,
         rstate   TYPE string,
         action   TYPE string,
+        "! Who changed the object: abapGit's transport owner, UNKNOWN without one
+        changed_by TYPE string,
         "! What the commit does with the file, for the table
         change   TYPE string,
         selected TYPE abap_bool,
@@ -275,6 +277,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `File` ).
     columns->ele( `Column`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin`    v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Changed by` ).
+    columns->ele( `Column`
         )->tag( `Text`
             )->a( n = `text` v = `Change` ).
     columns->ele( `Column`
@@ -301,6 +308,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
                 )->a( n = `visible` v = `{= ${OBJECT_LINK} === '' }` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{FILENAME}` ).
+    cells->tag( `Text`
+        )->a( n = `text`    v = `{CHANGED_BY}`
+        )->a( n = `visible` v = `{= !!${CHANGED_BY} }` ).
     cells->tag( `Text`
         )->a( n = `text` v = `{CHANGE}` ).
     " a button press inside the row does not fire the row's press

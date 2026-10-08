@@ -100,6 +100,8 @@ the browser session is running that code.
   message, then push. Credentials come from abapGit's user exit or the session
   login (see below). "Pick lines" commits only some changes
   of a file: both halves of a changed line go together, as in abapGit.
+  The **Changed by** column shows who changed a file, as abapGit does: the
+  owner of the transport request that contains the object, UNKNOWN without one.
   Staging commits the SAP version: it can also revert a Git-only change,
   restore a remotely deleted file or remove a file that exists only in Git.
   Files changed in Git carry an explicit notice before selection; pulling
