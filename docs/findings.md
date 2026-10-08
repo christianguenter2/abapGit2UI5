@@ -1658,3 +1658,33 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   for abap2UI5 and rose for abapGit from the user's saved settings. Settings
   were only read, never changed. No browser visual check in this follow-up.
 - User approved committing and pushing the deployed fix.
+## Edit repository labels (2026-10-08)
+
+- Added Edit labels to the status header overflow toolbar for online/offline
+  repositories, including those without labels. The dialog uses a MultiComboBox
+  with removable tokens, deduplicated existing-label choices and a separate
+  Add field. Validation and save errors remain in the dialog; Cancel discards
+  draft state. Save requires pending new text to be added or cleared.
+- Added plain-data save_labels and pure checked_labels to the service. Raw keys
+  are checked before conversion; fresh registration/local settings are reloaded.
+  abapGit validates and normalizes labels; stale label snapshots are refused.
+  Only labels in the fresh settings change, with COMMIT WORK AND WAIT. The app
+  updates colored header labels directly and retains uploaded offline ZIP bytes.
+- Local lint/render passes (existing unresolved MessageStrip hint only). Native
+  service226/226, Status68/68 and overview33/33 pass: 327 affected tests.
+  Guarded deployment initially restored all sources after SAP rejected an
+  expression with IS INITIAL; corrected the expression. Final five activated
+  main/interface/test source readbacks match local files. Backups are in
+  `/tmp/ag2ui5-edit-labels-backup`.
+- Chrome verified adding a new label, selecting existing suggestions, saving,
+  configured blue header color, overview Tiles/List updates, Cancel discard,
+  keyboard token removal and saving an empty selection. A real concurrent
+  fixture edit caused the expected refusal, then reopening read the new labels.
+  Native smoke also refused invalid raw keys and labels. The dialog fits the
+  390px viewport (351px wide, x20; document width390). Desktop dialog proof is
+  `/tmp/ag2ui5-edit-labels-dialog.jpg`.
+- Authorized $UMLAUT fixture originally had empty labels/local settings. All
+  temporary labels were removed and settings read back unchanged. No Git remote,
+  object or package changes were made. Tiles preference restored; viewport reset
+  and test tab closed. User verified the deployed feature and approved commit
+  and push.

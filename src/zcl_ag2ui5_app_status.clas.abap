@@ -60,6 +60,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_row_type     TYPE string VALUE `Navigation`.
     DATA mv_overview_row_type TYPE string VALUE `Navigation`.
     DATA ms_head         TYPE ty_head.
+    DATA mt_label_choices TYPE zif_ag2ui5_repo_service=>ty_labels.
+    DATA mt_label_selected TYPE string_table.
+    DATA mv_label_new TYPE string.
+    DATA mv_label_error TYPE string.
     "! The rows shown: all files, or only the changed ones
     DATA mt_rows         TYPE ty_rows.
     "! Files of the selected object, bound only while its dialog is open
@@ -121,6 +125,13 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    DATA mv_labels_open TYPE abap_bool.
+    DATA mv_labels_expected TYPE string.
+    METHODS labels_open.
+    METHODS labels_add.
+    METHODS labels_save.
+    METHODS labels_close.
+    METHODS popup_labels_display.
     "! OBJECT, FILE or TYPE; set through the sort menu, not bound
     DATA mv_sort         TYPE string VALUE `OBJECT`.
     DATA mv_changes_first TYPE abap_bool VALUE abap_true.
@@ -272,6 +283,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       IF mv_files_open = abap_true.
         popup_files_display( ).
       ENDIF.
+      IF mv_labels_open = abap_true.
+        popup_labels_display( ).
+      ENDIF.
     ELSEIF client->check_on_event( ).
       on_event( ).
     ENDIF.
@@ -308,6 +322,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `priority`   v = `NeverOverflow`
                 )->a( n = `shrinkable` v = `true` ).
     header_content->tag( `ToolbarSpacer` ).
+    header_content->tag( `OverflowToolbarButton`
+        )->a( n = `text` v = `Edit labels`
+        )->a( n = `tooltip` v = `Edit labels`
+        )->a( n = `icon` v = `sap-icon://tag`
+        )->a( n = `press` v = client->_event( `LABELS_EDIT` ) ).
     " icon only in the bar, with its text in the overflow menu
     header_content->tag( `OverflowToolbarButton`
         )->a( n = `icon`    v = `sap-icon://refresh`
@@ -534,6 +553,157 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     client->view_display( view->stringify( ) ).
 
+  ENDMETHOD.
+
+  METHOD labels_open.
+    TRY.
+        DATA(lt_repos) = service( )->list_repos( ).
+        READ TABLE lt_repos INTO DATA(ls_repo) WITH KEY key = mv_key.
+        IF sy-subrc <> 0.
+          zcx_abapgit_exception=>raise( `This repository is no longer registered` ).
+        ENDIF.
+        CLEAR: mt_label_choices, mt_label_selected, mv_label_new, mv_label_error, mv_labels_expected.
+        LOOP AT ls_repo-labels INTO DATA(ls_label).
+          APPEND ls_label-text TO mt_label_selected.
+        ENDLOOP.
+        mv_labels_expected = concat_lines_of( table = mt_label_selected sep = `, ` ).
+        LOOP AT lt_repos INTO ls_repo.
+          LOOP AT ls_repo-labels INTO ls_label.
+            IF NOT line_exists( mt_label_choices[ text = ls_label-text ] ).
+              APPEND ls_label TO mt_label_choices.
+            ENDIF.
+          ENDLOOP.
+        ENDLOOP.
+        SORT mt_label_choices BY text.
+        mv_labels_open = abap_true.
+        popup_labels_display( ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        show_error( lx_error ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD labels_add.
+    IF mv_labels_open = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lv_label) = condense( mv_label_new ).
+    IF lv_label IS INITIAL.
+      mv_label_error = `Enter a new label first.`.
+    ELSE.
+      TRY.
+          IF lv_label CS `,`.
+            zcx_abapgit_exception=>raise( `Add one label at a time.` ).
+          ENDIF.
+          zcl_ag2ui5_repo_service=>checked_labels( iv_labels = lv_label iv_expected = `` iv_fresh = `` ).
+          IF NOT line_exists( mt_label_choices[ text = lv_label ] ).
+            APPEND VALUE #( text = lv_label ) TO mt_label_choices.
+            SORT mt_label_choices BY text.
+          ENDIF.
+          IF NOT line_exists( mt_label_selected[ table_line = lv_label ] ).
+            APPEND lv_label TO mt_label_selected.
+          ENDIF.
+          CLEAR: mv_label_new, mv_label_error.
+        CATCH zcx_abapgit_exception INTO DATA(lx_error).
+          mv_label_error = lx_error->get_text( ).
+      ENDTRY.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD labels_save.
+    IF mv_labels_open = abap_false.
+      RETURN.
+    ENDIF.
+    DATA(lv_pending) = condense( mv_label_new ).
+    IF lv_pending IS NOT INITIAL.
+      mv_label_error = `Press Add to include the new label, or clear the field before saving.`.
+      RETURN.
+    ENDIF.
+    TRY.
+        " Validate each selected key too: a posted comma must not create extra labels.
+        LOOP AT mt_label_selected INTO DATA(lv_label).
+          IF lv_label IS INITIAL OR lv_label CS `,` OR NOT line_exists( mt_label_choices[ text = lv_label ] ).
+            zcx_abapgit_exception=>raise( `Choose labels from the list or add a new label first.` ).
+          ENDIF.
+        ENDLOOP.
+        ms_head-labels = service( )->save_labels( iv_key = mv_key
+          iv_labels = concat_lines_of( table = mt_label_selected sep = `, ` ) iv_expected = mv_labels_expected ).
+        labels_close( ).
+        client->message_toast_display( `Labels saved` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        mv_label_error = lx_error->get_text( ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD labels_close.
+    CLEAR: mv_labels_open, mv_labels_expected, mt_label_choices, mt_label_selected, mv_label_new, mv_label_error.
+    client->popup_destroy( ).
+  ENDMETHOD.
+
+  METHOD popup_labels_display.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory( ).
+    DATA(dialog) = popup->ele( n = `FragmentDefinition` ns = `core`
+        )->a( n = `xmlns` v = `sap.m`
+        )->a( n = `xmlns:core` v = `sap.ui.core`
+        )->ele( `Dialog`
+            )->a( n = `title` v = `Edit labels`
+            )->a( n = `contentWidth` v = `32rem` ).
+    DATA(box) = dialog->ele( `content`
+        )->ele( `VBox`
+            )->a( n = `class` v = `sapUiSmallMargin` ).
+    box->tag( `Text`
+        )->a( n = `text` v = `Choose existing labels or add a new one. Remove a token to remove that label.`
+        )->a( n = `class` v = `sapUiSmallMarginBottom` ).
+    box->tag( `Label`
+        )->a( n = `text` v = `Labels`
+        )->a( n = `labelFor` v = `repoLabelSelection` ).
+    box->ele( `MultiComboBox`
+        )->a( n = `id` v = `repoLabelSelection`
+        )->a( n = `width` v = `100%`
+        )->a( n = `placeholder` v = `Select labels`
+        )->a( n = `selectedKeys` v = client->_bind( mt_label_selected )
+        )->a( n = `items` v = client->_bind( mt_label_choices )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key` v = `{TEXT}`
+                )->a( n = `text` v = `{TEXT}` ).
+    box->tag( `Label`
+        )->a( n = `text` v = `New label`
+        )->a( n = `labelFor` v = `repoLabelNew`
+        )->a( n = `class` v = `sapUiSmallMarginTop` ).
+    DATA(add_row) = box->ele( `HBox`
+        )->a( n = `alignItems` v = `Center` ).
+    add_row->ele( `Input`
+        )->a( n = `id` v = `repoLabelNew`
+        )->a( n = `value` v = client->_bind( mv_label_new )
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `placeholder` v = `For example: tools`
+        )->a( n = `submit` v = client->_event( `LABELS_ADD` )
+        )->ele( `layoutData`
+            )->tag( `FlexItemData`
+                )->a( n = `growFactor` v = `1` ).
+    add_row->tag( `Button`
+        )->a( n = `text` v = `Add`
+        )->a( n = `class` v = `sapUiTinyMarginBegin`
+        )->a( n = `press` v = client->_event( `LABELS_ADD` ) ).
+    box->tag( `Text`
+        )->a( n = `text` v = `Letters, numbers, spaces, hyphens, underscores and dots are allowed.`
+        )->a( n = `class` v = `sapUiTinyMarginTop` ).
+    box->tag( `MessageStrip`
+        )->a( n = `text` v = client->_bind( mv_label_error )
+        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = mv_label_error path = abap_true ) }\} !== '' \}|
+        )->a( n = `type` v = `Error`
+        )->a( n = `showIcon` v = `true`
+        )->a( n = `class` v = `sapUiSmallMarginTop` ).
+    dialog->ele( `beginButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Save`
+            )->a( n = `type` v = `Emphasized`
+            )->a( n = `press` v = client->_event( `LABELS_SAVE` ) ).
+    dialog->ele( `endButton`
+        )->tag( `Button`
+            )->a( n = `text` v = `Cancel`
+            )->a( n = `press` v = client->_event( `LABELS_CANCEL` ) ).
+    client->popup_display( popup->stringify( ) ).
   ENDMETHOD.
 
   METHOD popup_decisions_display.
@@ -1099,6 +1269,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         ENDIF.
       WHEN `REFRESH`.
         load_status( ).
+      WHEN `LABELS_EDIT`.
+        labels_open( ).
+      WHEN `LABELS_ADD`.
+        labels_add( ).
+      WHEN `LABELS_SAVE`.
+        labels_save( ).
+      WHEN `LABELS_CANCEL`.
+        labels_close( ).
       WHEN `VIEW`.
         save_view_settings( ).
         rows_build( ).

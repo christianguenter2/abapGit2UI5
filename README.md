@@ -19,7 +19,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 |---|---|---|
 | User interface | [HTML control in SAP GUI](https://docs.abapgit.org/user-guide/setup/sapgui.html), including SAP GUI for HTML | SAPUI5 in a browser through abap2UI5 |
 | Installation | Standalone program or developer version | Requires the abapGit developer version, abap2UI5 and its ICF service |
-| Repository browsing | Repository list and favorites | Searchable list or compact tiles, shared favorites and a remembered Favorites only filter |
+| Repository browsing | Repository list, labels and favorites | Searchable list or compact tiles, colored clickable labels, shared favorites and a remembered Favorites only filter |
 | Status and object overview | Object groups with file details and change states | Files or Objects view, filters, sorting and changed/total file counts |
 | Line diff | Unified or split diff with context and method/section markers; repository-wide diff page | Inline or side-by-side diff, context or whole file; **Diff** page with every changed file as a collapsible panel |
 | Structural method review | Method/section markers in the line diff | Added, removed and changed declarations/implementations, with links to their source ranges |
@@ -35,7 +35,8 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 
 abapGit2UI5 covers selected workflows rather than the full conventional UI.
 Repository settings remain in abapGit; use its conventional UI for the
-administration tools and Git operations not exposed here. Pulling updates to
+administration tools and Git operations not exposed here. Repository labels can
+also be edited in this frontend. Pulling updates to
 abapGit, abap2UI5 or this frontend also requires conventional abapGit, because
 the browser session is running that code.
 
@@ -44,6 +45,13 @@ the browser session is running that code.
 - **Repository list:** all abapGit repositories of the system, with a search,
   as a table or as compact tiles (one card per repository, with the favorite
   star in the top-right corner).
+- **Repository labels:** colored labels appear in tiles, list rows and the
+  repository header. Click a label to filter the overview to that exact label.
+  abapGit's configured user colors map to the pill palette; labels without a
+  configured color receive a stable automatic color. **Edit labels** in the
+  repository header offers existing labels, removable tokens and a field to
+  add new labels. Save updates local abapGit repository settings; Cancel
+  discards changes. A concurrent label edit is refused so it is not overwritten.
 - **Remove / Uninstall:** available in both layouts, online and offline.
   Remove unregisters the repository and keeps its SAP objects. Uninstall
   previews the objects to delete, requires the package name to be typed, and

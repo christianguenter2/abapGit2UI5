@@ -339,9 +339,26 @@ CLASS ltd_offline_service DEFINITION FINAL FOR TESTING.
     DATA mt_items TYPE zif_ag2ui5_repo_service=>ty_decision_items.
     DATA mv_transport TYPE string.
     DATA mv_ack TYPE abap_bool.
+    DATA mt_repos TYPE zif_ag2ui5_repo_service=>ty_repos.
+    DATA mv_label_saves TYPE i.
+    DATA mv_saved_labels TYPE string.
+    DATA mv_expected_labels TYPE string.
+    DATA mv_label_error TYPE string.
 ENDCLASS.
 
 CLASS ltd_offline_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~list_repos.
+    rt_repos = mt_repos.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~save_labels.
+    mv_label_saves = mv_label_saves + 1.
+    IF mv_label_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_label_error ).
+    ENDIF.
+    mv_saved_labels = iv_labels.
+    mv_expected_labels = iv_expected.
+    rt_labels = zcl_ag2ui5_repo_service=>repo_labels( iv_labels ).
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~get_diff.
     mv_diff_calls = mv_diff_calls + 1.
     mv_diff_zip = iv_zip.
@@ -388,6 +405,11 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS archive RETURNING VALUE(rv_zip) TYPE xstring RAISING zcx_abapgit_exception.
     METHODS start_loads_offline FOR TESTING.
     METHODS header_labels FOR TESTING.
+    METHODS labels_edit_save FOR TESTING.
+    METHODS labels_edit_cancel FOR TESTING.
+    METHODS labels_edit_errors FOR TESTING.
+    METHODS labels_edit_stale FOR TESTING.
+    METHODS labels_save_without_open FOR TESTING.
     METHODS offline_controls FOR TESTING.
     METHODS online_controls FOR TESTING.
     METHODS clean_online_can_manage_rules FOR TESTING.
@@ -457,6 +479,74 @@ CLASS ltcl_offline IMPLEMENTATION.
     fire( `HEADER_LABEL` ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_leave_data exp = `LABEL_FILTER:ui5` ).
     cl_abap_unit_assert=>assert_initial( mo_app->mv_zip ).
+  ENDMETHOD.
+
+  METHOD labels_edit_save.
+    mo_service->mt_repos = VALUE #(
+      ( key = `29` labels = VALUE #( ( text = `core` color = `blue` ) ) )
+      ( key = `30` labels = VALUE #( ( text = `core` ) ( text = `tools` ) ) ) ).
+    mo_app->mv_zip = '00FF'.
+    fire( `LABELS_EDIT` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_label_choices ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_label_selected exp = VALUE string_table( ( `core` ) ) ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_popup exp = `*MultiComboBox*` ).
+    mo_app->mv_label_new = ` new label `.
+    fire( `LABELS_ADD` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_label_error ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( mo_app->mt_label_selected[ table_line = `new label` ] ) ) ).
+    mo_app->mt_label_selected = VALUE #( ( `new label` ) ( `tools` ) ).
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_saved_labels exp = `new label, tools` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_expected_labels exp = `core` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->ms_head-labels ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_zip exp = CONV xstring( '00FF' ) ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_destroyed ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_label_choices ).
+  ENDMETHOD.
+
+  METHOD labels_edit_cancel.
+    mo_service->mt_repos = VALUE #( ( key = `29` labels = VALUE #( ( text = `core` ) ) ) ).
+    fire( `LABELS_EDIT` ).
+    mo_app->mv_label_new = `discard`.
+    fire( `LABELS_ADD` ).
+    fire( `LABELS_CANCEL` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_label_saves ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_label_selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_labels_open ).
+  ENDMETHOD.
+
+  METHOD labels_edit_errors.
+    mo_service->mt_repos = VALUE #( ( key = `29` ) ).
+    fire( `LABELS_EDIT` ).
+    mo_app->mv_label_new = `bad<label`.
+    fire( `LABELS_ADD` ).
+    cl_abap_unit_assert=>assert_not_initial( mo_app->mv_label_error ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_label_selected ).
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_label_saves ).
+    CLEAR mo_app->mv_label_new.
+    mo_app->mt_label_selected = VALUE #( ( `forged,extra` ) ).
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_label_saves ).
+    mo_app->mt_label_selected = VALUE #( ).
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_label_saves exp = 1 ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_head-labels ).
+  ENDMETHOD.
+
+  METHOD labels_edit_stale.
+    mo_service->mt_repos = VALUE #( ( key = `29` ) ).
+    mo_service->mv_label_error = `Labels changed since this dialog was opened`.
+    fire( `LABELS_EDIT` ).
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_labels_open ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_label_error exp = mo_service->mv_label_error ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_destroyed ).
+  ENDMETHOD.
+
+  METHOD labels_save_without_open.
+    fire( `LABELS_SAVE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_label_saves ).
   ENDMETHOD.
 
   METHOD start_loads_offline.

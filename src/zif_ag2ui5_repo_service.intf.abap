@@ -465,6 +465,17 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
+  "! Save local labels only if the labels shown when editing still match.
+  METHODS save_labels
+    IMPORTING
+      iv_key TYPE string
+      iv_labels TYPE string
+      iv_expected TYPE string
+    RETURNING
+      VALUE(rt_labels) TYPE ty_labels
+    RAISING
+      zcx_abapgit_exception.
+
   "! Fetches the remote again and compares it with the system
   METHODS get_status
     IMPORTING

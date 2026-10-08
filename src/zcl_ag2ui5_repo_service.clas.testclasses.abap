@@ -5,9 +5,33 @@ CLASS ltcl_repo_labels DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION
     METHODS configured_colors FOR TESTING RAISING zcx_abapgit_exception.
     METHODS builtin_label_colors FOR TESTING RAISING zcx_abapgit_exception.
     METHODS invalid_colors_fall_back FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS edit_normalizes FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS edit_rejects_invalid FOR TESTING.
+    METHODS edit_rejects_stale FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_repo_labels IMPLEMENTATION.
+  METHOD edit_normalizes.
+    cl_abap_unit_assert=>assert_equals( exp = `core, tools` act = zcl_ag2ui5_repo_service=>checked_labels(
+      iv_labels = ` tools, core,tools ` iv_expected = `tools, core` iv_fresh = `core, tools` ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>checked_labels(
+      iv_labels = `` iv_expected = `core` iv_fresh = `core` ) ).
+  ENDMETHOD.
+  METHOD edit_rejects_invalid.
+    TRY.
+        zcl_ag2ui5_repo_service=>checked_labels( iv_labels = `bad<label` iv_expected = `` iv_fresh = `` ).
+        cl_abap_unit_assert=>fail( `Invalid labels must be refused before persistence` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD edit_rejects_stale.
+    TRY.
+        zcl_ag2ui5_repo_service=>checked_labels( iv_labels = `tools` iv_expected = `core` iv_fresh = `core, new` ).
+        cl_abap_unit_assert=>fail( `Concurrent changes must be retained` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        cl_abap_unit_assert=>assert_char_cp( act = lx_error->get_text( ) exp = `*changed*` ).
+    ENDTRY.
+  ENDMETHOD.
   METHOD split_and_clean.
     DATA(lt_labels) = zcl_ag2ui5_repo_service=>repo_labels( | core, tools,core, , bad{ cl_abap_char_utilities=>newline }label | ).
     cl_abap_unit_assert=>assert_equals( act = lines( lt_labels ) exp = 3 ).

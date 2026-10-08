@@ -7,6 +7,10 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    CLASS-METHODS checked_labels
+      IMPORTING iv_labels TYPE string iv_expected TYPE string iv_fresh TYPE string
+      RETURNING VALUE(rv_labels) TYPE string
+      RAISING zcx_abapgit_exception.
     "! Display-only labels with stable, checked categorical colors.
     CLASS-METHODS repo_labels
       IMPORTING iv_labels TYPE string iv_colors TYPE string OPTIONAL
@@ -2148,6 +2152,33 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                            THEN `Indication03`
                            ELSE `None` ).
 
+  ENDMETHOD.
+
+  METHOD checked_labels.
+    zcl_abapgit_repo_labels=>validate( iv_labels ).
+    IF zcl_abapgit_repo_labels=>normalize( iv_expected ) <> zcl_abapgit_repo_labels=>normalize( iv_fresh ).
+      zcx_abapgit_exception=>raise( `Labels changed since this dialog was opened. Cancel and reopen Edit labels.` ).
+    ENDIF.
+    rv_labels = zcl_abapgit_repo_labels=>normalize( iv_labels ).
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~save_labels.
+    silence_progress( ).
+    assert_authorized( ).
+    IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12.
+      zcx_abapgit_exception=>raise( `Choose a registered repository` ).
+    ENDIF.
+    DATA(lv_key) = CONV zif_abapgit_persistence=>ty_repo-key( iv_key ).
+    DATA(li_repo) = zcl_abapgit_repo_srv=>get_instance( )->reload( lv_key ).
+    DATA(ls_local) = li_repo->get_local_settings( ).
+    DATA(lv_labels) = checked_labels( iv_labels = iv_labels iv_expected = iv_expected iv_fresh = ls_local-labels ).
+    IF ls_local-labels <> lv_labels.
+      ls_local-labels = lv_labels.
+      li_repo->set_local_settings( ls_local ).
+      COMMIT WORK AND WAIT.
+    ENDIF.
+    DATA(ls_settings) = zcl_abapgit_persist_factory=>get_settings( )->read( )->get_user_settings( ).
+    rt_labels = repo_labels( iv_labels = lv_labels iv_colors = ls_settings-label_colors ).
   ENDMETHOD.
 
   METHOD repo_labels.
