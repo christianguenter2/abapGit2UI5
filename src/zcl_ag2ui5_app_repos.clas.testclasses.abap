@@ -62,6 +62,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_arg2 TYPE string.
     DATA mv_popup TYPE string.
     DATA mv_closed TYPE abap_bool.
+    DATA mv_popover TYPE string.
+    DATA mv_anchor TYPE string.
     DATA mv_error TYPE string.
     "! The last set_session_stateful( ) value; `-` when it was never called
     DATA mv_stateful TYPE string VALUE `-`.
@@ -101,6 +103,13 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~popup_destroy.
     mv_closed = abap_true.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popover_display.
+    mv_popover = xml.
+    mv_anchor = by_id.
+  ENDMETHOD.
+  METHOD z2ui5_if_client~popover_destroy.
+    CLEAR: mv_popover, mv_anchor.
   ENDMETHOD.
   "! the view is built but not checked here
   METHOD z2ui5_if_client~_bind ##NEEDED.
@@ -413,6 +422,9 @@ CLASS ltcl_favorites DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION S
     METHODS favorites_first FOR TESTING.
     METHODS search_and_filter FOR TESTING.
     METHODS case_insensitive_search FOR TESTING.
+    METHODS labels_and_overflow FOR TESTING.
+    METHODS labels_popover FOR TESTING.
+    METHODS label_click_filter FOR TESTING.
     METHODS start_reads_filter FOR TESTING.
     METHODS filter_defaults_to_all FOR TESTING.
     METHODS filter_event_saves FOR TESTING.
@@ -501,6 +513,55 @@ CLASS ltcl_favorites IMPLEMENTATION.
     mo_app->mv_search = `Ordinary`.
     mo_app->apply_search( ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_repos ).
+  ENDMETHOD.
+  METHOD labels_and_overflow.
+    mo_service->mt_repos[ 1 ]-labels = VALUE #( ( text = `core` color = `blue` ) ( text = `tools` color = `teal` )
+      ( text = `ui5` color = `rose` ) ( text = `hidden-label` color = `purple` ) ).
+    mo_app->load_repos( ).
+    mo_app->mv_search = `HIDDEN-LABEL`.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_repos ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_repos[ 1 ]-label_more exp = `+1` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_repos[ 1 ]-label_preview ) exp = 3 ).
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_repos ).
+  ENDMETHOD.
+  METHOD label_click_filter.
+    mo_service->mt_repos[ 1 ]-labels = VALUE #( ( text = `core` color = `blue` ) ).
+    mo_service->mt_repos[ 2 ]-labels = VALUE #( ( text = `core-tools` color = `teal` ) ).
+    mo_service->mt_repos[ 3 ]-name = `core`.
+    mo_app->load_repos( ).
+    mo_client->mv_arg = `core`.
+    event( `LABEL_FILTER` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_search exp = `core` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_repos ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_repos[ 1 ]-key exp = `1` ).
+    mo_client->mv_arg = `unknown`.
+    event( `LABEL_FILTER` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_label_filter exp = `core` ).
+    mo_app->mv_favorites_only = abap_true.
+    mo_app->apply_search( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_repos ).
+    mo_app->mv_favorites_only = abap_false.
+    mo_app->mv_search = ``.
+    event( `SEARCH` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_label_filter ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_repos ) exp = 3 ).
+  ENDMETHOD.
+  METHOD labels_popover.
+    mo_service->mt_repos[ 1 ]-labels = VALUE #( ( text = `server-label` color = `blue` ) ).
+    mo_app->load_repos( ).
+    mo_client->mv_arg = `1`.
+    mo_client->mv_arg2 = `label-button`.
+    event( `LABELS` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_anchor exp = `label-button` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_labels[ 1 ]-text exp = `server-label` ).
+    event( `LABELS_CLOSE` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_labels ).
+    mo_client->mv_arg = `unknown`.
+    event( `LABELS` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popover ).
   ENDMETHOD.
   METHOD case_insensitive_search.
     mo_app->mv_search = `first`.

@@ -7,6 +7,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_repo_service.
 
+    "! Display-only labels with stable, checked categorical colors.
+    CLASS-METHODS repo_labels
+      IMPORTING iv_labels TYPE string iv_colors TYPE string OPTIONAL
+      RETURNING VALUE(rt_labels) TYPE zif_ag2ui5_repo_service=>ty_labels
+      RAISING zcx_abapgit_exception.
+
     "! The owner of an object's transport request, from E071 / E070
     TYPES:
       BEGIN OF ty_object_owner,
@@ -2144,6 +2150,82 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD repo_labels.
+
+    TYPES: BEGIN OF ty_color,
+             name TYPE string,
+             r TYPE i,
+             g TYPE i,
+             b TYPE i,
+           END OF ty_color,
+           ty_colors TYPE STANDARD TABLE OF ty_color WITH EMPTY KEY.
+    DATA(lt_palette) = VALUE ty_colors(
+      ( name = `blue`   r = 40  g = 110 b = 200 )
+      ( name = `teal`   r = 0   g = 140 b = 120 )
+      ( name = `purple` r = 125 g = 65  b = 180 )
+      ( name = `rose`   r = 195 g = 55  b = 115 )
+      ( name = `amber`  r = 205 g = 145 b = 0   )
+      ( name = `slate`  r = 95  g = 110 b = 130 ) ).
+    DATA(lt_colors) = zcl_abapgit_repo_labels=>split_colors( iv_colors ).
+    LOOP AT zcl_abapgit_repo_labels=>split( iv_labels ) INTO DATA(lv_label).
+      lv_label = condense( visible( lv_label ) ).
+      IF lv_label IS INITIAL OR line_exists( rt_labels[ text = lv_label ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(lv_bytes) = zcl_abapgit_convert=>string_to_xstring_utf8( to_lower( lv_label ) ).
+      DATA(lv_hash) = 0.
+      DO xstrlen( lv_bytes ) TIMES.
+        DATA(lv_offset) = sy-index - 1.
+        lv_hash = ( lv_hash * 31 + CONV i( lv_bytes+lv_offset(1) ) ) MOD 65521.
+      ENDDO.
+      DATA(lv_color) = lt_palette[ lv_hash MOD lines( lt_palette ) + 1 ]-name.
+      READ TABLE lt_colors INTO DATA(ls_config) WITH KEY label = lv_label.
+      IF sy-subrc = 0.
+        TRY.
+            " Do not pass arbitrary abapGit class names or CSS into the browser.
+            zcl_abapgit_repo_labels=>validate_colors( |{ ls_config-label }:{ ls_config-color }| ).
+            CASE to_lower( ls_config-color ).
+              WHEN `blue` OR `blue-set`. lv_color = `blue`.
+              WHEN `teal` OR `green` OR `success` OR `green-filled-set`. lv_color = `teal`.
+              WHEN `purple` OR `violet`. lv_color = `purple`.
+              WHEN `red` OR `pink` OR `rose` OR `error` OR `red-filled-set`. lv_color = `rose`.
+              WHEN `yellow` OR `orange` OR `amber` OR `warning` OR `yellow-filled-set`. lv_color = `amber`.
+              WHEN `grey` OR `gray` OR `white` OR `grey-set` OR `slate`. lv_color = `slate`.
+              WHEN OTHERS.
+                DATA(ls_parsed) = zcl_abapgit_repo_labels=>parse_color( ls_config-color ).
+                DATA(lv_rgb) = COND string( WHEN ls_parsed-bg IS NOT INITIAL THEN ls_parsed-bg ELSE ls_parsed-fg ).
+                IF strlen( lv_rgb ) = 3.
+                  lv_rgb = |{ lv_rgb+0(1) }{ lv_rgb+0(1) }{ lv_rgb+1(1) }{ lv_rgb+1(1) }{ lv_rgb+2(1) }{ lv_rgb+2(1) }|.
+                ENDIF.
+                IF strlen( lv_rgb ) = 6.
+                  DATA lv_rgb_bytes TYPE x LENGTH 3.
+                  " ABAP's character-to-hex conversion expects uppercase digits.
+                  lv_rgb_bytes = to_upper( lv_rgb ).
+                  DATA(lv_r) = CONV i( lv_rgb_bytes+0(1) ).
+                  DATA(lv_g) = CONV i( lv_rgb_bytes+1(1) ).
+                  DATA(lv_b) = CONV i( lv_rgb_bytes+2(1) ).
+                  DATA(lv_best) = 200000.
+                  LOOP AT lt_palette INTO DATA(ls_color).
+                    DATA(lv_distance) = ( lv_r - ls_color-r ) ** 2 + ( lv_g - ls_color-g ) ** 2 + ( lv_b - ls_color-b ) ** 2.
+                    IF lv_distance < lv_best.
+                      lv_best = lv_distance.
+                      lv_color = ls_color-name.
+                    ENDIF.
+                  ENDLOOP.
+                  IF abs( lv_r - lv_g ) < 30 AND abs( lv_g - lv_b ) < 30 AND abs( lv_r - lv_b ) < 30.
+                    lv_color = `slate`.
+                  ENDIF.
+                ENDIF.
+            ENDCASE.
+          CATCH zcx_abapgit_exception ##NO_HANDLER.
+            " Invalid legacy color settings retain the automatic color.
+        ENDTRY.
+      ENDIF.
+      INSERT VALUE #( text = lv_label color = lv_color ) INTO TABLE rt_labels.
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD zif_ag2ui5_repo_service~list_repos.
 
     silence_progress( ).
@@ -2151,6 +2233,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA li_online TYPE REF TO zif_abapgit_repo_online.
 
     DATA(lt_favorites) = zcl_abapgit_persist_factory=>get_user( )->get_favorites( ).
+    DATA(ls_settings) = zcl_abapgit_persist_factory=>get_settings( )->read( )->get_user_settings( ).
 
     LOOP AT zcl_abapgit_repo_srv=>get_instance( )->list( ) INTO DATA(li_repo).
       DATA(ls_repo) = VALUE zif_ag2ui5_repo_service=>ty_repo(
@@ -2161,6 +2244,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         favorite = xsdbool( line_exists( lt_favorites[ table_line = li_repo->get_key( ) ] ) ) ).
 
       ls_repo-deserialized_at = format_timestamp( li_repo->ms_data-deserialized_at ).
+      ls_repo-labels = repo_labels( iv_labels = li_repo->ms_data-local_settings-labels iv_colors = ls_settings-label_colors ).
 
       IF ls_repo-offline = abap_false.
         li_online ?= li_repo.

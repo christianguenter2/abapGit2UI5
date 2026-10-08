@@ -1554,3 +1554,71 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   `npm run check` 0 errors. Live (read only) on `$UMLAUT`: UNKNOWN for its
   remote-changed objects. Chrome: the column shows in Objects view and not in
   Files view; the overview was restored to Files afterwards.
+
+## Repository labels overview design (2026-10-08)
+
+- Analysis only: abapGit's repository labels are in local settings; explicit
+  label colors are in its global settings. The current overview DTO omits both.
+- Proposed soft tinted pills immediately below tile headers and below the
+  name in list rows. Stable automatic colors, with supported explicit abapGit
+  colors taking precedence; no generated color persistence. Include labels in
+  search and use accessible overflow for more than three labels.
+- Interactive design study: `docs/design/repository-tags.html`, Soft pills and
+  Quiet dots variants, Tiles/List switching, long labels and overflow. Example
+  data is illustrative. Desktop (1024px) and phone (360px) prototype checks
+  passed: no horizontal overflow or JavaScript errors; expansion reveals all
+  labels. Desktop tiles and phone list screenshots were visually inspected.
+- Spec and plan: `docs/superpowers/{specs,plans}/2026-10-08-repository-labels*`.
+  No production ABAP changes, system writes, deployment or commits in this pass.
+  Native UI5/theme behavior and ABAP tests remain for implementation.
+
+
+## Repository labels implementation (2026-10-08)
+
+- Implemented soft colored pills below tile headers and below the list name.
+  The service returns plain label rows, with cleaned text and six deterministic
+  color keys. Named and validated hex abapGit colors map to the palette;
+  arbitrary configured CSS never reaches the browser. No generated colors are
+  persisted. Dark and high contrast selectors use the same scoped renderer.
+- First three labels appear in the overview; +N opens a native anchored popover
+  with all labels and wrapped long text. Search includes every label, including
+  those hidden in the preview. Nested label templates explicitly set
+  templateShareable:false to avoid clone ownership warnings.
+- Deployed through ADT with Chris's explicit approval; six source readbacks
+  match local files. Native service 222/222 and overview 31/31 passed. Native
+  testing caught lowercase RGB conversion, fixed by uppercasing before byte
+  conversion. npm run check passes (0 errors, 0 warnings; one existing Status
+  hint). A preexisting unnecessary DATA chain in HTTP was fixed for abaplint.
+- Chrome verified maintained A4H25 labels in Tiles and List: abapGit teal,
+  abap2UI5 violet. Hidden-label search, +N, full popover and Close passed.
+  Long popover text wraps. At 390px, list pop-ins and label boundaries stay
+  within the viewport (document width 390px). Theme selectors are implemented;
+  dark/high contrast visuals and full keyboard navigation remain unverified.
+- Temporary five-label data on authorized $UMLAUT was restored to empty after
+  checking abapGit's sorted normalization; other fresh local settings retained.
+  Maintained labels were untouched. Desktop viewport, empty search and Tiles
+  restored. No fixture objects, remote commits or repository pulls changed.
+- Headless screenshot reconstruction produced blank main/popover images;
+  live Chrome was used for visual verification. Backups are under
+  /tmp/ag2ui5-labels-backup; live proof /tmp/ag2ui5-labels-live-tiles.jpg.
+  Implementation and filtering follow-up are included in the repository-labels commit.
+
+
+## Click labels to filter (2026-10-08)
+
+- Labels are native Links in tiles, table rows and the full popover. A click
+  applies an exact label match, replaces the search field with that label and
+  closes the popover. Favorites only still applies. SEARCH clears exact-label
+  mode, so clearing the field restores the overview; ordinary search remains
+  a substring search. Unknown event labels are ignored against server-held rows.
+- Native overview 32/32 passed, including exact-match exclusion of partial
+  labels and repository name matches, favorites, invalid labels and clearing.
+  npm run check passes (0 errors/warnings; existing Status hint). Deployed
+  main/test include readbacks match local files. Backups:
+  /tmp/ag2ui5-label-click-before{,.tests}.abap.
+- Chrome checked the list click on abapGit (three tagged repositories), then
+  tile click on abap2UI5 (two), and clearing (29 repositories). Test tab closed;
+  original List preference restored. No fixture or repository settings changed.
+  Screenshot: /tmp/ag2ui5-label-click-live.jpg. Popover clicks use the same
+  renderer/event but were not separately exercised live in this follow-up.
+  Chris approved committing and pushing the complete label slice.

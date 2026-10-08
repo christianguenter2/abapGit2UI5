@@ -43,6 +43,13 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     END OF c_group.
 
   TYPES:
+    BEGIN OF ty_label,
+      text TYPE string,
+      color TYPE string,
+    END OF ty_label,
+    ty_labels TYPE STANDARD TABLE OF ty_label WITH EMPTY KEY.
+
+  TYPES:
     BEGIN OF ty_repo,
       key             TYPE string,
       name            TYPE string,
@@ -54,6 +61,7 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       deserialized_at TYPE string,
       offline         TYPE abap_bool,
       favorite        TYPE abap_bool,
+      labels          TYPE ty_labels,
     END OF ty_repo,
     ty_repos TYPE STANDARD TABLE OF ty_repo WITH EMPTY KEY.
 

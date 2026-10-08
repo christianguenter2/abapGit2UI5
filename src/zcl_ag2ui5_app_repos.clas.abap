@@ -21,6 +21,9 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
         favorite        TYPE abap_bool,
         favorite_icon   TYPE string,
         favorite_text   TYPE string,
+        labels          TYPE zif_ag2ui5_repo_service=>ty_labels,
+        label_preview   TYPE zif_ag2ui5_repo_service=>ty_labels,
+        label_more      TYPE string,
         "! Navigation for every repository
         nav_type        TYPE string,
       END OF ty_row,
@@ -33,6 +36,8 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     DATA mv_empty_text TYPE string.
     "! LIST or TILES; switched on the client, stored per user
     DATA mv_layout TYPE string VALUE `TILES`.
+    DATA mt_labels TYPE zif_ag2ui5_repo_service=>ty_labels.
+    DATA mv_labels_title TYPE string.
 
     DATA mv_delete_title TYPE string.
     DATA mv_delete_text TYPE string.
@@ -51,6 +56,7 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     DATA ms_delete_preview TYPE zif_ag2ui5_repo_service=>ty_delete_preview.
     DATA mv_delete_failed TYPE abap_bool.
     DATA mv_delete_package TYPE string.
+    DATA mv_label_filter TYPE string.
 
     METHODS view_display.
     METHODS tiles_display
@@ -62,8 +68,14 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     METHODS favorite_set.
     METHODS favorites_filter IMPORTING iv_value TYPE string.
     METHODS favorite_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
+    METHODS labels_display IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder.
+    METHODS label_items IMPORTING io_parent TYPE REF TO z2ui5_cl_ui5_view_builder iv_wrapping TYPE abap_bool DEFAULT abap_false.
+    METHODS labels_open.
+    METHODS label_filter.
+    CLASS-METHODS labels_css RETURNING VALUE(rv_css) TYPE string.
     CLASS-METHODS filtered_repos
       IMPORTING it_rows TYPE ty_rows iv_search TYPE string iv_favorites_only TYPE abap_bool
+                iv_label TYPE string OPTIONAL
       RETURNING VALUE(rt_rows) TYPE ty_rows.
     METHODS open_repo.
     METHODS service RETURNING VALUE(ri_service) TYPE REF TO zif_ag2ui5_repo_service.
@@ -168,7 +180,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
             )->tag( `SearchField`
                 )->a( n = `id`          v = `search`
                 )->a( n = `value`       v = client->_bind( mv_search )
-                )->a( n = `placeholder` v = `Search name, package or URL`
+                )->a( n = `placeholder` v = `Search name, package, URL or label`
                 )->a( n = `search`      v = client->_event( `SEARCH` )
             )->ele( `SegmentedButton`
                 )->a( n = `selectedKey`     v = client->_bind( mv_layout )
@@ -185,6 +197,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
     " both layouts are in the view; the toggle only switches which one shows
     DATA(content) = page->ele( `content` ).
+    content->tag( n = `HTML` ns = `core`
+        )->a( n = `content` v = labels_css( ) ).
     DATA(table) = content->ele( `Table`
         )->a( n = `items`      v = client->_bind( mt_repos )
         )->a( n = `noDataText` v = `No repositories found`
@@ -232,8 +246,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
             )->a( n = `press` v = client->_event( val = `OPEN` arg = `${KEY}` )
             )->ele( `cells` ).
     favorite_display( cells ).
-    cells->tag( `ObjectIdentifier`
+    DATA(name_cell) = cells->ele( `VBox` ).
+    name_cell->tag( `ObjectIdentifier`
         )->a( n = `title` v = `{NAME}` ).
+    labels_display( name_cell ).
     cells->tag( `Text`
         )->a( n = `text` v = `{PACKAGE}` ).
     " a link opens in a new tab; a click on it does not open the repository
@@ -296,6 +312,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->ele( `VBox`
             )->a( n = `class` v = `sapUiSmallMarginBeginEnd sapUiTinyMarginBottom` ).
 
+    labels_display( box ).
+
     " a link opens in a new tab; a click on it does not open the repository
     " a URL has no blank to wrap at: cut it off at the card's inner width
     " (column 20rem less the margins); the tooltip has all of it
@@ -330,7 +348,15 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         client->set_session_stateful( abap_false ).
         zcl_ag2ui5_app_login=>set_stateful( abap_false ).
       WHEN `SEARCH`.
+        CLEAR mv_label_filter.
         apply_search( ).
+      WHEN `LABEL_FILTER`.
+        label_filter( ).
+      WHEN `LABELS`.
+        labels_open( ).
+      WHEN `LABELS_CLOSE`.
+        client->popover_destroy( ).
+        CLEAR: mt_labels, mv_labels_title.
       WHEN `FAVORITE`.
         favorite_set( ).
       WHEN `FAVORITES_FILTER`.
@@ -376,6 +402,10 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         THEN `sap-icon://favorite` ELSE `sap-icon://unfavorite` ).
       ls_row-favorite_text = COND #( WHEN ls_row-favorite = abap_true
         THEN `Remove from favorites` ELSE `Add to favorites` ).
+      LOOP AT ls_row-labels INTO DATA(ls_label) FROM 1 TO 3.
+        INSERT ls_label INTO TABLE ls_row-label_preview.
+      ENDLOOP.
+      ls_row-label_more = COND #( WHEN lines( ls_row-labels ) > 3 THEN |+{ lines( ls_row-labels ) - 3 }| ).
       INSERT ls_row INTO TABLE mt_all.
     ENDLOOP.
 
@@ -385,7 +415,8 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
   METHOD apply_search.
 
-    mt_repos = filtered_repos( it_rows = mt_all iv_search = mv_search iv_favorites_only = mv_favorites_only ).
+    mt_repos = filtered_repos( it_rows = mt_all iv_search = COND #( WHEN mv_label_filter IS INITIAL THEN mv_search )
+      iv_favorites_only = mv_favorites_only iv_label = mv_label_filter ).
     mv_empty = xsdbool( mt_repos IS INITIAL ).
     mv_empty_text = COND #( WHEN mv_favorites_only = abap_false THEN `No repositories found`
       WHEN NOT line_exists( mt_all[ favorite = abap_true ] ) THEN `No favorites yet`
@@ -399,12 +430,140 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
       IF iv_favorites_only = abap_true AND ls_row-favorite = abap_false.
         CONTINUE.
       ENDIF.
-      IF iv_search IS NOT INITIAL AND NOT ( ls_row-name CS iv_search OR ls_row-package CS iv_search OR ls_row-url CS iv_search ).
+      IF iv_label IS NOT INITIAL AND NOT line_exists( ls_row-labels[ text = iv_label ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(lv_label_match) = abap_false.
+      LOOP AT ls_row-labels INTO DATA(ls_label).
+        IF ls_label-text CS iv_search.
+          lv_label_match = abap_true.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+      IF iv_search IS NOT INITIAL AND NOT ( ls_row-name CS iv_search OR ls_row-package CS iv_search OR ls_row-url CS iv_search
+        OR lv_label_match = abap_true ).
         CONTINUE.
       ENDIF.
       INSERT ls_row INTO TABLE rt_rows.
     ENDLOOP.
     SORT rt_rows BY favorite DESCENDING package ASCENDING name ASCENDING key ASCENDING.
+
+  ENDMETHOD.
+
+  METHOD labels_display.
+
+    DATA(row) = io_parent->ele( `HBox`
+        )->a( n = `visible` v = `{= ${LABELS}.length > 0 }`
+        )->a( n = `alignItems` v = `Center`
+        )->a( n = `wrap` v = `Wrap`
+        )->a( n = `class` v = `ag2ui5RepoTags sapUiTinyMarginTop sapUiTinyMarginBottom` ).
+    DATA(tags) = row->ele( `FlexBox`
+        )->a( n = `wrap` v = `Wrap`
+        )->a( n = `items` v = `{path: 'LABEL_PREVIEW', templateShareable: false}` ).
+    DATA(items) = tags->ele( `items` ).
+    label_items( items ).
+    row->tag( `Button`
+        )->a( n = `text` v = `{LABEL_MORE}`
+        )->a( n = `visible` v = `{= !!${LABEL_MORE} }`
+        )->a( n = `tooltip` v = `Show all repository labels`
+        )->a( n = `type` v = `Transparent`
+        )->a( n = `press` v = client->_event( val = `LABELS`
+             t_arg = VALUE #( ( `${KEY}` ) ( `$event.getSource().getId()` ) ) ) ).
+
+  ENDMETHOD.
+
+  METHOD label_items.
+
+    io_parent->ele( `Link`
+        )->a( n = `text` v = `{TEXT}`
+        )->a( n = `tooltip` v = `{TEXT}`
+        )->a( n = `wrapping` b = iv_wrapping
+        )->a( n = `press` v = client->_event( val = `LABEL_FILTER` arg = `${TEXT}` )
+        )->a( n = `class` v = `ag2ui5RepoTag`
+        )->ele( `customData`
+            )->tag( n = `CustomData` ns = `core`
+                )->a( n = `key` v = `tag-color`
+                )->a( n = `value` v = `{COLOR}`
+                )->a( n = `writeToDom` v = `true` ).
+
+  ENDMETHOD.
+
+  METHOD label_filter.
+
+    DATA(lv_label) = client->get_event_arg( ).
+    IF lv_label IS INITIAL.
+      RETURN.
+    ENDIF.
+    LOOP AT mt_all INTO DATA(ls_row).
+      IF line_exists( ls_row-labels[ text = lv_label ] ).
+        mv_label_filter = lv_label.
+        mv_search = lv_label.
+        client->popover_destroy( ).
+        CLEAR: mt_labels, mv_labels_title.
+        apply_search( ).
+        RETURN.
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD labels_open.
+
+    READ TABLE mt_all INTO DATA(ls_row) WITH KEY key = client->get_event_arg( ).
+    IF sy-subrc <> 0 OR ls_row-labels IS INITIAL OR client->get_event_arg( 2 ) IS INITIAL.
+      RETURN.
+    ENDIF.
+    mt_labels = ls_row-labels.
+    mv_labels_title = |Labels - { ls_row-name }|.
+    DATA(popup) = z2ui5_cl_ui5_view_builder=>factory(
+        )->ele( n = `FragmentDefinition` ns = `core`
+            )->a( n = `xmlns` v = `sap.m`
+            )->a( n = `xmlns:core` v = `sap.ui.core` ).
+    DATA(popover) = popup->ele( `Popover`
+        )->a( n = `title` v = client->_bind( mv_labels_title )
+        )->a( n = `contentWidth` v = `20rem`
+        )->a( n = `placement` v = `Auto` ).
+    DATA(content) = popover->ele( `content` ).
+    content->tag( n = `HTML` ns = `core`
+        )->a( n = `content` v = labels_css( ) ).
+    DATA(tags) = content->ele( `FlexBox`
+        )->a( n = `items` v = client->_bind( mt_labels )
+        )->a( n = `wrap` v = `Wrap`
+        )->a( n = `class` v = `ag2ui5RepoTags ag2ui5RepoLabelsAll sapUiSmallMargin` ).
+    DATA(items) = tags->ele( `items` ).
+    label_items( io_parent = items iv_wrapping = abap_true ).
+    popover->ele( `footer`
+        )->ele( `OverflowToolbar`
+            )->tag( `ToolbarSpacer`
+            )->tag( `Button`
+                )->a( n = `text` v = `Close`
+                )->a( n = `press` v = client->_event( `LABELS_CLOSE` ) ).
+    client->popover_display( xml = popup->stringify( ) by_id = client->get_event_arg( 2 ) ).
+
+  ENDMETHOD.
+
+  METHOD labels_css.
+
+    rv_css = `<style>` &&
+      `.ag2ui5RepoTags .ag2ui5RepoTag \{font-size:.75rem;border-radius:.375rem;padding:.1875rem .5rem;` &&
+      `margin:.125rem .25rem .125rem 0;max-width:9rem;box-sizing:border-box;` &&
+      `color:var(--sapTextColor);background:var(--sapList_Background);border:1px solid transparent\}` &&
+      `.ag2ui5RepoLabelsAll .ag2ui5RepoTag \{max-width:100%;overflow-wrap:anywhere\}` &&
+      `.ag2ui5RepoTag[data-tag-color="blue"] \{color:#0057a7;background:#e9f3ff\}` &&
+      `.ag2ui5RepoTag[data-tag-color="teal"] \{color:#006b67;background:#e3f5f1\}` &&
+      `.ag2ui5RepoTag[data-tag-color="purple"] \{color:#6941a5;background:#f1eafa\}` &&
+      `.ag2ui5RepoTag[data-tag-color="rose"] \{color:#9d3568;background:#fcebf3\}` &&
+      `.ag2ui5RepoTag[data-tag-color="amber"] \{color:#865600;background:#fff2d9\}` &&
+      `.ag2ui5RepoTag[data-tag-color="slate"] \{color:#435a73;background:#edf1f6\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="blue"] \{color:#99caff;background:#16364f\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="teal"] \{color:#85d6cd;background:#183d3a\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="purple"] \{color:#d1b2ff;background:#35264b\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="rose"] \{color:#f3a8ce;background:#49273a\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="amber"] \{color:#f3ce87;background:#47391d\}` &&
+      `html[class*="_dark"] .ag2ui5RepoTag[data-tag-color="slate"] \{color:#b4c8dc;background:#2e3d4d\}` &&
+      `html[class*="_hcb"] .ag2ui5RepoTags .ag2ui5RepoTag,html[class*="_hcw"] .ag2ui5RepoTags .ag2ui5RepoTag \{` &&
+      `color:var(--sapTextColor);background:var(--sapList_Background);border-color:var(--sapContent_ForegroundBorderColor)\}` &&
+      `</style>`.
 
   ENDMETHOD.
 

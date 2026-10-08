@@ -1,3 +1,45 @@
+CLASS ltcl_repo_labels DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS split_and_clean FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS stable_colors FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS configured_colors FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS invalid_colors_fall_back FOR TESTING RAISING zcx_abapgit_exception.
+ENDCLASS.
+
+CLASS ltcl_repo_labels IMPLEMENTATION.
+  METHOD split_and_clean.
+    DATA(lt_labels) = zcl_ag2ui5_repo_service=>repo_labels( | core, tools,core, , bad{ cl_abap_char_utilities=>newline }label | ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_labels ) exp = 3 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 1 ]-text exp = `core` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 3 ]-text exp = `bad?label` ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>repo_labels( ` , ` ) ).
+  ENDMETHOD.
+  METHOD stable_colors.
+    DATA(lt_first) = zcl_ag2ui5_repo_service=>repo_labels( `Core, ui5` ).
+    DATA(lt_second) = zcl_ag2ui5_repo_service=>repo_labels( `other, UI5, core` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_first[ 1 ]-color exp = lt_second[ 3 ]-color ).
+    cl_abap_unit_assert=>assert_equals( act = lt_first[ 2 ]-color exp = lt_second[ 2 ]-color ).
+    DATA(lt_spaces) = zcl_ag2ui5_repo_service=>repo_labels( `  multiple   words ` ).
+    DATA(lt_normal) = zcl_ag2ui5_repo_service=>repo_labels( `multiple words` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_spaces exp = lt_normal ).
+  ENDMETHOD.
+  METHOD configured_colors.
+    DATA(lt_labels) = zcl_ag2ui5_repo_service=>repo_labels(
+      iv_labels = `one, two, three, four, five` iv_colors = `one:blue-set, two:purple, three:#00F, four:#fff/00ff00, five:#fff` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 1 ]-color exp = `blue` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 2 ]-color exp = `purple` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 3 ]-color exp = `blue` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 4 ]-color exp = `teal` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_labels[ 5 ]-color exp = `slate` ).
+  ENDMETHOD.
+  METHOD invalid_colors_fall_back.
+    DATA(lt_auto) = zcl_ag2ui5_repo_service=>repo_labels( `unsafe, unknown, after` ).
+    DATA(lt_actual) = zcl_ag2ui5_repo_service=>repo_labels(
+      iv_labels = `unsafe, unknown, after` iv_colors = `unsafe:#fff;background:red, unknown:my-custom-css` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_actual exp = lt_auto ).
+  ENDMETHOD.
+ENDCLASS.
+
 CLASS ltcl_login DEFINITION DEFERRED.
 CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_login.
 

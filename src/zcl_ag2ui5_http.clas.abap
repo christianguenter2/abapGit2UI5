@@ -40,7 +40,7 @@ ENDCLASS.
 CLASS zcl_ag2ui5_http IMPLEMENTATION.
 
   METHOD start_url.
-    DATA: language TYPE string.
+    DATA language TYPE string.
 
     DATA(lv_location) = iv_location.
     IF lv_location CP `*/`.
