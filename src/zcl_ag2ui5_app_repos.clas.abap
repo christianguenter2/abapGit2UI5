@@ -233,7 +233,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `minScreenWidth` v = `Tablet`
         )->a( n = `demandPopin`    v = `true`
         )->tag( `Text`
-            )->a( n = `text` v = `Branch` ).
+            )->a( n = `text` v = `Reference` ).
     columns->ele( `Column`
         )->a( n = `minScreenWidth` v = `Desktop`
         )->a( n = `demandPopin`    v = `true`
@@ -330,7 +330,7 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
         )->a( n = `width`   v = `18rem`
         )->a( n = `tooltip` v = `{URL}` ).
     box->ele( `ObjectAttribute`
-        )->a( n = `title`   v = `Branch`
+        )->a( n = `title`   v = `Reference`
         )->a( n = `visible` v = `{= !!${BRANCH_DISPLAY} }`
         )->ele( `customContent`
             )->tag( `Link`

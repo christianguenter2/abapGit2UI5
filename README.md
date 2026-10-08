@@ -26,7 +26,7 @@ the [abapGit user guide](https://docs.abapgit.org/user-guide/).
 | Stage, commit and push | File selection and line patches | File selection and **Pick lines**; push to the followed branch or to a new one |
 | Pull decisions | Separate dialogs for overwrite, deletion, package and other checks | One dialog grouped by risk, with individual selections and abapGit's defaults |
 | Ignore rules | Native `.abapgit.xml` rules | Same rules, with editable patterns and previews before saving or removing |
-| Branches and tags | Switch, create, delete and merge branches; tag operations | Switch, create at the current head and delete branches; no merge or tag UI |
+| Branches and tags | Switch, create, delete and merge branches; tag operations | Switch, create at the current head and delete branches; browse, select, create and delete tags; no merge UI |
 | Authentication | [Username/password or token dialog](https://docs.abapgit.org/user-guide/projects/online/authentication.html) when credentials are needed | Credentials from an abapGit user exit, otherwise a login page when abapGit asks; kept in session memory for at most 30 minutes without use |
 | Offline ZIPs | Import and export | Binary upload/download, status and diff against the uploaded ZIP, selective import |
 | Repository and package lifecycle | Register repositories, create packages, remove and uninstall | Online/offline registration, package creation, Remove and guarded Uninstall with a deletion preview |
@@ -131,7 +131,8 @@ the browser session is running that code.
   shared with classic abapGit for your SAP user and appear first. **Favorites
   only** combines with search and is remembered; new users start with All.
   Adding or removing a favorite shows a confirmation toast.
-- **Branch links:** labels omit `refs/heads/`. In the repository list, tiles
+- **Reference links:** branch labels omit `refs/heads/`; selected tags show
+  `Tag <name>`. In the repository list, tiles
   and branch dialog, click a branch name to open it on the remote in a new tab.
   Links support GitHub, GitLab.com and Bitbucket Cloud; other hosts retain a
   plain short label.
@@ -142,6 +143,20 @@ the browser session is running that code.
   **New branch** creates a branch at the current head. Deletion requires a
   confirmation; the default and followed branches cannot be deleted. abapGit's
   exit supplies the credentials.
+- **Git tags:** the same **Branches and tags** dialog has a **Tags** tab,
+  loaded from the remote on demand. It lists lightweight and annotated tags
+  with resolved commits; annotated tag objects and their peeled refs appear
+  as one row. Switch selects the tag for status and diff without importing
+  objects. Use Pull separately to review/import that version. Missing or moved
+  tags are refused against fresh remote refs. Stage is disabled while a tag
+  is selected; switch back to a branch to stage and push. Tag names link to
+  supported remote hosts. **New tag** creates a lightweight or annotated tag at
+  the displayed remote commit. Annotated tags require a message and author
+  details, prefilled from Git identity settings. Creation preserves the selected
+  reference and local changes; existing names and changed targets are refused.
+  **Delete** removes an unselected remote tag after confirmation. Switch away
+  from the selected tag first. Changed tags, including changed annotations at
+  the same commit, are refused until the list is reopened.
 - **Pull with decisions:** a dialog lists every change, grouped by risk, with
   abapGit's defaults preselected. Only what you tick is changed. For
   transportable packages it asks for one of your modifiable transport
@@ -149,7 +164,7 @@ the browser session is running that code.
   rows; transport choices and the Pull anyway acknowledgment stay separate.
 
 Not part of it yet: conventional `.gitignore` interpretation, branch merging,
-tag operations, and creating a transport request from the dialog.
+tag creation/deletion, and creating a transport request from the dialog.
 
 Object names in status, staging and pull decisions link to the local object
 in Eclipse/ADT. The diff page offers the same link. Objects that are missing

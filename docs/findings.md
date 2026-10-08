@@ -1688,3 +1688,122 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   object or package changes were made. Tiles preference restored; viewport reset
   and test tab closed. User verified the deployed feature and approved commit
   and push.
+## Git tag browsing and selection (2026-10-08)
+
+- Branches and tags dialog now offers a lazy Tags tab with remote tag names,
+  resolved commits, supported-host links, selected markers, a growing table
+  and an explicit empty state. Long names wrap. Selected refs display as
+  `Tag <name>`; overview column/attribute is Reference. No tag mutation UI.
+- Service list_tags returns plain data. tag_rows resolves annotated peel refs
+  and hides duplicate peel rows; missing peeled commits are not switchable.
+  assert_tag validates full tag names and displayed commit against fresh refs,
+  refusing forged, missing, unresolved and moved tags. Selection uses native
+  select_branch after resetting fixed commit/origin and commits persistence.
+  Stage is disabled on tags; get_stage/commit_push also refuse them on the
+  server before writes. Switching back to a branch restores staging.
+- Local lint/render passes with the pre-existing unresolved MessageStrip hint.
+  Native suites: service230/230, Status71/71, overview33/33, Stage39/39: 373
+  affected tests. All six final deployed source readbacks match. ADT backups
+  are in `/tmp/ag2ui5-tags-backup`.
+- $UMLAUT initially followed feature/test1234 and had no remote tags. Created
+  two temporary test refs at its existing commit a7730ef (one lightweight, one
+  annotated). Chrome verified listing once with the peeled commit, both
+  selections, selected marker/default Tags tab, disabled Stage, repository diff
+  against the annotated tag and return to the original branch with Stage enabled.
+  Native calls refused stale commits, branch refs submitted as tags and direct
+  staging/pushing. Tag selection imported no objects.
+- Pull preview in English hit the fixture's existing DE main-language guard.
+  An uncaught native smoke exception produced an HTTP500; the isolated check
+  confirmed the language refusal and no new short dump. In a German browser
+  session, the ordinary pull decision dialog loaded successfully and was
+  cancelled without import. A real tag pull was not executed.
+- Responsive test at390px: dialog351px, x20, document390px, commit column
+  becomes pop-in. Screenshot capture briefly timed out; final desktop dialog
+  proof is `/tmp/ag2ui5-tags-dialog.jpg`. Temporary viewport reset and test tab
+  closed. Only temporary fixture tags were created/deleted; final remote tag
+  count is0 and original feature/test1234 is selected. No branch, SAP object,
+  package or user preference changes remain. Final empty Tags state verified.
+- Deployed; uncommitted and unpushed, ready for user review.
+
+## Create Git tags (2026-10-08)
+
+- Tags now offers New tag, defaulting to lightweight. The form shows the full
+  selected remote reference/commit and explains that local changes are excluded.
+  Annotated tags require a message, author name and email; identity defaults
+  come from abapGit's repository/user Git settings. Back discards the draft;
+  validation errors preserve it. Successful creation reloads Tags and keeps the
+  selected reference. No tag deletion UI in this slice.
+- Service-only porcelain calls, plain DTOs, protected opening target. Raw key
+  validation, Git ref rules (including component .lock/. prefixes and @{), type,
+  annotation identity, fresh uniqueness and reference/commit comparison precede
+  writes. The commit comes from fresh remote refs, resolving annotated tags.
+  Fixed commits and switched origins are refused. Receive-pack uses a zero old
+  ref, preventing overwrite if another actor creates the name during validation.
+- Native suites: service234/234, Status74/74 (308 affected tests). The native
+  compiler rejected a built-in-expression IS INITIAL condition; corrected to
+  equality. A test caught POSIX $ allowing a final newline in email; explicit
+  control-character refusal now covers it. Branch list assertion was narrowed
+  to allow the unrelated tag-type Select. All tests pass after those fixes.
+- npm check passes, with only the existing unresolved MessageStrip hint; UI5
+  render gate has no errors/warnings. Final service-only ref validation gets
+  another abaplint pass. Deployed via ADT with prior-source comparison and
+  rollback on activation failure; six readbacks match the working tree.
+  Baselines: `/tmp/ag2ui5-create-tags-baseline`.
+- Chrome on the authorized $UMLAUT fixture created one lightweight and one
+  annotated tag at a7730efe12798da06c710365452c017017b67e51. Both appeared once
+  with the correct resolved commit/type (native check), while feature/test1234
+  remained selected. Invalid names, missing annotation and duplicate name were
+  refused with drafts retained. Back/reopen cleared the name and reset type.
+  Native creation refused a stale target and oversized key without adding refs;
+  target preparation on the selected annotated fixture resolved its commit.
+- Phone390: dialog351px at x20, document390px; form and footer fit. Capture
+  briefly timed out, then final desktop/phone proof succeeded:
+  `/tmp/ag2ui5-create-tag-dialog.jpg`, `/tmp/ag2ui5-create-tag-phone.jpg`.
+  Temporary viewport reset and test tab closed. Removed only the two temporary
+  ag2ui5-create-test-{light,annotated}-20261008 refs; final tag refs0, original
+  feature/test1234 selected. Empty Tags state rechecked in Chrome. No objects,
+  branches, user settings or local repository settings changed.
+- Deployed; uncommitted and unpushed along with the preceding tag selection slice.
+
+## Delete Git tags (2026-10-08)
+
+- Tags rows now offer Delete alongside Switch, including responsive wrapping and
+  commit pop-in. Selected tags have neither action; switch to another reference
+  before deleting. Confirmation names the tag/commit and explains that only the
+  remote tag is removed and the app cannot undo it. Cancel is first and receives
+  initial focus; native unit checks cover the order/emphasis. Successful deletion
+  reloads Tags without changing the tab/reference or importing objects.
+- Tag DTOs carry the raw unpeeled ref hash separately from resolved commit SHA.
+  Pure assert_deletable_tag rejects branch/peel/missing/current/empty/changed refs.
+  Fresh list/key/auth checks precede deletion; use the fresh raw hash as expected
+  old value through porcelain's unpeeled receive-pack path for both tag types.
+  This avoids the annotated helper's refetch replacing the confirmed hash and
+  preserves atomic refusal if the remote ref changes during deletion. Pending
+  confirmation is protected and cleared after Cancel/success/error; duplicate,
+  forged and out-of-context events do not replay deletion.
+- Native service237/237, Status77/77: 314 affected tests. Raw vs peeled mapping,
+  unresolved deletion, current/missing/forged/stale checks, same-commit annotation
+  change and app confirmation lifecycle covered. npm check passes, UI5 render
+  has 0 errors/warnings and the existing unresolved MessageStrip hint. Six final
+  source readbacks match. ADT baseline/rollback backups are in
+  `/tmp/ag2ui5-delete-tags-baseline`.
+- Fixture preflight found the user's newly created lightweight v1.1.1 tag at
+  a7730ef, so the empty-tags precondition stopped without mutation. Revised test
+  setup to allow existing user tags and create only uniquely named disposable
+  ag2ui5-delete-test-{light,annotated}-20261008 refs. Preserved v1.1.1 throughout.
+- Chrome verified Cancel preserves the lightweight tag, selection hides Delete,
+  and the service independently refuses deleting a selected tag. Original
+  feature/test1234 then restored through the app. With annotated confirmation
+  open, replaced only that disposable annotation at the same commit (raw object
+  hash changed from 4e819fb to a7f5437); confirming the old request refused it
+  with "Nothing was deleted". Reopened Tags to get the fresh identity.
+- Phone390: dialog351px at x20, document390px; both row actions fit and long
+  names wrap. Lightweight deletion completed in the app at phone width;
+  annotated deletion completed at desktop width. Remote calls briefly exceeded
+  the browser's default 5s wait; waiting for completion verified success without
+  replaying the mutation. Final list contains only the unchanged v1.1.1 ref at
+  a7730efe12798da06c710365452c017017b67e51, selected reference feature/test1234,
+  fixed commit/origin empty. No objects or settings changed. Viewport reset and
+  test tab closed. Proof `/tmp/ag2ui5-delete-tags-dialog.jpg` and
+  `/tmp/ag2ui5-delete-tags-phone.jpg`.
+- Deployed; all three tag slices remain uncommitted and unpushed.

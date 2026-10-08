@@ -242,6 +242,23 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_branches) TYPE zif_ag2ui5_repo_service=>ty_branches.
 
+    CLASS-METHODS tag_rows
+      IMPORTING it_tags TYPE zif_abapgit_git_definitions=>ty_git_branch_list_tt iv_current TYPE string
+      RETURNING VALUE(rt_tags) TYPE zif_ag2ui5_repo_service=>ty_tags.
+    CLASS-METHODS checked_new_tag
+      IMPORTING is_tag TYPE zif_ag2ui5_repo_service=>ty_new_tag
+                it_tags TYPE zif_ag2ui5_repo_service=>ty_tags
+                is_expected TYPE zif_ag2ui5_repo_service=>ty_tag_target
+                is_actual TYPE zif_ag2ui5_repo_service=>ty_tag_target
+      RETURNING VALUE(rs_tag) TYPE zif_abapgit_git_definitions=>ty_git_tag
+      RAISING zcx_abapgit_exception.
+    CLASS-METHODS assert_deletable_tag
+      IMPORTING iv_tag TYPE string iv_ref_sha1 TYPE string it_tags TYPE zif_ag2ui5_repo_service=>ty_tags
+      RAISING zcx_abapgit_exception.
+    CLASS-METHODS assert_tag
+      IMPORTING iv_tag TYPE string iv_sha1 TYPE string it_tags TYPE zif_ag2ui5_repo_service=>ty_tags
+      RAISING zcx_abapgit_exception.
+
     "! Raises unless the branch is one of the listed ones
     CLASS-METHODS assert_branch
       IMPORTING
@@ -1387,11 +1404,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rv_display = iv_branch.
     IF find( val = iv_branch sub = `refs/heads/` ) = 0.
       rv_display = substring( val = iv_branch off = 11 ).
+    ELSEIF find( val = iv_branch sub = `refs/tags/` ) = 0.
+      rv_display = |Tag { substring( val = iv_branch off = 10 ) }|.
     ENDIF.
   ENDMETHOD.
 
   METHOD branch_link.
-    IF iv_branch IS INITIAL OR find( val = iv_branch sub = `refs/heads/` ) <> 0.
+    IF iv_branch IS INITIAL OR ( find( val = iv_branch sub = `refs/heads/` ) <> 0
+                                AND find( val = iv_branch sub = `refs/tags/` ) <> 0 ).
       RETURN.
     ENDIF.
     DATA(lv_url) = iv_url.
@@ -1403,7 +1423,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     IF sy-subrc <> 0.
       RETURN.
     ENDIF.
-    DATA(lv_branch) = cl_http_utility=>escape_url( branch_display( iv_branch ) ).
+    DATA(lv_short) = substring( val = iv_branch off = COND i( WHEN iv_branch CP `refs/tags/*` THEN 10 ELSE 11 ) ).
+    DATA(lv_branch) = cl_http_utility=>escape_url( lv_short ).
     DATA(lv_lower) = to_lower( lv_url ).
     IF lv_lower CP `*://gitlab.com/*` OR lv_lower CP `*://www.gitlab.com/*`.
       rv_link = |{ lv_url }/-/tree/{ lv_branch }|.
@@ -1503,6 +1524,195 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                     |since the list was loaded - nothing was deleted. Open the list again.| ).
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD tag_rows.
+    LOOP AT it_tags INTO DATA(ls_tag) WHERE name IS NOT INITIAL.
+      IF ls_tag-name NP `refs/tags/*` OR ls_tag-name CP `*^{}` OR strlen( ls_tag-name ) <= 10.
+        CONTINUE.
+      ENDIF.
+      IF line_exists( rt_tags[ name = ls_tag-name ] ).
+        CONTINUE.
+      ENDIF.
+      DATA(lv_sha1) = CONV string( ls_tag-sha1 ).
+      DATA(lv_kind) = `Lightweight`.
+      READ TABLE it_tags INTO DATA(ls_peeled) WITH KEY name = |{ ls_tag-name }^\{\}|.
+      IF sy-subrc = 0.
+        lv_sha1 = ls_peeled-sha1.
+        lv_kind = `Annotated`.
+      ELSEIF ls_tag-type = zif_abapgit_git_definitions=>c_git_branch_type-annotated_tag.
+        " Do not show a tag object's hash as a commit or switch an unresolved tag.
+        CLEAR lv_sha1.
+        lv_kind = `Annotated`.
+      ENDIF.
+      APPEND VALUE #( ref_sha1 = ls_tag-sha1 name = ls_tag-name display = substring( val = ls_tag-name off = 10 )
+        sha1 = lv_sha1 kind = lv_kind current = xsdbool( ls_tag-name = iv_current ) ) TO rt_tags.
+    ENDLOOP.
+    SORT rt_tags BY display DESCENDING.
+  ENDMETHOD.
+
+  METHOD checked_new_tag.
+    DATA(lv_name) = is_tag-name.
+    IF lv_name CP `refs/tags/*`.
+      lv_name = substring( val = lv_name off = 10 ).
+    ENDIF.
+    FIND REGEX `\.\.|[ ~^:?*\[\\]|[[:cntrl:]]|^[/.]|[/.]$|//|(^|/)\.|\.lock(/|$)` IN lv_name.
+    IF sy-subrc = 0 OR lv_name IS INITIAL OR lv_name CP `refs/*` OR lv_name = `@` OR lv_name CS `@{`.
+      zcx_abapgit_exception=>raise( `Enter a valid Git tag name, for example v1.0.0 (no spaces or special ref characters)` ).
+    ENDIF.
+    rs_tag-name = |refs/tags/{ lv_name }|.
+    IF line_exists( it_tags[ name = rs_tag-name ] ).
+      zcx_abapgit_exception=>raise( |Tag { lv_name } already exists| ).
+    ENDIF.
+    IF is_expected-ref IS INITIAL OR is_expected-sha1 IS INITIAL
+        OR is_expected-ref <> is_actual-ref OR is_expected-sha1 <> is_actual-sha1.
+      zcx_abapgit_exception=>raise( `The target changed. Go Back and reopen New tag to review the current commit.` ).
+    ENDIF.
+    rs_tag-sha1 = is_actual-sha1.
+    CASE is_tag-kind.
+      WHEN `LIGHTWEIGHT`.
+        rs_tag-type = zif_abapgit_git_definitions=>c_git_branch_type-lightweight_tag.
+      WHEN `ANNOTATED`.
+        IF condense( is_tag-message ) = `` OR condense( is_tag-tagger_name ) = ``
+            OR condense( is_tag-tagger_email ) = ``.
+          zcx_abapgit_exception=>raise( `Annotated tags need a message, author name and email` ).
+        ENDIF.
+        FIND REGEX `[<>]|[[:cntrl:]]` IN is_tag-tagger_name.
+        IF sy-subrc = 0.
+          zcx_abapgit_exception=>raise( `Author name cannot contain angle brackets or control characters` ).
+        ENDIF.
+        FIND REGEX `[[:cntrl:]]` IN is_tag-tagger_email.
+        IF sy-subrc = 0.
+          zcx_abapgit_exception=>raise( `Author email cannot contain control characters` ).
+        ENDIF.
+        FIND REGEX `^[^ <>[:cntrl:]@]+@[^ <>[:cntrl:]@]+$` IN is_tag-tagger_email.
+        IF sy-subrc <> 0.
+          zcx_abapgit_exception=>raise( `Enter a valid author email` ).
+        ENDIF.
+        rs_tag-type = zif_abapgit_git_definitions=>c_git_branch_type-annotated_tag.
+        rs_tag-message = is_tag-message.
+        rs_tag-tagger_name = is_tag-tagger_name.
+        rs_tag-tagger_email = is_tag-tagger_email.
+      WHEN OTHERS.
+        zcx_abapgit_exception=>raise( `Choose Lightweight or Annotated` ).
+    ENDCASE.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~tag_target.
+    silence_progress( ).
+    assert_authorized( ).
+    IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12.
+      zcx_abapgit_exception=>raise( `Choose a registered repository` ).
+    ENDIF.
+    DATA(li_repo) = get_online_repo( iv_key ).
+    IF li_repo->get_selected_commit( ) IS NOT INITIAL OR li_repo->get_switched_origin( ) IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( `Select a branch or tag on the registered remote before creating a tag` ).
+    ENDIF.
+    rs_target-ref = li_repo->get_selected_branch( ).
+    DATA(li_list) = zcl_abapgit_git_factory=>get_git_transport( )->branches( li_repo->get_url( ) ).
+    IF rs_target-ref CP `refs/tags/*`.
+      DATA(lt_tags) = tag_rows( it_tags = li_list->get_tags_only( ) iv_current = rs_target-ref ).
+      READ TABLE lt_tags INTO DATA(ls_tag) WITH KEY name = rs_target-ref.
+      IF sy-subrc = 0.
+        rs_target-sha1 = ls_tag-sha1.
+      ENDIF.
+    ELSEIF rs_target-ref CP `refs/heads/*`.
+      DATA(lt_branches) = li_list->get_branches_only( ).
+      READ TABLE lt_branches INTO DATA(ls_branch) WITH KEY name = rs_target-ref.
+      IF sy-subrc = 0.
+        rs_target-sha1 = ls_branch-sha1.
+      ENDIF.
+    ENDIF.
+    IF rs_target-sha1 IS INITIAL.
+      zcx_abapgit_exception=>raise( `The selected reference has no resolved remote commit` ).
+    ENDIF.
+    DATA(li_user) = zcl_abapgit_persist_factory=>get_user( ).
+    rs_target-name = li_user->get_repo_git_user_name( li_repo->get_url( ) ).
+    rs_target-email = li_user->get_repo_git_user_email( li_repo->get_url( ) ).
+    IF rs_target-name IS INITIAL.
+      rs_target-name = li_user->get_default_git_user_name( ).
+    ENDIF.
+    IF rs_target-email IS INITIAL.
+      rs_target-email = li_user->get_default_git_user_email( ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~create_tag.
+    silence_progress( ).
+    assert_authorized( ).
+    DATA(ls_actual) = zif_ag2ui5_repo_service~tag_target( iv_key ).
+    DATA(ls_tag) = checked_new_tag( is_tag = is_tag is_expected = is_expected is_actual = ls_actual
+      it_tags = zif_ag2ui5_repo_service~list_tags( iv_key ) ).
+    zcl_abapgit_git_porcelain=>create_tag( iv_url = get_online_repo( iv_key )->get_url( ) is_tag = ls_tag ).
+    COMMIT WORK AND WAIT.
+    rv_tag = ls_tag-name.
+  ENDMETHOD.
+
+  METHOD assert_deletable_tag.
+    IF iv_tag NP `refs/tags/*` OR iv_tag CP `*^{}`.
+      zcx_abapgit_exception=>raise( `Choose a tag from the remote list` ).
+    ENDIF.
+    READ TABLE it_tags INTO DATA(ls_tag) WITH KEY name = iv_tag.
+    IF sy-subrc <> 0 OR ls_tag-ref_sha1 IS INITIAL.
+      zcx_abapgit_exception=>raise( `The tag is no longer available. Reopen Tags.` ).
+    ENDIF.
+    IF ls_tag-current = abap_true.
+      zcx_abapgit_exception=>raise( `This repository follows the tag. Switch to another reference before deleting it.` ).
+    ENDIF.
+    IF iv_ref_sha1 IS INITIAL OR iv_ref_sha1 <> ls_tag-ref_sha1.
+      zcx_abapgit_exception=>raise( `The tag changed since the list was loaded. Nothing was deleted. Reopen Tags.` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~delete_tag.
+    silence_progress( ).
+    assert_authorized( ).
+    DATA(lt_tags) = zif_ag2ui5_repo_service~list_tags( iv_key ).
+    assert_deletable_tag( iv_tag = iv_tag iv_ref_sha1 = iv_ref_sha1 it_tags = lt_tags ).
+    DATA(ls_tag) = lt_tags[ name = iv_tag ].
+    " Always pass the unpeeled ref and its raw object hash. Porcelain then
+    " uses that hash as receive-pack's expected old value for either tag type,
+    " instead of refetching an annotated tag and losing the confirmation guard.
+    zcl_abapgit_git_porcelain=>delete_tag( iv_url = get_online_repo( iv_key )->get_url( )
+      is_tag = VALUE #( name = ls_tag-name sha1 = ls_tag-ref_sha1 ) ).
+    COMMIT WORK AND WAIT.
+  ENDMETHOD.
+
+  METHOD assert_tag.
+    IF iv_tag NP `refs/tags/*` OR iv_tag CP `*^{}`.
+      zcx_abapgit_exception=>raise( `Choose a tag from the remote list` ).
+    ENDIF.
+    READ TABLE it_tags INTO DATA(ls_tag) WITH KEY name = iv_tag.
+    IF sy-subrc <> 0 OR ls_tag-sha1 IS INITIAL.
+      zcx_abapgit_exception=>raise( `The tag is no longer available as a resolved commit. Reopen Tags.` ).
+    ENDIF.
+    IF iv_sha1 <> ls_tag-sha1.
+      zcx_abapgit_exception=>raise( `The tag moved since the list was loaded. Reopen Tags before switching.` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~list_tags.
+    silence_progress( ).
+    assert_authorized( ).
+    IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12.
+      zcx_abapgit_exception=>raise( `Choose a registered repository` ).
+    ENDIF.
+    DATA(li_repo) = get_online_repo( iv_key ).
+    DATA(li_list) = zcl_abapgit_git_factory=>get_git_transport( )->branches( li_repo->get_url( ) ).
+    rt_tags = tag_rows( it_tags = li_list->get_tags_only( ) iv_current = li_repo->get_selected_branch( ) ).
+    LOOP AT rt_tags ASSIGNING FIELD-SYMBOL(<ls_tag>).
+      <ls_tag>-link = branch_link( iv_url = li_repo->get_url( ) iv_branch = <ls_tag>-name ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~switch_tag.
+    " Fresh remote refs are authoritative, including the peeled commit.
+    assert_tag( iv_tag = iv_tag iv_sha1 = iv_sha1 it_tags = zif_ag2ui5_repo_service~list_tags( iv_key ) ).
+    DATA(li_repo) = get_online_repo( iv_key ).
+    li_repo->select_commit( '' ).
+    li_repo->switch_origin( '' ).
+    li_repo->select_branch( iv_tag ).
+    COMMIT WORK AND WAIT.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_branches.
@@ -1888,6 +2098,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     DATA(li_repo) = get_online_repo( iv_key ).
     li_repo->zif_abapgit_repo~refresh( iv_drop_cache = abap_true ).
+    IF li_repo->get_selected_branch( ) CP `refs/tags/*`.
+      zcx_abapgit_exception=>raise( `Switch to a branch before staging or pushing changes` ).
+    ENDIF.
     rs_stage-branch = branch_display( li_repo->get_selected_branch( ) ).
 
     DATA(ls_files) = zcl_abapgit_stage_logic=>get_stage_logic( )->get( li_repo ).
@@ -1934,6 +2147,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     silence_progress( ).
 
     DATA(li_repo) = get_online_repo( iv_key ).
+    IF li_repo->get_selected_branch( ) CP `refs/tags/*`.
+      zcx_abapgit_exception=>raise( `Switch to a branch before staging or pushing changes` ).
+    ENDIF.
 
     " the name comes from the browser: checked against a fresh list
     " before anything is written

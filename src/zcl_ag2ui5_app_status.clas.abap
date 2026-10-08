@@ -102,6 +102,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         default TYPE abap_bool,
         current TYPE abap_bool,
         sha1    TYPE string,
+        ref_sha1 TYPE string,
         link    TYPE string,
         "! The commit, 7 characters
         commit  TYPE string,
@@ -113,10 +114,16 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       ty_branch_rows TYPE STANDARD TABLE OF ty_branch_row WITH EMPTY KEY.
     "! The branch dialog: the remote's branches, each with its actions
     DATA mt_branches     TYPE ty_branch_rows.
+    DATA mt_tags TYPE ty_branch_rows.
+    DATA mv_ref_tab TYPE string VALUE `BRANCHES`.
+    DATA mv_tags_note TYPE string VALUE `The remote has no tags`.
+    DATA mv_is_tag TYPE abap_bool.
     "! New branch was pressed: the name field replaces the list
     DATA mv_new_mode     TYPE abap_bool.
     DATA mv_new_name     TYPE string.
     DATA mv_start_text   TYPE string.
+    DATA ms_new_tag TYPE zif_ag2ui5_repo_service=>ty_new_tag.
+    DATA mv_tag_new_mode TYPE abap_bool.
 
     CLASS-METHODS create
       IMPORTING
@@ -125,6 +132,12 @@ CLASS zcl_ag2ui5_app_status DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_status.
 
   PROTECTED SECTION.
+    DATA ms_tag_expected TYPE zif_ag2ui5_repo_service=>ty_tag_target.
+    DATA mv_delete_tag TYPE string.
+    DATA mv_delete_tag_sha1 TYPE string.
+    METHODS delete_tag.
+    METHODS new_tag.
+    METHODS create_tag.
     DATA mv_labels_open TYPE abap_bool.
     DATA mv_labels_expected TYPE string.
     METHODS labels_open.
@@ -174,6 +187,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS popup_decisions_display.
     METHODS popup_branches_display.
     METHODS load_branches.
+    METHODS load_tags.
+    METHODS switch_tag IMPORTING iv_tag TYPE string iv_sha1 TYPE string.
     "! A login-required error opens the login page; any other error is shown
     METHODS show_error
       IMPORTING
@@ -337,7 +352,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     header_content->tag( `Button`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `text`    v = client->_bind( ms_head-branch_display )
-        )->a( n = `tooltip` v = `Branches`
+        )->a( n = `tooltip` v = `Branches and tags`
         )->a( n = `icon`    v = `sap-icon://split`
         )->a( n = `press`   v = client->_event( `BRANCHES` ) ).
     header_content->tag( `Button`
@@ -361,6 +376,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                 )->a( n = `priority` v = `NeverOverflow` ).
 
     DATA(content) = page->ele( `content` ).
+    content->tag( `MessageStrip`
+        )->a( n = `visible` v = client->_bind( mv_is_tag )
+        )->a( n = `text` v = `Following a tag. Status and diff compare this release; Pull imports it. Switch to a branch to stage and push.`
+        )->a( n = `type` v = `Information`
+        )->a( n = `showIcon` v = `true` ).
     IF mv_offline = abap_true AND mv_zip IS INITIAL.
       content->tag( `MessageStrip`
           )->a( n = `text`     v = `Offline repository: import a ZIP to compare and choose what to change. Export ZIP downloads the current local files.`
@@ -998,19 +1018,33 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `xmlns`      v = `sap.m`
         )->a( n = `xmlns:core` v = `sap.ui.core`
         )->ele( `Dialog`
-            )->a( n = `title`        v = `Branches`
+            )->a( n = `title`        v = `Branches and tags`
             )->a( n = `contentWidth` v = `40rem` ).
 
     DATA(box) = dialog->ele( `content`
         )->ele( `VBox`
             )->a( n = `class` v = `sapUiSmallMargin` ).
     box->tag( `Text`
-        )->a( n = `text`  v = `Switch: only the branch the repository follows changes. Create and delete act on GitHub.`
+        )->a( n = `text`  v = `Switch changes the reference used for status and diff. Pull separately to import its contents. Create and delete act on the remote.`
         )->a( n = `class` v = `sapUiSmallMarginBottom` ).
+
+    box->ele( `SegmentedButton`
+        )->a( n = `selectedKey` v = client->_bind( mv_ref_tab )
+        )->a( n = `selectionChange` v = client->_event( `REF_TAB` )
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}|
+        )->a( n = `class` v = `sapUiSmallMarginBottom`
+        )->ele( `items`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key` v = `BRANCHES`
+                )->a( n = `text` v = `Branches`
+            )->tag( `SegmentedButtonItem`
+                )->a( n = `key` v = `TAGS`
+                )->a( n = `text` v = `Tags` ).
 
     DATA(table) = box->ele( `Table`
         )->a( n = `items`   v = client->_bind( mt_branches )
-        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}| ).
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} | &&
+                                |&& $\{{ client->_bind( val = mv_ref_tab path = abap_true ) }\} === 'BRANCHES' \}| ).
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
         )->tag( `Text`
@@ -1048,6 +1082,54 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `visible` v = `{CAN_DELETE}`
         )->a( n = `press`   v = client->_event( val = `BRANCH_DELETE` arg = `${NAME}` ) ).
 
+    DATA(tag_table) = box->ele( `Table`
+        )->a( n = `items` v = client->_bind( mt_tags )
+        )->a( n = `noDataText` v = client->_bind( mv_tags_note )
+        )->a( n = `growing` v = `true`
+        )->a( n = `growingThreshold` v = `25`
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} | &&
+                                |&& $\{{ client->_bind( val = mv_ref_tab path = abap_true ) }\} === 'TAGS' \}| ).
+    DATA(tag_columns) = tag_table->ele( `columns` ).
+    tag_columns->ele( `Column`
+        )->tag( `Text`
+            )->a( n = `text` v = `Tag` ).
+    tag_columns->ele( `Column`
+        )->a( n = `width` v = `6rem`
+        )->a( n = `minScreenWidth` v = `Tablet`
+        )->a( n = `demandPopin` v = `true`
+        )->tag( `Text`
+            )->a( n = `text` v = `Commit` ).
+    tag_columns->ele( `Column`
+        )->a( n = `width` v = `9rem`
+        )->a( n = `hAlign` v = `End`
+        )->tag( `Text`
+            )->a( n = `text` v = `Action` ).
+    DATA(tag_cells) = tag_table->ele( `items`
+        )->ele( `ColumnListItem`
+            )->ele( `cells` ).
+    tag_cells->tag( `Link`
+        )->a( n = `text` v = `{TEXT}`
+        )->a( n = `tooltip` v = `{TEXT}`
+        )->a( n = `wrapping` v = `true`
+        )->a( n = `href` v = `{LINK}`
+        )->a( n = `enabled` v = `{= !!${LINK} }`
+        )->a( n = `target` v = `_blank` ).
+    tag_cells->tag( `Text`
+        )->a( n = `text` v = `{COMMIT}` ).
+    DATA(tag_actions) = tag_cells->ele( `HBox`
+        )->a( n = `justifyContent` v = `End` ).
+    tag_actions->tag( `Button`
+        )->a( n = `text` v = `Switch`
+        )->a( n = `type` v = `Transparent`
+        )->a( n = `visible` v = `{CAN_SWITCH}`
+        )->a( n = `press` v = client->_event( val = `TAG_SWITCH` arg = `${NAME}` ) ).
+
+    tag_actions->tag( `Button`
+        )->a( n = `text` v = `Delete`
+        )->a( n = `type` v = `Reject`
+        )->a( n = `visible` v = `{CAN_DELETE}`
+        )->a( n = `press` v = client->_event( val = `TAG_DELETE` arg = `${NAME}` ) ).
+
     DATA(new_box) = box->ele( `VBox`
         )->a( n = `visible` v = client->_bind( mv_new_mode ) ).
     new_box->tag( `Text`
@@ -1058,14 +1140,62 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `required` v = `true` ).
     new_box->tag( `Input`
         )->a( n = `value`       v = client->_bind( mv_new_name )
-        )->a( n = `placeholder` v = `feature/my-change` ).
+        )->a( n = `placeholder` v = `feature/my-change`
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_tag_new_mode path = abap_true ) }\} \}| ).
+    DATA(tag_form) = new_box->ele( `VBox`
+        )->a( n = `visible` v = client->_bind( mv_tag_new_mode ) ).
+    tag_form->tag( `Input`
+        )->a( n = `value` v = client->_bind( ms_new_tag-name )
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `placeholder` v = `v1.0.0` ).
+    tag_form->tag( `Label`
+        )->a( n = `text` v = `Type` ).
+    tag_form->ele( `Select`
+        )->a( n = `selectedKey` v = client->_bind( ms_new_tag-kind )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key` v = `LIGHTWEIGHT`
+                )->a( n = `text` v = `Lightweight`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key` v = `ANNOTATED`
+                )->a( n = `text` v = `Annotated` ).
+    DATA(annotation) = tag_form->ele( `VBox`
+        )->a( n = `visible` v = |\{= $\{{ client->_bind( val = ms_new_tag-kind path = abap_true ) }\} === 'ANNOTATED' \}| ).
+    annotation->tag( `Label`
+        )->a( n = `text` v = `Message`
+        )->a( n = `required` v = `true` ).
+    annotation->tag( `TextArea`
+        )->a( n = `width` v = `100%`
+        )->a( n = `rows` v = `3`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `value` v = client->_bind( ms_new_tag-message ) ).
+    annotation->tag( `Label`
+        )->a( n = `text` v = `Author name`
+        )->a( n = `required` v = `true` ).
+    annotation->tag( `Input`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `value` v = client->_bind( ms_new_tag-tagger_name ) ).
+    annotation->tag( `Label`
+        )->a( n = `text` v = `Author email`
+        )->a( n = `required` v = `true` ).
+    annotation->tag( `Input`
+        )->a( n = `valueLiveUpdate` v = `true`
+        )->a( n = `type` v = `Email`
+        )->a( n = `value` v = client->_bind( ms_new_tag-tagger_email ) ).
 
     DATA(buttons) = dialog->ele( `buttons` ).
     buttons->tag( `Button`
         )->a( n = `text`    v = `New branch`
         )->a( n = `icon`    v = `sap-icon://add`
-        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}|
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} | &&
+                                |&& $\{{ client->_bind( val = mv_ref_tab path = abap_true ) }\} === 'BRANCHES' \}|
         )->a( n = `press`   v = client->_event( `BRANCH_NEW` ) ).
+    buttons->tag( `Button`
+        )->a( n = `text` v = `New tag`
+        )->a( n = `icon` v = `sap-icon://add`
+        )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} | &&
+                                |&& $\{{ client->_bind( val = mv_ref_tab path = abap_true ) }\} === 'TAGS' \}|
+        )->a( n = `press` v = client->_event( `TAG_NEW` ) ).
     buttons->tag( `Button`
         )->a( n = `text`    v = `Close`
         )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_new_mode path = abap_true ) }\} \}|
@@ -1108,9 +1238,84 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         INTO TABLE mt_branches.
     ENDLOOP.
     mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
-    CLEAR: mv_new_name, mv_new_mode.
+    CLEAR: mv_new_name, mv_new_mode, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
+    CLEAR: mt_tags, mv_delete_tag, mv_delete_tag_sha1.
+    mv_ref_tab = COND #( WHEN mv_is_tag = abap_true THEN `TAGS` ELSE `BRANCHES` ).
+    IF mv_ref_tab = `TAGS`.
+      load_tags( ).
+    ENDIF.
     popup_branches_display( ).
 
+  ENDMETHOD.
+
+  METHOD load_tags.
+    CLEAR mt_tags.
+    mv_tags_note = `The remote has no tags`.
+    TRY.
+        DATA(lt_tags) = service( )->list_tags( mv_key ).
+        LOOP AT lt_tags INTO DATA(ls_tag).
+          APPEND VALUE #( name = ls_tag-name text = ls_tag-display
+            && COND #( WHEN ls_tag-current = abap_true THEN ` (selected)` )
+            current = ls_tag-current sha1 = ls_tag-sha1 ref_sha1 = ls_tag-ref_sha1 link = ls_tag-link
+            commit = COND #( WHEN ls_tag-sha1 IS NOT INITIAL THEN substring(
+              val = ls_tag-sha1 len = nmin( val1 = 7 val2 = strlen( ls_tag-sha1 ) ) ) ELSE `Unresolved` )
+            can_switch = xsdbool( ls_tag-current = abap_false AND ls_tag-sha1 IS NOT INITIAL )
+            can_delete = xsdbool( ls_tag-current = abap_false AND ls_tag-ref_sha1 IS NOT INITIAL ) ) TO mt_tags.
+        ENDLOOP.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        mv_tags_note = `Tags could not be loaded. Select Branches and then Tags to retry.`.
+        show_error( lx_error ).
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD new_tag.
+    TRY.
+        ms_tag_expected = service( )->tag_target( mv_key ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        show_error( lx_error ).
+        RETURN.
+    ENDTRY.
+    ms_new_tag = VALUE #( kind = `LIGHTWEIGHT` tagger_name = ms_tag_expected-name tagger_email = ms_tag_expected-email ).
+    mv_start_text = |Creates a tag on the remote at { zcl_ag2ui5_repo_service=>branch_display( ms_tag_expected-ref ) }| &&
+      | ({ ms_tag_expected-sha1 }). Local changes are not included. The selected reference stays unchanged.|.
+    mv_new_mode = abap_true.
+    mv_tag_new_mode = abap_true.
+  ENDMETHOD.
+
+  METHOD create_tag.
+    TRY.
+        DATA(lv_tag) = service( )->create_tag( iv_key = mv_key is_tag = ms_new_tag is_expected = ms_tag_expected ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        show_error( lx_error ).
+        RETURN.
+    ENDTRY.
+    CLEAR: mv_new_mode, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
+    load_tags( ).
+    popup_branches_display( ).
+    client->message_toast_display( |Created { zcl_ag2ui5_repo_service=>branch_display( lv_tag ) }| ).
+  ENDMETHOD.
+
+  METHOD delete_tag.
+    TRY.
+        service( )->delete_tag( iv_key = mv_key iv_tag = mv_delete_tag iv_ref_sha1 = mv_delete_tag_sha1 ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        show_error( lx_error ).
+        RETURN.
+    ENDTRY.
+    client->message_toast_display( |Deleted { zcl_ag2ui5_repo_service=>branch_display( mv_delete_tag ) }| ).
+    load_tags( ).
+  ENDMETHOD.
+
+  METHOD switch_tag.
+    TRY.
+        service( )->switch_tag( iv_key = mv_key iv_tag = iv_tag iv_sha1 = iv_sha1 ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        show_error( lx_error ).
+        RETURN.
+    ENDTRY.
+    client->popup_destroy( ).
+    client->message_toast_display( |Selected { zcl_ag2ui5_repo_service=>branch_display( iv_tag ) }. Pull separately to import it.| ).
+    load_status( ).
   ENDMETHOD.
 
   METHOD switch_branch.
@@ -1339,7 +1544,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
         client->popup_destroy( ).
       WHEN `STAGE`.
-        IF mv_offline = abap_true.
+        IF mv_can_stage = abap_false.
           RETURN.
         ENDIF.
         client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
@@ -1376,13 +1581,56 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           switch_branch( ls_switch-name ).
         ENDIF.
       WHEN `BRANCH_NEW`.
-        CLEAR mv_new_name.
+        CLEAR: mv_new_name, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
         mv_new_mode = abap_true.
+      WHEN `REF_TAB`.
+        IF mv_offline = abap_false AND mv_new_mode = abap_false.
+          IF mv_ref_tab = `TAGS`.
+            load_tags( ).
+          ELSE.
+            mv_ref_tab = `BRANCHES`.
+          ENDIF.
+        ENDIF.
+      WHEN `TAG_SWITCH`.
+        READ TABLE mt_tags INTO DATA(ls_tag_switch) WITH KEY name = client->get_event_arg( ).
+        IF mv_offline = abap_false AND mv_ref_tab = `TAGS` AND sy-subrc = 0 AND ls_tag_switch-can_switch = abap_true.
+          switch_tag( iv_tag = ls_tag_switch-name iv_sha1 = ls_tag_switch-sha1 ).
+        ENDIF.
+      WHEN `TAG_NEW`.
+        IF mv_offline = abap_false AND mv_ref_tab = `TAGS` AND mv_new_mode = abap_false.
+          new_tag( ).
+        ENDIF.
+      WHEN `TAG_DELETE`.
+        CLEAR: mv_delete_tag, mv_delete_tag_sha1.
+        READ TABLE mt_tags INTO DATA(ls_tag_delete) WITH KEY name = client->get_event_arg( ).
+        IF mv_offline = abap_false AND mv_ref_tab = `TAGS` AND mv_new_mode = abap_false
+            AND sy-subrc = 0 AND ls_tag_delete-can_delete = abap_true.
+          mv_delete_tag = ls_tag_delete-name.
+          mv_delete_tag_sha1 = ls_tag_delete-ref_sha1.
+          client->message_box_display(
+            text = |Delete tag { ls_tag_delete-text } on the remote (commit: { ls_tag_delete-commit })? | &&
+                   |This app cannot undo it. The local objects stay unchanged.|
+            type = `confirm`
+            actions = VALUE #( ( `CANCEL` ) ( `DELETE` ) )
+            emphasizedaction = `CANCEL`
+            onclose = `TAG_DELETE_CLOSE` ).
+        ENDIF.
+      WHEN `TAG_DELETE_CLOSE`.
+        IF client->get_event_arg( ) = `DELETE` AND mv_delete_tag IS NOT INITIAL
+            AND mv_delete_tag_sha1 IS NOT INITIAL AND mv_offline = abap_false.
+          delete_tag( ).
+        ENDIF.
+        CLEAR: mv_delete_tag, mv_delete_tag_sha1.
       WHEN `BRANCH_BACK`.
-        mv_new_mode = abap_false.
+        CLEAR: mv_new_mode, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
+        mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
       WHEN `BRANCH_CREATE`.
-        IF mv_new_mode = abap_true.
-          create_branch( ).
+        IF mv_new_mode = abap_true AND mv_offline = abap_false.
+          IF mv_tag_new_mode = abap_true AND mv_ref_tab = `TAGS` AND ms_tag_expected-sha1 IS NOT INITIAL.
+            create_tag( ).
+          ELSEIF mv_tag_new_mode = abap_false AND mv_ref_tab = `BRANCHES`.
+            create_branch( ).
+          ENDIF.
         ENDIF.
       WHEN `BRANCH_DELETE`.
         READ TABLE mt_branches INTO DATA(ls_delete) WITH KEY name = client->get_event_arg( ).
@@ -1449,7 +1697,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     mv_pull_text = COND #( WHEN mv_offline = abap_true THEN `Import ZIP` ELSE `Pull` ).
     mv_row_type = COND #( WHEN mv_offline = abap_true AND mv_zip IS INITIAL THEN `Inactive` ELSE `Navigation` ).
     " Rule removal must stay reachable after all ignored files were committed
-    mv_can_stage = xsdbool( mv_offline = abap_false ).
+    mv_is_tag = xsdbool( ls_status-branch CP `refs/tags/*` ).
+    mv_can_stage = xsdbool( mv_offline = abap_false AND mv_is_tag = abap_false ).
     ms_head = CORRESPONDING #( ls_status ).
     ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
                                     THEN substring( val = ls_status-remote_commit len = 7 )

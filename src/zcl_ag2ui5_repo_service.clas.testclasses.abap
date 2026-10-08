@@ -1,3 +1,56 @@
+CLASS ltcl_tags DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS annotated_and_lightweight FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS rejects_forged_or_moved FOR TESTING.
+    METHODS unresolved_not_switchable FOR TESTING.
+    METHODS display_and_links FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_tags IMPLEMENTATION.
+  METHOD annotated_and_lightweight.
+    DATA(lt_tags) = zcl_ag2ui5_repo_service=>tag_rows( iv_current = `refs/tags/v1`
+      it_tags = VALUE #(
+        ( name = `refs/tags/v1` sha1 = '1111111' )
+        ( name = `refs/tags/v2` sha1 = '2222222' type = zif_abapgit_git_definitions=>c_git_branch_type-annotated_tag )
+        ( name = `refs/tags/v2^{}` sha1 = '3333333' )
+        ( name = `refs/heads/main` sha1 = '4444444' ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lt_tags ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 1 ]-name exp = `refs/tags/v2` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 1 ]-sha1 exp = `3333333` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 1 ]-ref_sha1 exp = `2222222` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 2 ]-ref_sha1 exp = `1111111` ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 1 ]-kind exp = `Annotated` ).
+    cl_abap_unit_assert=>assert_true( lt_tags[ 2 ]-current ).
+    cl_abap_unit_assert=>assert_equals( act = lt_tags[ 2 ]-kind exp = `Lightweight` ).
+    zcl_ag2ui5_repo_service=>assert_tag( iv_tag = `refs/tags/v2` iv_sha1 = `3333333` it_tags = lt_tags ).
+  ENDMETHOD.
+  METHOD rejects_forged_or_moved.
+    LOOP AT VALUE string_table( ( `` ) ( `refs/heads/v1` ) ( `refs/tags/missing` ) ( `refs/tags/v1^{}` ) ( `refs/tags/v1` ) ) INTO DATA(lv_tag).
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_tag( iv_tag = lv_tag iv_sha1 = `old`
+            it_tags = VALUE #( ( name = `refs/tags/v1` sha1 = `new` ) ) ).
+          cl_abap_unit_assert=>fail( |Invalid or moved tag accepted: { lv_tag }| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD unresolved_not_switchable.
+    DATA(lt_tags) = zcl_ag2ui5_repo_service=>tag_rows( iv_current = ``
+      it_tags = VALUE #( ( name = `refs/tags/v1` sha1 = '1111111' type = zif_abapgit_git_definitions=>c_git_branch_type-annotated_tag ) ) ).
+    cl_abap_unit_assert=>assert_initial( lt_tags[ 1 ]-sha1 ).
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_tag( iv_tag = `refs/tags/v1` iv_sha1 = `` it_tags = lt_tags ).
+        cl_abap_unit_assert=>fail( `Unresolved annotated tag must not be selected` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+  METHOD display_and_links.
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>branch_display( `refs/tags/release/v1` ) exp = `Tag release/v1` ).
+    cl_abap_unit_assert=>assert_equals( act = zcl_ag2ui5_repo_service=>branch_link(
+      iv_url = `https://github.com/a/b.git` iv_branch = `refs/tags/release/v1` ) exp = `https://github.com/a/b/tree/release%2fv1` ).
+  ENDMETHOD.
+ENDCLASS.
+
 CLASS ltcl_repo_labels DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
   PRIVATE SECTION.
     METHODS split_and_clean FOR TESTING RAISING zcx_abapgit_exception.
@@ -2819,7 +2872,7 @@ CLASS ltcl_branch_links IMPLEMENTATION.
       act = zcl_ag2ui5_repo_service=>branch_display( `refs/heads/feature/test1234` ) ).
     cl_abap_unit_assert=>assert_equals( exp = `main`
       act = zcl_ag2ui5_repo_service=>branch_display( `main` ) ).
-    cl_abap_unit_assert=>assert_equals( exp = `refs/tags/v1`
+    cl_abap_unit_assert=>assert_equals( exp = `Tag v1`
       act = zcl_ag2ui5_repo_service=>branch_display( `refs/tags/v1` ) ).
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_display( `` ) ).
   ENDMETHOD.
@@ -2850,7 +2903,7 @@ CLASS ltcl_branch_links IMPLEMENTATION.
       iv_url = `` iv_branch = `refs/heads/main` ) ).
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
       iv_url = `https://github.com/owner/repo` iv_branch = `` ) ).
-    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
+    cl_abap_unit_assert=>assert_equals( exp = `https://github.com/owner/repo/tree/v1` act = zcl_ag2ui5_repo_service=>branch_link(
       iv_url = `https://github.com/owner/repo` iv_branch = `refs/tags/v1` ) ).
     cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>branch_link(
       iv_url = `javascript:alert(1)` iv_branch = `refs/heads/main` ) ).
@@ -3236,4 +3289,130 @@ CLASS ltcl_changed_by IMPLEMENTATION.
       exp = `UNKNOWN` ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_create_tags DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS valid_tags FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS invalid_names FOR TESTING.
+    METHODS annotation_identity FOR TESTING.
+    METHODS duplicate_and_stale FOR TESTING.
+    METHODS checked IMPORTING is_tag TYPE zif_ag2ui5_repo_service=>ty_new_tag
+      RETURNING VALUE(rs_tag) TYPE zif_abapgit_git_definitions=>ty_git_tag RAISING zcx_abapgit_exception.
+ENDCLASS.
+CLASS ltcl_create_tags IMPLEMENTATION.
+  METHOD checked.
+    rs_tag = zcl_ag2ui5_repo_service=>checked_new_tag( is_tag = is_tag it_tags = VALUE #( )
+      is_expected = VALUE #( ref = `refs/heads/main` sha1 = `1234` )
+      is_actual = VALUE #( ref = `refs/heads/main` sha1 = `1234` ) ).
+  ENDMETHOD.
+  METHOD valid_tags.
+    DATA(ls_light) = checked( VALUE #( name = `release/v1.0.0` kind = `LIGHTWEIGHT` ) ).
+    cl_abap_unit_assert=>assert_equals( act = ls_light-name exp = `refs/tags/release/v1.0.0` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_light-sha1 exp = `1234` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_light-type exp = zif_abapgit_git_definitions=>c_git_branch_type-lightweight_tag ).
+    DATA(ls_annotated) = checked( VALUE #( name = `refs/tags/v2` kind = `ANNOTATED` message = `Release`
+      tagger_name = `Alice` tagger_email = `alice@example.com` ) ).
+    cl_abap_unit_assert=>assert_equals( act = ls_annotated-message exp = `Release` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_annotated-type exp = zif_abapgit_git_definitions=>c_git_branch_type-annotated_tag ).
+  ENDMETHOD.
+  METHOD invalid_names.
+    LOOP AT VALUE string_table( ( `` ) ( `a b` ) ( `a..b` ) ( `a/.b` ) ( `a.lock/b` ) ( `a//b` )
+      ( `.hidden` ) ( `a/` ) ( `a.` ) ( `a~b` ) ( `a^b` ) ( `a:b` ) ( `a?b` ) ( `a*b` )
+      ( `a[b` ) ( `a\b` ) ( `@` ) ( `a@{b` ) ( `refs/heads/x` ) ( |a{ cl_abap_char_utilities=>newline }b| ) ) INTO DATA(lv_name).
+      TRY.
+          checked( VALUE #( name = lv_name kind = `LIGHTWEIGHT` ) ).
+          cl_abap_unit_assert=>fail( |Invalid tag accepted: { lv_name }| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD annotation_identity.
+    DATA(ls_tag) = VALUE zif_ag2ui5_repo_service=>ty_new_tag( name = `v1` kind = `ANNOTATED` message = `Release`
+      tagger_name = `Alice` tagger_email = `alice@example.com` ).
+    DO 7 TIMES.
+      DATA(ls_invalid) = ls_tag.
+      CASE sy-index.
+        WHEN 1. CLEAR ls_invalid-message.
+        WHEN 2. CLEAR ls_invalid-tagger_name.
+        WHEN 3. ls_invalid-tagger_email = `bad`.
+        WHEN 4. ls_invalid-tagger_name = `A <B>`.
+        WHEN 5. ls_invalid-tagger_email = |a@b{ cl_abap_char_utilities=>newline }|.
+        WHEN 6. ls_invalid-tagger_name = |A{ cl_abap_char_utilities=>newline }|.
+        WHEN 7. ls_invalid-kind = `FORGED`.
+      ENDCASE.
+      TRY.
+          checked( ls_invalid ).
+          cl_abap_unit_assert=>fail( |Invalid annotation accepted: { sy-index }| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+  METHOD duplicate_and_stale.
+    DO 4 TIMES.
+      DATA(ls_actual) = VALUE zif_ag2ui5_repo_service=>ty_tag_target( ref = `refs/heads/main` sha1 = `1234` ).
+      DATA(ls_expected) = ls_actual.
+      DATA lt_tags TYPE zif_ag2ui5_repo_service=>ty_tags.
+      CLEAR lt_tags.
+      CASE sy-index.
+        WHEN 1. lt_tags = VALUE #( ( name = `refs/tags/v1` ) ).
+        WHEN 2. ls_actual-sha1 = `5678`.
+        WHEN 3. ls_actual-ref = `refs/heads/other`.
+        WHEN 4. CLEAR ls_expected-sha1.
+      ENDCASE.
+      TRY.
+          zcl_ag2ui5_repo_service=>checked_new_tag( is_tag = VALUE #( name = `v1` kind = `LIGHTWEIGHT` )
+            it_tags = lt_tags is_expected = ls_expected is_actual = ls_actual ).
+          cl_abap_unit_assert=>fail( `Duplicate or stale tag target accepted` ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_delete_tags DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS valid_raw_refs FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS reject_unsafe FOR TESTING.
+    METHODS reannotation_is_changed FOR TESTING.
+ENDCLASS.
+CLASS ltcl_delete_tags IMPLEMENTATION.
+  METHOD valid_raw_refs.
+    DATA(lt_tags) = VALUE zif_ag2ui5_repo_service=>ty_tags(
+      ( name = `refs/tags/light` sha1 = `commit` ref_sha1 = `commit` )
+      ( name = `refs/tags/annotated` sha1 = `commit` ref_sha1 = `tagobject` )
+      ( name = `refs/tags/unresolved` ref_sha1 = `otherobject` ) ).
+    LOOP AT lt_tags INTO DATA(ls_tag).
+      zcl_ag2ui5_repo_service=>assert_deletable_tag( iv_tag = ls_tag-name iv_ref_sha1 = ls_tag-ref_sha1 it_tags = lt_tags ).
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD reject_unsafe.
+    DO 7 TIMES.
+      DATA(lv_tag) = `refs/tags/v1`.
+      DATA(lv_sha1) = `tagobject`.
+      DATA(lt_tags) = VALUE zif_ag2ui5_repo_service=>ty_tags( ( name = lv_tag ref_sha1 = lv_sha1 ) ).
+      CASE sy-index.
+        WHEN 1. lv_tag = `refs/heads/v1`.
+        WHEN 2. lv_tag = `refs/tags/v1^{}`.
+        WHEN 3. lv_tag = `refs/tags/missing`.
+        WHEN 4. CLEAR lv_sha1.
+        WHEN 5. lt_tags[ 1 ]-current = abap_true.
+        WHEN 6. lt_tags[ 1 ]-ref_sha1 = `moved`.
+        WHEN 7. CLEAR lt_tags[ 1 ]-ref_sha1.
+      ENDCASE.
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_deletable_tag( iv_tag = lv_tag iv_ref_sha1 = lv_sha1 it_tags = lt_tags ).
+          cl_abap_unit_assert=>fail( |Unsafe deletion accepted: { sy-index }| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+  METHOD reannotation_is_changed.
+    TRY.
+        zcl_ag2ui5_repo_service=>assert_deletable_tag( iv_tag = `refs/tags/v1` iv_ref_sha1 = `oldtagobject`
+          it_tags = VALUE #( ( name = `refs/tags/v1` sha1 = `samecommit` ref_sha1 = `newtagobject` ) ) ).
+        cl_abap_unit_assert=>fail( `Changed annotation at the same commit must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
 ENDCLASS.

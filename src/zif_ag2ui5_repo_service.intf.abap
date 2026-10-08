@@ -368,6 +368,18 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     END OF ty_branch,
     ty_branches TYPE STANDARD TABLE OF ty_branch WITH EMPTY KEY.
 
+  TYPES:
+    BEGIN OF ty_tag,
+      ref_sha1 TYPE string,
+      name TYPE string,
+      display TYPE string,
+      sha1 TYPE string,
+      current TYPE abap_bool,
+      kind TYPE string,
+      link TYPE string,
+    END OF ty_tag,
+    ty_tags TYPE STANDARD TABLE OF ty_tag WITH EMPTY KEY.
+
   CONSTANTS:
     BEGIN OF c_repo_kind,
       online  TYPE string VALUE `ONLINE`,
@@ -601,6 +613,44 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       VALUE(rt_branches) TYPE ty_branches
     RAISING
       zcx_abapgit_exception.
+
+  TYPES: BEGIN OF ty_tag_target,
+           ref TYPE string,
+           sha1 TYPE string,
+           name TYPE string,
+           email TYPE string,
+         END OF ty_tag_target,
+         BEGIN OF ty_new_tag,
+           name TYPE string,
+           kind TYPE string,
+           message TYPE string,
+           tagger_name TYPE string,
+           tagger_email TYPE string,
+         END OF ty_new_tag.
+
+  METHODS tag_target
+    IMPORTING iv_key TYPE string
+    RETURNING VALUE(rs_target) TYPE ty_tag_target
+    RAISING zcx_abapgit_exception.
+  METHODS create_tag
+    IMPORTING iv_key TYPE string is_tag TYPE ty_new_tag is_expected TYPE ty_tag_target
+    RETURNING VALUE(rv_tag) TYPE string
+    RAISING zcx_abapgit_exception.
+
+  METHODS list_tags
+    IMPORTING iv_key TYPE string
+    RETURNING VALUE(rt_tags) TYPE ty_tags
+    RAISING zcx_abapgit_exception.
+
+  "! Delete only an unselected tag whose raw remote ref still matches.
+  METHODS delete_tag
+    IMPORTING iv_key TYPE string iv_tag TYPE string iv_ref_sha1 TYPE string
+    RAISING zcx_abapgit_exception.
+
+  "! Select a checked tag; imports no objects and writes no remote refs.
+  METHODS switch_tag
+    IMPORTING iv_key TYPE string iv_tag TYPE string iv_sha1 TYPE string
+    RAISING zcx_abapgit_exception.
 
   "! Follows another branch of the remote, as abapGit does. No object in the
   "! system changes; the status then shows what a pull would bring

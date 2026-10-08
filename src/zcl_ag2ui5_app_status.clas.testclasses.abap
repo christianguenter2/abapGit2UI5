@@ -56,6 +56,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_view TYPE string.
     DATA mv_popup TYPE string.
     DATA mv_error TYPE string.
+    DATA mt_box_actions TYPE string_table.
+    DATA mv_emphasized_action TYPE string.
     DATA mv_toast TYPE string.
     DATA mv_left TYPE abap_bool.
     DATA mv_leave_data TYPE string.
@@ -87,6 +89,8 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_box_display.
     mv_error = text.
+    mt_box_actions = actions.
+    mv_emphasized_action = emphasizedaction.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_toast_display.
     mv_toast = text.
@@ -287,10 +291,10 @@ CLASS ltcl_header IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lo_client->mv_view ).
     DATA(lv_header) = substring( val = lo_client->mv_view off = lv_off len = lv_len ).
     cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*SegmentedButton*` ).
-    cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*<Select*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*<Select*<core:Item key="refs/heads/*` ).
     cl_abap_unit_assert=>assert_char_np( act = lv_header exp = `*ToggleButton*` ).
     " the branch button names the branch; its tooltip says what it opens
-    FIND REGEX `<Button[^>]*tooltip="Branches"[^>]*icon="sap-icon://split"|<Button[^>]*icon="sap-icon://split"[^>]*tooltip="Branches"`
+    FIND REGEX `<Button[^>]*tooltip="Branches and tags"[^>]*icon="sap-icon://split"|<Button[^>]*icon="sap-icon://split"[^>]*tooltip="Branches and tags"`
       IN lv_header.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = lv_header ).
   ENDMETHOD.
@@ -566,7 +570,7 @@ CLASS ltcl_offline IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="true" text="Export ZIP"` ) ).
     " the branch button shows the branch name; Branches is its tooltip
-    FIND REGEX `<Button visible="false"[^>]*tooltip="Branches"` IN mo_client->mv_view.
+    FIND REGEX `<Button visible="false"[^>]*tooltip="Branches and tags"` IN mo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Stage"` ) ).
   ENDMETHOD.
@@ -585,7 +589,7 @@ CLASS ltcl_offline IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_view CS `visible="false" text="Export ZIP"` ) ).
     " the branch button shows the branch name; Branches is its tooltip
-    FIND REGEX `<Button visible="true"[^>]*tooltip="Branches"` IN mo_client->mv_view.
+    FIND REGEX `<Button visible="true"[^>]*tooltip="Branches and tags"` IN mo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
@@ -1120,9 +1124,49 @@ CLASS ltd_branch_service DEFINITION FINAL FOR TESTING.
     DATA mv_created TYPE string.
     DATA mv_deleted TYPE string.
     DATA mv_deleted_sha1 TYPE string.
+    DATA mt_tags TYPE zif_ag2ui5_repo_service=>ty_tags.
+    DATA mv_tag TYPE string.
+    DATA mv_tag_sha1 TYPE string.
+    DATA mv_tag_error TYPE string.
+    DATA ms_created_tag TYPE zif_ag2ui5_repo_service=>ty_new_tag.
+    DATA ms_expected_tag TYPE zif_ag2ui5_repo_service=>ty_tag_target.
+    DATA mv_deleted_tag TYPE string.
+    DATA mv_deleted_tag_sha1 TYPE string.
 ENDCLASS.
 
 CLASS ltd_branch_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~delete_tag.
+    IF mv_tag_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_tag_error ).
+    ENDIF.
+    mv_deleted_tag = iv_tag.
+    mv_deleted_tag_sha1 = iv_ref_sha1.
+    DELETE mt_tags WHERE name = iv_tag.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~tag_target.
+    IF mv_tag_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_tag_error ).
+    ENDIF.
+    rs_target = VALUE #( ref = `refs/heads/zeta` sha1 = `2222222cccc` name = `Alice` email = `alice@example.com` ).
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~create_tag.
+    IF mv_tag_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_tag_error ).
+    ENDIF.
+    ms_created_tag = is_tag.
+    ms_expected_tag = is_expected.
+    rv_tag = |refs/tags/{ is_tag-name }|.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~list_tags.
+    IF mv_tag_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_tag_error ).
+    ENDIF.
+    rt_tags = mt_tags.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~switch_tag.
+    mv_tag = iv_tag.
+    mv_tag_sha1 = iv_sha1.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~list_branches.
     rt_branches = VALUE #(
       ( name = `refs/heads/main`  display = `main`  default = abap_true sha1 = `1111111aaaa` )
@@ -1141,7 +1185,8 @@ CLASS ltd_branch_service IMPLEMENTATION.
     mv_deleted_sha1 = iv_sha1.
     rv_sha1 = iv_sha1.
   ENDMETHOD.
-  METHOD zif_ag2ui5_repo_service~get_status ##NEEDED.
+  METHOD zif_ag2ui5_repo_service~get_status.
+    rs_status-branch = mv_tag.
   ENDMETHOD.
 ENDCLASS.
 
@@ -1163,9 +1208,159 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS delete_refuses_protected FOR TESTING.
     METHODS new_and_back FOR TESTING.
     METHODS create_in_new_mode FOR TESTING.
+    METHODS tags_lazy_load_and_switch FOR TESTING.
+    METHODS tags_empty_and_failure FOR TESTING.
+    METHODS tags_reject_bad_event FOR TESTING.
+    METHODS new_tag_flow FOR TESTING.
+    METHODS new_tag_failure_and_back FOR TESTING.
+    METHODS new_tag_event_guards FOR TESTING.
+    METHODS tag_delete_confirmation FOR TESTING.
+    METHODS tag_delete_guards FOR TESTING.
+    METHODS tag_delete_error_and_cancel FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_branches IMPLEMENTATION.
+  METHOD tag_delete_confirmation.
+    mo_service->mt_tags = VALUE #( ( name = `refs/tags/v1` display = `v1` sha1 = `commit1` ref_sha1 = `tagobj1` ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/v1` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_error exp = `Delete tag v1 on the remote (commit: commit1)*` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted_tag ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mt_box_actions[ 1 ] exp = `CANCEL` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_emphasized_action exp = `CANCEL` ).
+    fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_deleted_tag exp = `refs/tags/v1` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_deleted_tag_sha1 exp = `tagobj1` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_tags ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_ref_tab exp = `TAGS` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag_sha1 ).
+    CLEAR mo_service->mv_deleted_tag.
+    fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted_tag ).
+  ENDMETHOD.
+  METHOD tag_delete_guards.
+    mo_service->mt_tags = VALUE #( ( name = `refs/tags/current` display = `current` current = abap_true ref_sha1 = `obj1` )
+      ( name = `refs/tags/free` display = `free` ref_sha1 = `obj2` ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    LOOP AT VALUE string_table( ( `refs/tags/current` ) ( `refs/tags/forged` ) ) INTO DATA(lv_tag).
+      fire( iv_event = `TAG_DELETE` iv_arg = lv_tag ).
+      fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `DELETE` ).
+      cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted_tag ).
+    ENDLOOP.
+    mo_app->mv_offline = abap_true.
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/free` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag ).
+    mo_app->mv_offline = abap_false.
+    mo_app->mv_new_mode = abap_true.
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/free` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag ).
+    mo_app->mv_new_mode = abap_false.
+    mo_app->mv_ref_tab = `BRANCHES`.
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/free` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag ).
+  ENDMETHOD.
+  METHOD tag_delete_error_and_cancel.
+    mo_service->mt_tags = VALUE #( ( name = `refs/tags/v1` display = `v1` ref_sha1 = `tagobj1` ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/v1` ).
+    fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `CANCEL` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted_tag ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag_sha1 ).
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/v1` ).
+    mo_service->mv_tag_error = `The tag changed`.
+    fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_deleted_tag ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_delete_tag ).
+    cl_abap_unit_assert=>assert_not_initial( mo_app->mt_tags ).
+  ENDMETHOD.
+  METHOD new_tag_flow.
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `TAG_NEW` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_tag_new_mode ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_new_tag-kind exp = `LIGHTWEIGHT` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_new_tag-tagger_email exp = `alice@example.com` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_app->mv_start_text exp = `*2222222cccc*Local changes are not included*` ).
+    mo_app->ms_new_tag-name = `v1`.
+    fire( `BRANCH_CREATE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->ms_created_tag-name exp = `v1` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->ms_expected_tag-sha1 exp = `2222222cccc` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_created ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_new_tag ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_tag_expected ).
+  ENDMETHOD.
+  METHOD new_tag_failure_and_back.
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `TAG_NEW` ).
+    mo_app->ms_new_tag-name = `v1`.
+    mo_service->mv_tag_error = `The target changed`.
+    fire( `BRANCH_CREATE` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_new_mode ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_new_tag-name exp = `v1` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->ms_created_tag ).
+    fire( `BRANCH_BACK` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_new_tag ).
+    cl_abap_unit_assert=>assert_initial( mo_app->ms_tag_expected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_tag_new_mode ).
+  ENDMETHOD.
+  METHOD new_tag_event_guards.
+    fire( `TAG_NEW` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+    mo_app->mv_ref_tab = `TAGS`.
+    mo_app->mv_offline = abap_true.
+    fire( `TAG_NEW` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+    mo_app->mv_offline = abap_false.
+    fire( `BRANCH_CREATE` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->ms_created_tag ).
+    mo_service->mv_tag_error = `Cannot load target`.
+    fire( `TAG_NEW` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_new_mode ).
+  ENDMETHOD.
+  METHOD tags_lazy_load_and_switch.
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_tags ).
+    mo_service->mt_tags = VALUE #(
+      ( name = `refs/tags/v2` display = `v2` sha1 = `1234567abcd` )
+      ( name = `refs/tags/v1` display = `v1` sha1 = `7654321abcd` current = abap_true ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_tags ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_tags[ 1 ]-commit exp = `1234567` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_tags[ 2 ]-can_switch ).
+    fire( iv_event = `TAG_SWITCH` iv_arg = `refs/tags/v2` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_tag exp = `refs/tags/v2` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_tag_sha1 exp = `1234567abcd` ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_destroyed ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_is_tag ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_stage ).
+    fire( `STAGE` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+  ENDMETHOD.
+  METHOD tags_empty_and_failure.
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_tags ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_tags_note exp = `The remote has no tags` ).
+    mo_service->mv_tag_error = `Remote unavailable`.
+    fire( `REF_TAB` ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_app->mv_tags_note exp = `Tags could not be loaded*` ).
+  ENDMETHOD.
+  METHOD tags_reject_bad_event.
+    mo_service->mt_tags = VALUE #( ( name = `refs/tags/v1` sha1 = `1234567` current = abap_true ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    fire( iv_event = `TAG_SWITCH` iv_arg = `refs/tags/forged` ).
+    fire( iv_event = `TAG_SWITCH` iv_arg = `refs/tags/v1` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_tag ).
+    mo_app->mv_ref_tab = `forged`.
+    fire( `REF_TAB` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_ref_tab exp = `BRANCHES` ).
+  ENDMETHOD.
   METHOD setup.
     zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
     mo_app = zcl_ag2ui5_app_status=>create( `1` ).
@@ -1205,7 +1400,7 @@ CLASS ltcl_branches IMPLEMENTATION.
 
   METHOD list_not_dropdown.
     cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_popup exp = `*<Table*` ).
-    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*<Select*` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*<Select*<core:Item key="refs/heads/*` ).
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*New branch...*` ).
     " the name is the link to the branch; no separate Open link
     cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_popup exp = `*text="Open"*` ).
