@@ -1888,3 +1888,18 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
 - Restored repository-list main/test include to pre-test backups and verified
   readbacks. Test tab closed. Scratch artifacts: `/tmp/ag2ui5-hash-routing`.
   Only documentation changes remain; no implementation commit or push.
+
+## Hash navigation route contract (2026-10-09)
+
+- Codex spike compared framework KEEP with app-owned routes against the pinned
+  abap2UI5 1.146.0 source. KEEP restores saved Status (not fresh) and has three
+  live failures without an established cause; app Back and missing drafts are
+  fixable in our apps. App-owned routes read the cold-start hash from
+  `get( )-s_config-hash` and receive Back/Forward as `hash_attach_changed`.
+- Live list/Status prototype on A4H25 (`$UMLAUT`, read-only): fresh refresh,
+  saved URL, settled Back/Forward, app Back without caller and invalid/unknown
+  keys passed; `#/` is normalized to `#`. Immediate Back -> Forward left the
+  list visible at the Status hash (cause not traced; harmless, a refresh fixes
+  it). Diff and SESSION_END after a real Git login are untested.
+- Sources restored; readbacks match backups and HEAD. Evidence
+  `/tmp/ag2ui5-routing-live`. Preferred direction: app-owned routes.

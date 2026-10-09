@@ -1,49 +1,77 @@
-# Hash navigation implementation plan
+# Hash navigation route-contract plan
 
-Status: investigation complete; implementation pending. See the matching
-[spec](../specs/2026-10-09-hash-navigation.md) for observed failures and acceptance
-criteria. Do not ship the initialization-only KEEP prototype.
+Status: **app-owned identity routes remain the preferred candidate; minimal
+live gate failed on fast Back/Forward**. SAP browser login is resolved. Ordinary
+list/Status navigation, fresh reloads, cold links, app Back and invalid-key
+fallback passed, with the empty list-hash alias. Diff and pending SESSION_END
+remain untested. This is not implementation approval. See the matching
+[spec investigation](../specs/2026-10-09-hash-navigation.md) for tag-1.146.0 source
+evidence, earlier KEEP results, unresolved failure causes and prototype rules.
+Do not ship the initialization-only KEEP prototype.
 
-1. **Reproduce and locate the routing failures.** Use temporary backed-up
-   sources and an isolated browser tab. Capture the installed framework's
-   response routing flags and browser navigation state around diff refresh,
-   Back/Forward and list restore. Check why a KEEP draft restore clears the
-   diff hash, and why Forward to Status ends on the list. Do not change the
-   framework until the cause and required scope are concrete.
-2. **Choose the route contract.** Prefer framework KEEP if these failures can
-   be resolved and covered against the pinned release. Otherwise document the
-   alternative: app-owned stable repository routes, freshly validated on the
-   server, with explicit handling for nested screens and fresh-start behavior.
-   Do not combine mutually exclusive hash routing/app-state/hash listeners.
-3. **Add restoration fallbacks.** Detect a missing repository key before
-   loading Status. Navigate to the list with a handover message. Add an app
-   Back fallback when the restored draft has no caller; use the protected key
-   to reconstruct Status from a restored diff. Preserve existing caller
-   handovers when a parent exists. Test that this creates no navigation loops.
-4. **Wire routing and tests together.** Enable the chosen mode in the intended
-   lifecycle path without duplicate init/navigated dispatch. Complete the
-   repository-list double's `check_on_init`, record the routing action/mode
-   and assert initialization behavior. Add regression tests for missing keys,
-   absent parents, restored screens and invalid routes. Existing refresh and
-   fresh server-check tests must stay valid.
-5. **Audit login and stateful behavior.** Ensure browser Back to list performs
-   logoff and the SESSION_END timer even after draft restoration. Verify that
-   URLs and saved drafts contain no token and that history cannot replay an
-   action. Real-token browser steps must be performed by Chris under the local
-   instructions; use native doubles for the automated tests. Cover the known
-   generic leave-event caveat instead of assuming routing resolves it.
-6. **Run the acceptance matrix.** Online Status refresh twice, bookmark/new
-   tab, Status event; Status/diff/list Back and Forward before and after
-   refresh; app Back with and without a parent; missing/expired draft and
-   missing repository registration; Stage draft and offline ZIP restoration
-   if enabled; login cancellation and authenticated-session cleanup. Inspect
-   settled view AND hash, not only a heading that also exists on a list card.
-7. **Validate and deliver.** Run npm run check and affected native unit suites.
-   Update README and findings with actual behavior, temporary-link limits,
-   framework version and remaining exclusions. Read back deployed sources.
-   Restore temporary experiments, tabs and preferences. Commit/push/deploy
-   permanent implementation only within the user's authorized scope.
+1. **Resolve the failed minimal gate before implementation.** The 2026-10-09
+   app-owned list/Status prototype left the list visible at the Status hash
+   after immediate browser Back → Forward. Investigate pending-response hash
+   dispatch and listener re-registration/adoption; the exact cause is not yet
+   traced. Any further live spike needs its own scope: separate authenticated
+   tabs, sapcli `class read` backups compared with HEAD, temporary ADT
+   `class write` only, and restoration readbacks compared with backups and HEAD.
+   Use $UMLAUT key 000000000010 read-only and stop if login is needed. The
+   earlier KEEP failures were not re-tested by this minimal gate and their
+   unresolved causes remain open; no framework changes are approved.
+2. **Adopt app-owned routes if the gate confirms the source contract.** Keep
+   framework routing OFF and app-state routing inactive. List reads
+   `get( )-s_config-hash` at cold boot; every participating rendered app
+   registers `hash_attach_changed` and handles the named event. Resolve
+   the empty list hash (accept `#/` on input), `#/repo/<key>`,
+   `#/repo/<key>/diff` and file diff with encoded
+   path/filename. Validate raw key before conversion against fresh service
+   registration DTOs; resolve file metadata against fresh status. Invalid key
+   returns list/message; missing file returns Status/message. Do not use draft
+   IDs or table indexes as route identity. The pinned hash API normalizes `/`
+   to empty, so exact `#/` output needs a changed contract or a different
+   nonempty list route. Distinguish genuine cold boot from an explicit list
+   handover: the new list app must not parse the old request hash and undo a
+   queued redirect. The prototype's explicit `r_event_data` handover passed
+   the no-caller app Back retest.
+3. **Make history policy explicit.** User navigation pushes the destination
+   hash with its rendered view. Valid history changes render without another
+   write. Canonicalization and invalid-route redirects replace. Preserve
+   existing app-stack handovers; cold app Back constructs the deterministic
+   Status/list parent and replaces the entry. Test repeated visits, busy Back,
+   ordinary non-rendering events and history after reload. Registering a
+   listener adopts the current hash: do not let re-registration swallow a
+   pending history change.
+4. **Reload data on every route entry.** Construct fresh Status and diff inputs,
+   then read through the service. Restored DTOs never supply authoritative
+   status. Retain all existing server authorization, selection, transport and
+   fingerprint checks. No route dispatch may replay a mutation.
+5. **Keep first-version exclusions deliberate.** Stage retains online Status
+   identity so refresh returns fresh Status. Login uses list identity so
+   refresh returns list; retain token clearing before every dispatch and Git
+   user clearing on exit. Offline ZIP screens retain list identity and require
+   a new upload after refresh. Route events from excluded screens must safely
+   discard their temporary state and navigate, without replaying actions.
+6. **Preserve session cleanup.** Browser return to list must enter the real
+   repository-list app so logoff and the SESSION_END timer run. Resolve fast
+   Forward/navigation while that timer is pending; both contracts can otherwise
+   leave session cleanup unfinished. Cover token-free behavior with doubles;
+   authenticated browser steps belong to Chris. No tokens in routes.
+7. **Acceptance and cleanup.** Test cold deep link, two Status/diff reloads,
+   ordinary events, list -> Status -> repo/file diff, Back/Forward before and
+   after reload, app Back with/without caller, malformed/unknown routes and
+   registration disappearance. Check Stage/login/offline exclusion and pending
+   SESSION_END without mutating fixtures. Restore SAP backups even on failure;
+   read back and compare with backups AND Git HEAD. Record live outcomes before
+   turning this into an implementation plan with lint/native regression checks.
 
-Investigation cleanup: original repository-list main and test include restored
-on A4H25 and compared with backups; no application changes kept in Git. Scratch
-sources and readbacks are under `/tmp/ag2ui5-hash-routing`.
+The minimal live gate temporarily deployed only Repositories and Status main
+sources. Both were restored and activated; readbacks match the class-read
+backups and Git HEAD byte for byte. Evidence and discarded prototype sources:
+`/tmp/ag2ui5-routing-live/`. All four test tabs closed; no credentials entered,
+fixture/settings mutations, transports, framework edits, abapgit-agent or Git
+commit/push. This agent changed only the spec and this plan in Git, leaving
+both uncommitted; a concurrent README.md edit was left untouched.
+The real list logoff path was observed; the stateful SESSION_END timer was not.
+App-owned routing remains a candidate with a reproduced fast-history blocker;
+an upstream framework fix would require a separate decision.
