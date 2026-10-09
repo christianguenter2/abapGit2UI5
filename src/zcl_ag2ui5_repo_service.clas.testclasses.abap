@@ -4,9 +4,54 @@ CLASS ltcl_tags DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
     METHODS rejects_forged_or_moved FOR TESTING.
     METHODS unresolved_not_switchable FOR TESTING.
     METHODS display_and_links FOR TESTING.
+    METHODS registered_ref_context FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS only_commit_targets FOR TESTING RAISING zcx_abapgit_exception.
 ENDCLASS.
 
 CLASS ltcl_tags IMPLEMENTATION.
+  METHOD registered_ref_context.
+    zcl_ag2ui5_repo_service=>assert_tag_context( iv_commit = `` iv_origin = `` ).
+    DO 3 TIMES.
+      DATA(lv_commit) = COND string( WHEN sy-index <> 1 THEN `fixed` ).
+      DATA(lv_origin) = COND string( WHEN sy-index <> 2 THEN `https://fork.example/repo@main` ).
+      TRY.
+          zcl_ag2ui5_repo_service=>assert_tag_context( iv_commit = lv_commit iv_origin = lv_origin ).
+          cl_abap_unit_assert=>fail( `Fixed commits and switched origins must refuse all tag operations` ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+  METHOD only_commit_targets.
+    DATA(lt_tags) = zcl_ag2ui5_repo_service=>tag_rows( iv_current = `` it_tags = VALUE #(
+      ( name = `refs/tags/blob` sha1 = '1111111' )
+      ( name = `refs/tags/tree` sha1 = '2222222' )
+      ( name = `refs/tags/tree^{}` sha1 = '3333333' )
+      ( name = `refs/tags/commit` sha1 = '4444444' )
+      ( name = `refs/tags/commit^{}` sha1 = '5555555' ) ) ).
+    DATA(lt_objects) = VALUE zif_abapgit_definitions=>ty_objects_tt(
+      ( sha1 = '1111111' type = zif_abapgit_git_definitions=>c_type-blob )
+      ( sha1 = '3333333' type = zif_abapgit_git_definitions=>c_type-tree )
+      ( sha1 = '5555555' type = zif_abapgit_git_definitions=>c_type-commit ) ).
+    LOOP AT lt_tags ASSIGNING FIELD-SYMBOL(<ls_tag>).
+      <ls_tag>-sha1 = zcl_ag2ui5_repo_service=>tag_commit( iv_sha1 = <ls_tag>-sha1 it_objects = lt_objects ).
+      IF <ls_tag>-name = `refs/tags/commit`.
+        cl_abap_unit_assert=>assert_equals( act = <ls_tag>-sha1 exp = `5555555` ).
+        zcl_ag2ui5_repo_service=>assert_tag( iv_tag = <ls_tag>-name iv_sha1 = <ls_tag>-sha1 it_tags = lt_tags ).
+      ELSE.
+        cl_abap_unit_assert=>assert_initial( <ls_tag>-sha1 ).
+        TRY.
+            zcl_ag2ui5_repo_service=>assert_tag( iv_tag = <ls_tag>-name iv_sha1 = `` it_tags = lt_tags ).
+            cl_abap_unit_assert=>fail( `Noncommit tag must not be switchable` ).
+          CATCH zcx_abapgit_exception ##NO_HANDLER.
+        ENDTRY.
+      ENDIF.
+      " Verification must leave the raw ref available for deletion, including annotated tree tags.
+      zcl_ag2ui5_repo_service=>assert_deletable_tag(
+        iv_tag = <ls_tag>-name iv_ref_sha1 = <ls_tag>-ref_sha1 it_tags = lt_tags ).
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>tag_commit( iv_sha1 = `missing` it_objects = lt_objects ) ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>tag_commit( iv_sha1 = `` it_objects = lt_objects ) ).
+  ENDMETHOD.
   METHOD annotated_and_lightweight.
     DATA(lt_tags) = zcl_ag2ui5_repo_service=>tag_rows( iv_current = `refs/tags/v1`
       it_tags = VALUE #(
@@ -3349,7 +3394,7 @@ CLASS ltcl_create_tags IMPLEMENTATION.
     ENDDO.
   ENDMETHOD.
   METHOD duplicate_and_stale.
-    DO 4 TIMES.
+    DO 5 TIMES.
       DATA(ls_actual) = VALUE zif_ag2ui5_repo_service=>ty_tag_target( ref = `refs/heads/main` sha1 = `1234` ).
       DATA(ls_expected) = ls_actual.
       DATA lt_tags TYPE zif_ag2ui5_repo_service=>ty_tags.
@@ -3359,6 +3404,7 @@ CLASS ltcl_create_tags IMPLEMENTATION.
         WHEN 2. ls_actual-sha1 = `5678`.
         WHEN 3. ls_actual-ref = `refs/heads/other`.
         WHEN 4. CLEAR ls_expected-sha1.
+        WHEN 5. CLEAR ls_actual-sha1. " A tree/blob target has no verified commit.
       ENDCASE.
       TRY.
           zcl_ag2ui5_repo_service=>checked_new_tag( is_tag = VALUE #( name = `v1` kind = `LIGHTWEIGHT` )

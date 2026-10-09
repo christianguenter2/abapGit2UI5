@@ -146,8 +146,12 @@ the browser session is running that code.
 - **Git tags:** the same **Branches and tags** dialog has a **Tags** tab,
   loaded from the remote on demand. It lists lightweight and annotated tags
   with resolved commits; annotated tag objects and their peeled refs appear
-  as one row. Switch selects the tag for status and diff without importing
-  objects. Use Pull separately to review/import that version. Missing or moved
+  as one row. Targets are verified by a shallow Git fetch per distinct object;
+  this can transfer trees/blobs and makes large tag lists slower. Tree/blob or
+  unresolved targets have no Switch action, but remain deletable by raw ref.
+  Tags operations refuse fixed commits and switched origins; return to a
+  reference on the registered remote first. Switch selects the tag for status
+  and diff without importing objects. Use Pull separately to review/import that version. Missing or moved
   tags are refused against fresh remote refs. Stage is disabled while a tag
   is selected; switch back to a branch to stage and push. Tag names link to
   supported remote hosts. **New tag** creates a lightweight or annotated tag at
@@ -164,7 +168,7 @@ the browser session is running that code.
   rows; transport choices and the Pull anyway acknowledgment stay separate.
 
 Not part of it yet: conventional `.gitignore` interpretation, branch merging,
-tag creation/deletion, and creating a transport request from the dialog.
+and creating a transport request from the dialog.
 
 Object names in status, staging and pull decisions link to the local object
 in Eclipse/ADT. The diff page offers the same link. Objects that are missing

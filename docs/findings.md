@@ -1807,3 +1807,43 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   test tab closed. Proof `/tmp/ag2ui5-delete-tags-dialog.jpg` and
   `/tmp/ag2ui5-delete-tags-phone.jpg`.
 - Deployed; all three tag slices remain uncommitted and unpushed.
+
+
+## Git tag review fixes (2026-10-09)
+
+- Branch `fix/tag-review-findings` created from main. Shared pure
+  `assert_tag_context` now refuses fixed commits and switched origins in
+  tag browsing, switching, deletion and creation target lookup before remote
+  operations or persistence changes. Fresh raw-ref listing supplies the
+  selected marker and deletion hash; the selected-tag deletion guard remains.
+- Ref advertisements do not expose target object types. Browse verifies each
+  distinct target with a depth-one upload-pack request; switch verifies the
+  selected fresh hash and tag_target verifies a selected tag again before
+  creation. This can download trees/blobs and adds latency to large tag lists.
+  Only a matching commit object qualifies. Tree/blob, missing and unverifiable
+  targets remain unresolved and cannot be switched to or used for creation.
+  Authentication failures still open login; other object-fetch failures fail
+  closed without hiding the raw ref from deletion.
+- Deletion and creation uniqueness use fresh raw refs without downloading
+  unrelated objects. Deletion retains the unpeeled expected-old hash guard,
+  including annotations changed at the same commit. No check failure writes.
+- Regression tests added to the existing service/status classes: registered
+  versus fixed/switched reference context; lightweight blob and annotated tree
+  targets versus annotated commit; missing/empty objects; preservation of raw
+  hashes for deletion; invalidated creation target; disabled Switch and enabled
+  Delete for unresolved/noncommit rows.
+- `switch_branch` has the same switched-origin ordering issue: it validates the
+  temporary remote before restoring the original. It is unchanged as requested;
+  applying a corresponding origin guard needs a separate user decision. Its
+  fixed-commit reset is existing behavior and is not itself a cross-remote bug.
+- Validation: npm run check passes (abaplint 0 issues; UI5 property/render
+  gates 0 errors/warnings, with the existing unresolved MessageStrip hint).
+  Initial sandbox attempt could not resolve GitHub; rerun with network access
+  passed.
+- A4H25 (Codex, 2026-10-09): system sources matched `HEAD` before deploy
+  (backup `/tmp/ag2ui5-tag-review-backup`); service main/tests and Status
+  tests deployed via ADT, three readbacks match. Service 239/239, Status
+  78/78. Live on `$UMLAUT`: disposable `ag2ui5-verify-light-20261009` and
+  `ag2ui5-verify-annotated-20261009` listed with verified commit `a7730ef`
+  (annotated with its own raw hash), then deleted by raw ref; remote tags
+  empty again, `feature/test1234` still selected. No new short dumps.

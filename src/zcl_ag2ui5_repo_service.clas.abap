@@ -242,6 +242,12 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rt_branches) TYPE zif_ag2ui5_repo_service=>ty_branches.
 
+    CLASS-METHODS assert_tag_context
+      IMPORTING iv_commit TYPE string iv_origin TYPE string
+      RAISING zcx_abapgit_exception.
+    CLASS-METHODS tag_commit
+      IMPORTING iv_sha1 TYPE string it_objects TYPE zif_abapgit_definitions=>ty_objects_tt
+      RETURNING VALUE(rv_sha1) TYPE string.
     CLASS-METHODS tag_rows
       IMPORTING it_tags TYPE zif_abapgit_git_definitions=>ty_git_branch_list_tt iv_current TYPE string
       RETURNING VALUE(rt_tags) TYPE zif_ag2ui5_repo_service=>ty_tags.
@@ -542,6 +548,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         VALUE(ri_repo) TYPE REF TO zif_abapgit_repo
       RAISING
         zcx_abapgit_exception.
+
+    METHODS list_tag_refs
+      IMPORTING iv_key TYPE string
+      RETURNING VALUE(rt_tags) TYPE zif_ag2ui5_repo_service=>ty_tags
+      RAISING zcx_abapgit_exception.
+    METHODS read_tag_commit
+      IMPORTING iv_url TYPE string iv_sha1 TYPE string
+      RETURNING VALUE(rv_sha1) TYPE string
+      RAISING zcx_abapgit_exception.
 
     METHODS get_online_repo
       IMPORTING
@@ -1526,6 +1541,39 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD assert_tag_context.
+    IF iv_commit IS NOT INITIAL OR iv_origin IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( `Select a branch or tag on the registered remote before using Tags` ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD tag_commit.
+    IF iv_sha1 IS NOT INITIAL AND line_exists( it_objects[
+        sha1 = CONV zif_abapgit_git_definitions=>ty_sha1( iv_sha1 )
+        type = zif_abapgit_git_definitions=>c_type-commit ] ).
+      rv_sha1 = iv_sha1.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD read_tag_commit.
+    IF iv_sha1 IS INITIAL.
+      RETURN.
+    ENDIF.
+    DATA lt_objects TYPE zif_abapgit_definitions=>ty_objects_tt.
+    TRY.
+        zcl_abapgit_git_transport=>upload_pack_by_commit(
+          EXPORTING iv_url = iv_url iv_hash = CONV #( iv_sha1 ) iv_deepen_level = 1
+          IMPORTING et_objects = lt_objects ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        IF login_required( lx_error ) = abap_true.
+          RAISE EXCEPTION lx_error.
+        ENDIF.
+        " Unavailable/unverifiable objects remain deletable by their raw ref.
+        RETURN.
+    ENDTRY.
+    rv_sha1 = tag_commit( iv_sha1 = iv_sha1 it_objects = lt_objects ).
+  ENDMETHOD.
+
   METHOD tag_rows.
     LOOP AT it_tags INTO DATA(ls_tag) WHERE name IS NOT INITIAL.
       IF ls_tag-name NP `refs/tags/*` OR ls_tag-name CP `*^{}` OR strlen( ls_tag-name ) <= 10.
@@ -1605,16 +1653,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       zcx_abapgit_exception=>raise( `Choose a registered repository` ).
     ENDIF.
     DATA(li_repo) = get_online_repo( iv_key ).
-    IF li_repo->get_selected_commit( ) IS NOT INITIAL OR li_repo->get_switched_origin( ) IS NOT INITIAL.
-      zcx_abapgit_exception=>raise( `Select a branch or tag on the registered remote before creating a tag` ).
-    ENDIF.
+    assert_tag_context( iv_commit = li_repo->get_selected_commit( ) iv_origin = li_repo->get_switched_origin( ) ).
     rs_target-ref = li_repo->get_selected_branch( ).
     DATA(li_list) = zcl_abapgit_git_factory=>get_git_transport( )->branches( li_repo->get_url( ) ).
     IF rs_target-ref CP `refs/tags/*`.
       DATA(lt_tags) = tag_rows( it_tags = li_list->get_tags_only( ) iv_current = rs_target-ref ).
       READ TABLE lt_tags INTO DATA(ls_tag) WITH KEY name = rs_target-ref.
       IF sy-subrc = 0.
-        rs_target-sha1 = ls_tag-sha1.
+        rs_target-sha1 = read_tag_commit( iv_url = li_repo->get_url( ) iv_sha1 = ls_tag-sha1 ).
       ENDIF.
     ELSEIF rs_target-ref CP `refs/heads/*`.
       DATA(lt_branches) = li_list->get_branches_only( ).
@@ -1642,7 +1688,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     DATA(ls_actual) = zif_ag2ui5_repo_service~tag_target( iv_key ).
     DATA(ls_tag) = checked_new_tag( is_tag = is_tag is_expected = is_expected is_actual = ls_actual
-      it_tags = zif_ag2ui5_repo_service~list_tags( iv_key ) ).
+      it_tags = list_tag_refs( iv_key ) ).
     zcl_abapgit_git_porcelain=>create_tag( iv_url = get_online_repo( iv_key )->get_url( ) is_tag = ls_tag ).
     COMMIT WORK AND WAIT.
     rv_tag = ls_tag-name.
@@ -1667,7 +1713,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~delete_tag.
     silence_progress( ).
     assert_authorized( ).
-    DATA(lt_tags) = zif_ag2ui5_repo_service~list_tags( iv_key ).
+    DATA(lt_tags) = list_tag_refs( iv_key ).
     assert_deletable_tag( iv_tag = iv_tag iv_ref_sha1 = iv_ref_sha1 it_tags = lt_tags ).
     DATA(ls_tag) = lt_tags[ name = iv_tag ].
     " Always pass the unpeeled ref and its raw object hash. Porcelain then
@@ -1691,13 +1737,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDIF.
   ENDMETHOD.
 
-  METHOD zif_ag2ui5_repo_service~list_tags.
+  METHOD list_tag_refs.
     silence_progress( ).
     assert_authorized( ).
     IF iv_key IS INITIAL OR iv_key CN `0123456789` OR strlen( iv_key ) > 12.
       zcx_abapgit_exception=>raise( `Choose a registered repository` ).
     ENDIF.
     DATA(li_repo) = get_online_repo( iv_key ).
+    assert_tag_context( iv_commit = li_repo->get_selected_commit( ) iv_origin = li_repo->get_switched_origin( ) ).
     DATA(li_list) = zcl_abapgit_git_factory=>get_git_transport( )->branches( li_repo->get_url( ) ).
     rt_tags = tag_rows( it_tags = li_list->get_tags_only( ) iv_current = li_repo->get_selected_branch( ) ).
     LOOP AT rt_tags ASSIGNING FIELD-SYMBOL(<ls_tag>).
@@ -1705,10 +1752,32 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDLOOP.
   ENDMETHOD.
 
+  METHOD zif_ag2ui5_repo_service~list_tags.
+    rt_tags = list_tag_refs( iv_key ).
+    DATA(lv_url) = get_online_repo( iv_key )->get_url( ).
+    " Fetch each distinct target once per list, retaining only its verified SHA.
+    DATA lt_checked TYPE zif_ag2ui5_repo_service=>ty_tags.
+    LOOP AT rt_tags ASSIGNING FIELD-SYMBOL(<ls_tag>).
+      IF <ls_tag>-sha1 IS INITIAL.
+        CONTINUE.
+      ENDIF.
+      READ TABLE lt_checked INTO DATA(ls_checked) WITH KEY ref_sha1 = <ls_tag>-sha1.
+      IF sy-subrc <> 0.
+        ls_checked = VALUE #( ref_sha1 = <ls_tag>-sha1
+          sha1 = read_tag_commit( iv_url = lv_url iv_sha1 = <ls_tag>-sha1 ) ).
+        APPEND ls_checked TO lt_checked.
+      ENDIF.
+      <ls_tag>-sha1 = ls_checked-sha1.
+    ENDLOOP.
+  ENDMETHOD.
+
   METHOD zif_ag2ui5_repo_service~switch_tag.
     " Fresh remote refs are authoritative, including the peeled commit.
-    assert_tag( iv_tag = iv_tag iv_sha1 = iv_sha1 it_tags = zif_ag2ui5_repo_service~list_tags( iv_key ) ).
+    assert_tag( iv_tag = iv_tag iv_sha1 = iv_sha1 it_tags = list_tag_refs( iv_key ) ).
     DATA(li_repo) = get_online_repo( iv_key ).
+    IF read_tag_commit( iv_url = li_repo->get_url( ) iv_sha1 = iv_sha1 ) IS INITIAL.
+      zcx_abapgit_exception=>raise( `The tag target is not a commit. Choose another tag.` ).
+    ENDIF.
     li_repo->select_commit( '' ).
     li_repo->switch_origin( '' ).
     li_repo->select_branch( iv_tag ).

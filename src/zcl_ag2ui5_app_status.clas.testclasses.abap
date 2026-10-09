@@ -1215,11 +1215,24 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS new_tag_failure_and_back FOR TESTING.
     METHODS new_tag_event_guards FOR TESTING.
     METHODS tag_delete_confirmation FOR TESTING.
+    METHODS noncommit_tag_actions FOR TESTING.
     METHODS tag_delete_guards FOR TESTING.
     METHODS tag_delete_error_and_cancel FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_branches IMPLEMENTATION.
+  METHOD noncommit_tag_actions.
+    mo_service->mt_tags = VALUE #( ( name = `refs/tags/tree` display = `tree` ref_sha1 = `tagobject` ) ).
+    mo_app->mv_ref_tab = `TAGS`.
+    fire( `REF_TAB` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_tags[ 1 ]-can_switch ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_tags[ 1 ]-can_delete ).
+    fire( iv_event = `TAG_SWITCH` iv_arg = `refs/tags/tree` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_tag ).
+    fire( iv_event = `TAG_DELETE` iv_arg = `refs/tags/tree` ).
+    fire( iv_event = `TAG_DELETE_CLOSE` iv_arg = `DELETE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_deleted_tag_sha1 exp = `tagobject` ).
+  ENDMETHOD.
   METHOD tag_delete_confirmation.
     mo_service->mt_tags = VALUE #( ( name = `refs/tags/v1` display = `v1` sha1 = `commit1` ref_sha1 = `tagobj1` ) ).
     mo_app->mv_ref_tab = `TAGS`.
