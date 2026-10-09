@@ -33,6 +33,15 @@ present. It is Git-ignored.
     `branch_name` normalized it
   - `assert_deletable` for a branch to delete, against a fresh branch list;
     the commit sent to the remote comes from that list
+  - `switch_branch` checks the registered remote when another origin is
+    switched in; do not validate the fork and then select on the original
+  - Tags: `assert_tag_context` refuses fixed commits and switched origins;
+    `assert_tag` checks fresh refs and `read_tag_commit` verifies a commit
+    target. Creation checks the opening target against fresh refs; deletion
+    uses `assert_deletable_tag` and the fresh unpeeled hash as expected old
+    value, so a changed annotation cannot pass a stale confirmation
+  - `save_labels`: validate labels and compare the opening labels with fresh
+    local settings through `checked_labels` before writing
   - `apply_patch` and the fingerprint for picked lines: the diff is computed
     again, and a different fingerprint gives `changed`
   - `ZCL_AG2UI5_SETTINGS->set` for a toggle: key and value against an
@@ -57,7 +66,7 @@ present. It is Git-ignored.
     never the posted panel data
 - **Secrets:** abap2UI5 writes the app state after every round trip into its
   draft table `Z2UI5_T_01` as plain-text XML. `ZCL_AG2UI5_APP_LOGIN->main`
-  therefore takes the token out of `mv_token` first, on every round trip (with
+  therefore takes the token out of `mv_token` first, whenever `main` runs (with
   or without event, on the way back), and clears the Git user when the page
   is left; the app tests cover these. Remaining gap: abap2UI5's generic leave
   event `___ZZZ_NAL` saves the app without calling `main`. The login page
@@ -68,7 +77,8 @@ present. It is Git-ignored.
   runs through `/sap/bc/zabapgit2ui5` (30 minute session timeout; A4H25 has
   none elsewhere). `ZCL_AG2UI5_HTTP` marks such requests on the server side
   (`is_own_node`); the path the browser reports does not count. The login
-  page says so when opened elsewhere and offers no Log in. They go after 30 minutes without a service call
+  page says so when opened elsewhere and offers no Log in. Credentials go
+  after 30 minutes without a service call
   (`assert_authorized`), when the repository list is shown again
   (`logoff( )`), or with the session. No other app holds a token.
 - **Stateful session:** abap2UI5 switches a session back to stateless only in
@@ -122,6 +132,14 @@ present. It is Git-ignored.
   abapGit. It always uses `sy-uname`, and its `set( )` commits itself. Apps
   call `get_instance( )` where they need it and keep no reference; tests
   replace it with `inject( )` and restore it in `teardown`.
+- **Routes:** the apps own list (`#`), Status (`#/repo/<12-digit key>`) and
+  repository Diff (`.../diff`) URLs. `resolve_route` validates the shape and
+  reloads registrations; cold starts load fresh data and replay no action.
+  `write_route` registers `ROUTE_CHANGED` on every response and uses
+  `hash_replace`, with DEFAULT framework routing and inactive app-state.
+  Keep Back working without a caller. Other pages retain their parent route;
+  uploaded ZIPs and temporary edits are not restored by URLs. Login must clear
+  its token and user before dispatching a route change.
 
 ## Logic without side effects (unit-tested; keep it that way)
 
@@ -133,6 +151,8 @@ present. It is Git-ignored.
 | Stage | `stage_candidates`, `check_selection`, `check_push_allowed`, `commit_message`, `change_ignore_rules`, `ignore_preview`, `assert_ignore_preview` |
 | Patch | `apply_patch`, `patch_lstate`, `fingerprint`; patch IDs come from `map_diff` |
 | Branch | `branch_rows`, `assert_branch`, `branch_name`, `assert_branch_name`, `assert_new_branch`, `assert_deletable` |
+| Tags | `tag_rows`, `tag_commit`, `assert_tag`, `assert_tag_context`, `assert_deletable_tag`, `checked_new_tag` |
+| Labels | `repo_labels`, `checked_labels` |
 | New repository | `normalize_new_repo`, `new_repo_errors` |
 | New package | `normalize_new_package`, `new_package_errors` |
 | Remove / Uninstall | `assert_delete_preview` |
@@ -148,7 +168,8 @@ row of abapGit's four check tables needs a decision, or abapGit's
   gate. It needs no system, and CI runs it too.
 - ABAP Unit runs only on a system (`ZCL_AG2UI5_REPO_SERVICE`,
   `ZCL_AG2UI5_SETTINGS`, `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`,
-  `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`, `ZCL_AG2UI5_APP_NEW_REPO`).
+  `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`, `ZCL_AG2UI5_APP_NEW_REPO`,
+  `ZCL_AG2UI5_APP_REPO_DIFF`, `ZCL_AG2UI5_APP_LOGIN`, `ZCL_AG2UI5_HTTP`).
   A client double that is
   `PARTIALLY IMPLEMENTED` raises on the kernel for every method it leaves
   out: building a view needs `_bind` and `_event`.
@@ -180,5 +201,7 @@ row of abapGit's four check tables needs a decision, or abapGit's
 
 ## Process
 
-Each slice has a spec and a plan in `docs/superpowers/`. Its results, review
-findings and open points are in `docs/findings.md`.
+Keep a spec and plan for each active slice in `docs/superpowers/`. Remove
+them once the slice is merged; Git history retains the completed work.
+`docs/findings.md` holds current open points and known limits, not a log of
+finished slices.

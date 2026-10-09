@@ -7,28 +7,8 @@
       // the abap2UI5 framework this app runs on - cloned by abaplint for
       // dependency resolution (z2ui5_if_app, z2ui5_if_client, z2ui5_cl_ui5_view_builder)
       "url": "https://github.com/abap2UI5/abap2UI5",
-      // Pinned to a release tag, so this lint decides the same thing today and
-      // in six months. Unpinned it resolved the framework's default branch,
-      // and a branch moves: a rename over there turned into a red build here
-      // on a repository nobody had touched, and the reverse - a starter class
-      // that stopped compiling against what people actually install - would
-      // have passed just as quietly.
-      //
-      // It was unpinned because it had to be, not by choice: 1.142.0
-      // (2026-07-21) carries neither z2ui5_cl_ui5_view_builder nor
-      // client->get_event( ), and the starter class in src/ uses both. They
-      // reached the framework's main on 2026-08-12 and shipped in 1.143.0,
-      // which is the first release this template can compile against at all.
-      //
-      // The key is "branch", and it is not a typo. abaplint hands the value to
-      // `git clone --branch`, which takes a tag as happily as a branch name.
-      // There is no "tag" key: abaplint ignores unknown keys in silence, so a
-      // "tag" here would look exactly like a pin that works while the clone
-      // quietly kept following main.
-      //
-      // Moving it: bump to the new tag, run `npm run check`. If the starter
-      // class needs an API a release does not have yet, the pin is what tells
-      // you - which is the whole point of having one.
+      // Match the minimum framework release in README.md. "branch" accepts
+      // release tags; after changing it, run npm run check.
       "branch": "1.146.0",
       "files": "/src/**/*.*"
     },
@@ -68,26 +48,8 @@
     },
     "obsolete_statement": true,
 
-    // ---- The curated core -------------------------------------------------
-    //
-    // abap2UI5 itself runs 152 abaplint rules. This template ran 17, so the
-    // framework held itself to a standard it did not hand to the people
-    // starting from here. The 136-rule difference was read one by one and put
-    // in three buckets; what follows is the one that belongs in an app:
-    //
-    //   56  here - correctness, portability, SQL, dead weight, round trip
-    //   42  cannot fire in an abap2UI5 app at all (CDS, dynpro, FORM, macros,
-    //       message classes, IDoc, SICF/SMIM/NROB consistency) - left out as
-    //       noise rather than switched off one by one
-    //   38  taste (short_case, if_in_if, yoda conditions, method_length,
-    //       prefer_xsdbool, omit_parameter_name ...). Legitimate opinions, and
-    //       a template must not impose them on somebody else's codebase
-    //
-    // Measured before adopting, not after: with these 56 on, abap2UI5/samples
-    // (317 files, 152 real apps) reports 127 findings and every one is a
-    // genuine defect class - 35 unchecked sy-subrc, 28 unused variables, 16
-    // SELECT without ORDER BY, 14 empty structures. No category of noise. On
-    // this template: zero.
+    // Check correctness, ABAP compatibility, SQL and serialization without
+    // imposing optional formatting preferences.
 
     // Correctness - a defect, not a preference
     "ambiguous_statement": true,
@@ -116,7 +78,7 @@
     "use_class_based_exceptions": true,
     "when_others_last": true,
 
-    // Portability - the app has to survive 7.02, the cloud, and the transpiler
+    // Compatibility with the configured ABAP 7.50 target
     "cloud_types": true,
     "downport": true,
     "forbidden_void_type": true,
@@ -154,15 +116,11 @@
     "line_break_style": true,
     "local_testclass_consistency": true,
     "main_file_contents": true,
-    // the CLSNAME in the .clas.xml against the file name - the mistake that
-    // happens when you copy the starter class and rename half of it
+    // Keep class names in XML sidecars consistent with their filenames.
     "xml_consistency": true,
-    // abapGit writes every .xml sidecar UTF-8 WITH a BOM and reads it back the
-    // same way; a sidecar saved without one comes back changed on the next
-    // pull, for everyone. AGENTS.md states the convention - this enforces it
+    // Preserve abapGit's UTF-8 BOM in XML sidecars to avoid round-trip changes.
     "xml_bom": true,
-    // the ABAP editor strips a trailing blank when it saves, so a line that
-    // ends in one comes back changed on the next pull - for everyone
+    // Trailing spaces disappear when saved in the ABAP editor.
     "whitespace_end": true,
     "definitions_top": false,
     "7bit_ascii": true,

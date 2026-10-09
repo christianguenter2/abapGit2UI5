@@ -40,14 +40,16 @@ once it is merged, and its open points move here.
   ("Nothing selected"); a pull that changes only repository files opens an
   empty dialog (`pull_selected`, `preview_pull`).
 - **Tags:** every distinct tag target is verified with a depth-one fetch,
-  which makes long tag lists slow (`read_tag_commit`).
+  which makes long tag lists slow (`read_tag_commit`). Chris measured about
+  30 seconds on abap2UI5, with reload as the only way to abandon the pending
+  request. Performance work is deferred (2026-10-09); consider verifying
+  targets on demand while retaining fresh commit checks before writes.
 - **Session login:** `:` is accepted in the Git user; the 30-minute expiry
   counts service calls, not page use; abapGit keeps one token per host
   (`login`, `assert_authorized`).
 
 ## Not tested live (unit tests only)
 
-- `SESSION_END` and session cleanup after a real Git login.
 - A failed pull, network or authentication errors during status or pull,
   and large pulls or ICM timeouts.
 - The stale-fingerprint path of `commit_push` end to end.
@@ -59,6 +61,9 @@ once it is merged, and its open points move here.
 - Labels in dark and high-contrast themes, keyboard navigation, and clicks in
   the +N popover.
 - Large offline ZIPs.
+
+Chris verified real Git-login/session navigation and cleanup successfully
+(2026-10-09); it is no longer an outstanding live test.
 
 ## Open decisions
 
