@@ -1,9 +1,10 @@
+CLASS ltcl_routes DEFINITION DEFERRED.
 CLASS ltcl_overview DEFINITION DEFERRED.
 CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
 CLASS ltcl_branches DEFINITION DEFERRED.
 CLASS ltcl_settings DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_offline ltcl_object_links ltcl_overview ltcl_branches ltcl_settings.
+CLASS zcl_ag2ui5_app_status DEFINITION LOCAL FRIENDS ltcl_routes ltcl_offline ltcl_object_links ltcl_overview ltcl_branches ltcl_settings.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -50,6 +51,10 @@ ENDCLASS.
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
+    DATA mt_routes TYPE string_table.
+    DATA mv_route TYPE string.
+    DATA mv_has_caller TYPE abap_bool.
+    DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_event TYPE string.
     DATA mv_navigated TYPE abap_bool.
     DATA mv_init TYPE abap_bool.
@@ -71,6 +76,10 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~check_app_prev_stack.
+    result = mv_has_caller.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~get.
     result = ms_get.
   ENDMETHOD.
@@ -78,7 +87,7 @@ CLASS ltd_client IMPLEMENTATION.
     result = mv_init.
   ENDMETHOD.
   METHOD z2ui5_if_client~check_on_navigated.
-    result = mv_navigated.
+    result = xsdbool( mv_navigated = abap_true OR mv_init = abap_true ).
   ENDMETHOD.
   METHOD z2ui5_if_client~check_on_event.
     result = xsdbool( mv_navigated = abap_false ).
@@ -106,10 +115,23 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~popup_model_update ##NEEDED.
   ENDMETHOD.
   METHOD z2ui5_if_client~follow_up_action.
+    IF val = z2ui5_if_client~cs_event-hash_replace
+      OR val = z2ui5_if_client~cs_event-hash_set
+      OR val = z2ui5_if_client~cs_event-hash_attach_changed
+      OR val = z2ui5_if_client~cs_event-hash_routing
+      OR val = z2ui5_if_client~cs_event-app_state_set_active.
+      INSERT val INTO TABLE mt_routes.
+      IF val = z2ui5_if_client~cs_event-hash_replace.
+        mv_route = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     mv_follow = val.
     mt_args = t_arg.
   ENDMETHOD.
   METHOD z2ui5_if_client~nav_app_leave.
+    mo_left_to = app.
     mv_left = abap_true.
     IF r_data IS SUPPLIED.
       mv_leave_data = r_data.
@@ -1505,5 +1527,69 @@ CLASS ltcl_branches IMPLEMENTATION.
     fire( `BRANCH_CREATE` ).
     cl_abap_unit_assert=>assert_equals( act = mo_service->mv_created exp = `feature/x` ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast exp = `Created and following feature/x` ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_routes DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_status.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_offline_service.
+    METHODS setup.
+    METHODS teardown.
+    METHODS route_edit_discards_status FOR TESTING.
+    METHODS cold_back FOR TESTING.
+    METHODS caller_back FOR TESTING.
+    METHODS cold_label_back FOR TESTING.
+    METHODS replacement_on_event FOR TESTING.
+ENDCLASS.
+CLASS ltcl_routes IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_app = zcl_ag2ui5_app_status=>create( iv_key = `000000000010` ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app->mi_service = mo_service.
+    mo_service->ms_status = VALUE #( name = `Fresh repository` rows = VALUE #(
+      ( path = `/fresh/` filename = `new.abap` changed = abap_true lstate = `M` )
+      ( path = `/fresh/` filename = `same.xml` changed = abap_false ) ) ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD route_edit_discards_status.
+    mo_client->mv_event = `ROUTE_CHANGED`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mt_routes ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_status_calls exp = 0 ).
+  ENDMETHOD.
+  METHOD cold_back.
+    mo_client->mv_event = `BACK`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
+  ENDMETHOD.
+  METHOD caller_back.
+    mo_client->mv_has_caller = abap_true.
+    mo_client->mv_event = `BACK`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+  ENDMETHOD.
+  METHOD cold_label_back.
+    mo_app->ms_head-labels = VALUE #( ( text = `core` ) ).
+    mo_client->mt_args = VALUE #( ( `core` ) ).
+    mo_client->mv_event = `HEADER_LABEL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_leave_data exp = `LABEL_FILTER:core` ).
+  ENDMETHOD.
+  METHOD replacement_on_event.
+    mo_client->mv_event = `NO_ACTION`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/repo/000000000010` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_client->mt_routes ) exp = 4 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_status_calls exp = 0 ).
   ENDMETHOD.
 ENDCLASS.

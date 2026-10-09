@@ -12,6 +12,9 @@ CLASS zcl_ag2ui5_app_diff DEFINITION LOCAL FRIENDS ltcl_semantic ltcl_patch ltcl
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
+    DATA mt_routes TYPE string_table.
+    DATA mv_route TYPE string.
+    DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_event TYPE string.
     DATA mt_args TYPE string_table.
     DATA mv_left TYPE abap_bool.
@@ -26,6 +29,19 @@ ENDCLASS.
 
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~follow_up_action.
+    IF val = z2ui5_if_client~cs_event-hash_replace
+      OR val = z2ui5_if_client~cs_event-hash_set
+      OR val = z2ui5_if_client~cs_event-hash_attach_changed
+      OR val = z2ui5_if_client~cs_event-hash_routing
+      OR val = z2ui5_if_client~cs_event-app_state_set_active.
+      INSERT val INTO TABLE mt_routes.
+      IF val = z2ui5_if_client~cs_event-hash_replace.
+        mv_route = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~check_on_init.
     result = mv_init.
   ENDMETHOD.
@@ -55,6 +71,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave.
+    mo_left_to = app.
     mv_left = abap_true.
   ENDMETHOD.
 
@@ -705,5 +722,30 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = mo_service->mv_calls exp = 2 ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
                                         exp = `Logged in to github.com - repeat the action if it did not run` ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_route_parent DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS parent_on_roundtrip FOR TESTING.
+    METHODS route_edit_fresh_root FOR TESTING.
+ENDCLASS.
+CLASS ltcl_route_parent IMPLEMENTATION.
+  METHOD route_edit_fresh_root.
+    DATA(lo_client) = NEW ltd_client( ).
+    DATA(lo_app) = zcl_ag2ui5_app_diff=>create( iv_key = `000000000010` iv_path = `/src/` iv_filename = `a.abap` iv_obj_type = `CLAS` iv_obj_name = `ZTEST` ).
+    lo_client->mv_event = `ROUTE_CHANGED`.
+    lo_client->ms_get-s_config-hash = `#/repo/000000000099`.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_initial( lo_client->mt_routes ).
+  ENDMETHOD.
+
+  METHOD parent_on_roundtrip.
+    DATA(lo_client) = NEW ltd_client( ).
+    DATA(lo_app) = zcl_ag2ui5_app_diff=>create( iv_key = `000000000010` iv_path = `/src/` iv_filename = `a.abap` iv_obj_type = `CLAS` iv_obj_name = `ZTEST` ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_equals( act = lo_client->mv_route exp = `/repo/000000000010` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lo_client->mt_routes ) exp = 4 ).
   ENDMETHOD.
 ENDCLASS.

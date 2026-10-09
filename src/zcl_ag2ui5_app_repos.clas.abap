@@ -8,6 +8,12 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
   PUBLIC SECTION.
     INTERFACES z2ui5_if_app.
 
+    "! Every response keeps a safe identity URL; no pushed history or draft ID
+    CLASS-METHODS route_dispatch IMPORTING io_client TYPE REF TO z2ui5_if_client.
+    CLASS-METHODS write_route
+      IMPORTING io_client TYPE REF TO z2ui5_if_client iv_key TYPE string OPTIONAL
+                iv_diff TYPE abap_bool DEFAULT abap_false.
+
     CLASS-METHODS labels_css RETURNING VALUE(rv_css) TYPE string.
 
     TYPES:
@@ -60,6 +66,13 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     DATA mv_delete_package TYPE string.
     DATA mv_label_filter TYPE string.
 
+    METHODS route_app
+      IMPORTING iv_key TYPE string iv_diff TYPE abap_bool
+      EXPORTING ev_message TYPE string
+      RETURNING VALUE(ro_app) TYPE REF TO z2ui5_if_app.
+    METHODS resolve_route
+      IMPORTING iv_hash TYPE string
+      EXPORTING ev_key TYPE string ev_diff TYPE abap_bool ev_error TYPE string.
     METHODS view_display.
     METHODS tiles_display
       IMPORTING
@@ -93,9 +106,101 @@ ENDCLASS.
 
 CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
+  METHOD route_dispatch.
+    " A new root list runs exactly the cold-start resolver against fresh data.
+    " No handover data: explicit Back to list uses bound data to bypass it.
+    io_client->nav_app_leave( NEW zcl_ag2ui5_app_repos( ) ).
+  ENDMETHOD.
+
+  METHOD write_route.
+    DATA(lv_route) = `/`.
+    IF strlen( iv_key ) = 12 AND iv_key CO `0123456789`.
+      lv_route = |/repo/{ iv_key }|.
+      IF iv_diff = abap_true.
+        lv_route = lv_route && `/diff`.
+      ENDIF.
+    ENDIF.
+    io_client->follow_up_action( val = io_client->cs_event-hash_routing t_arg = VALUE #( ( `DEFAULT` ) ) ).
+    io_client->follow_up_action( val = io_client->cs_event-app_state_set_active t_arg = VALUE #( ( ` ` ) ) ).
+    io_client->follow_up_action( val = io_client->cs_event-hash_attach_changed t_arg = VALUE #( ( `ROUTE_CHANGED` ) ) ).
+    io_client->follow_up_action( val = io_client->cs_event-hash_replace t_arg = VALUE #( ( lv_route ) ) ).
+  ENDMETHOD.
+
+  METHOD route_app.
+    CLEAR ev_message.
+    ro_app = zcl_ag2ui5_app_status=>create( iv_key ).
+    IF iv_diff = abap_false.
+      RETURN.
+    ENDIF.
+    TRY.
+        " Resolve the aggregate against fresh Status, never an index or draft.
+        DATA(ls_status) = service( )->get_status( iv_key = iv_key ).
+        IF ls_status-offline = abap_false AND line_exists( ls_status-rows[ changed = abap_true ] ).
+          DATA(lt_changed) = ls_status-rows.
+          DELETE lt_changed WHERE changed = abap_false.
+          ro_app = zcl_ag2ui5_app_repo_diff=>create( iv_key = iv_key iv_title = ls_status-name
+            it_files = zcl_ag2ui5_repo_service=>sort_status_rows( it_rows = lt_changed iv_by = `FILE` iv_changes_first = abap_true ) ).
+        ELSE.
+          ev_message = `Repository diff unavailable; showing fresh Status`.
+        ENDIF.
+      CATCH zcx_abapgit_exception.
+        " Status shows the load error or login; a failed read replays no action.
+        ev_message = `Repository diff could not be loaded; showing fresh Status`.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD resolve_route.
+    CLEAR: ev_key, ev_diff, ev_error.
+    IF iv_hash IS INITIAL OR iv_hash = `#` OR iv_hash = `#/`.
+      RETURN.
+    ENDIF.
+    IF strlen( iv_hash ) <> 19 AND strlen( iv_hash ) <> 24.
+      ev_error = `Invalid repository route; returned to the list`.
+      RETURN.
+    ENDIF.
+    IF iv_hash(7) <> `#/repo/` OR ( strlen( iv_hash ) = 24 AND substring( val = iv_hash off = 19 ) <> `/diff` ).
+      ev_error = `Invalid repository route; returned to the list`.
+      RETURN.
+    ENDIF.
+    DATA(lv_key) = substring( val = iv_hash off = 7 len = 12 ).
+    IF lv_key CN `0123456789`.
+      ev_error = `Invalid repository key; returned to the list`.
+      RETURN.
+    ENDIF.
+    TRY.
+        DATA(lt_repos) = service( )->list_repos( ).
+        IF line_exists( lt_repos[ key = lv_key ] ).
+          ev_key = lv_key.
+          ev_diff = xsdbool( strlen( iv_hash ) = 24 ).
+        ELSE.
+          ev_error = `Unknown repository key; returned to the list`.
+        ENDIF.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        ev_error = lx_error->get_text( ).
+    ENDTRY.
+  ENDMETHOD.
+
+
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    write_route( client ).
+    " Explicit list handovers must not dispatch the previous request's hash.
+    DATA lv_route_error TYPE string.
+    IF client->check_on_init( ) AND client->get( )-r_event_data IS NOT BOUND.
+      resolve_route( EXPORTING iv_hash = client->get( )-s_config-hash
+                     IMPORTING ev_key = DATA(lv_key) ev_diff = DATA(lv_diff) ev_error = lv_route_error ).
+      IF lv_key IS NOT INITIAL.
+        DATA lv_route_message TYPE string.
+        DATA(lo_route_app) = route_app( EXPORTING iv_key = lv_key iv_diff = lv_diff IMPORTING ev_message = lv_route_message ).
+        client->nav_app_leave( app = lo_route_app r_data = lv_route_message ).
+        RETURN.
+      ENDIF.
+    ENDIF.
     IF client->check_on_navigated( ).
       " back on the list, a repository was left: the Git credentials of the
       " session login go, and the session needs no state any more. abap2UI5
@@ -133,6 +238,9 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
                                 t_arg = VALUE #( ( `search` ) ( lv_end ) ( lv_end ) ) ).
     ELSEIF client->check_on_event( ).
       on_event( ).
+    ENDIF.
+    IF lv_route_error IS NOT INITIAL.
+      client->message_box_display( text = lv_route_error type = `information` ).
     ENDIF.
 
   ENDMETHOD.

@@ -7,6 +7,25 @@ Status page instead of the repository list. Browser Back/Forward and app Back
 must agree about the displayed page. This must preserve authentication cleanup
 and must never replay a remote or SAP mutation.
 
+## Approved scope (2026-10-09)
+
+The implementation uses app-owned identity routes and replacement writes:
+list `#`/`#/`, Status `#/repo/<12-digit key>` and repository-wide Diff
+`#/repo/<key>/diff`. Fresh service data validates every cold or manual route
+entry. Missing/offline Diff falls back to Status. App Back selects the safe
+parent even without a caller. Stage, login, creation, single-file diff and ZIP
+state are excluded from restoration; they retain a parent route.
+
+Chris postponed a browser history of app pages. No hash_set, KEEP or app-state
+hash is used. The pinned hash_replace needs hash_attach_changed to replace the
+whole hash rather than append a suffix, so Chris subsequently authorized the
+listener. Its event runs the same fresh root resolver as cold start. Every
+replacement response asserts it, including non-rendering panel events. There
+are no new in-app entries for browser Back/Forward to traverse. This supersedes
+the historical investigation's push-history requirement below. Fast overlapping
+manual URL edits and real Git-login SESSION_END remain outside live coverage.
+No framework change; see the plan and docs/findings.md for acceptance evidence.
+
 ## Investigation on A4H25 (2026-10-09)
 
 The pinned abap2UI5 1.146.0 API supports `cs_event-hash_routing` with KEEP.

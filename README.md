@@ -64,6 +64,10 @@ in a container), maintain the browser's host, port and protocol for
   a preview.
 - **Links:** object names open in Eclipse/ADT; branches, tags and URLs open on
   GitHub, GitLab.com or Bitbucket Cloud.
+- **URLs:** Status (`#/repo/<key>`) and the diff of all changes
+  (`#/repo/<key>/diff`) survive a refresh and can be bookmarked; they load
+  fresh data. Other pages return to their parent's URL, and browser
+  Back/Forward does not step through pages within the app.
 - Display preferences are remembered per SAP user.
 
 ## Compared with abapGit

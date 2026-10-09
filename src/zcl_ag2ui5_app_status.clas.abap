@@ -175,6 +175,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_delete_sha1 TYPE string.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
+    METHODS repo_diff_open.
+    METHODS leave_list IMPORTING iv_message TYPE string OPTIONAL.
     "! Every file of the last status; sorting and the switch start from here
     DATA mt_status TYPE zif_ag2ui5_repo_service=>ty_status_rows.
     "! Set once a status was loaded, for the empty table's text
@@ -276,9 +278,21 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
     IF client->check_on_init( ).
       load_status( ).
       view_display( ).
+      DATA(lr_route_message) = client->get( )-r_event_data.
+      IF lr_route_message IS BOUND.
+        ASSIGN lr_route_message->* TO FIELD-SYMBOL(<lv_route_message>).
+        IF <lv_route_message> IS NOT INITIAL.
+          client->message_toast_display( CONV string( <lv_route_message> ) ).
+        ENDIF.
+      ENDIF.
     ELSEIF client->check_on_navigated( ).
       " the stage page hands over a push: the followed branch may be new.
       " PUSHED:<text> - it left by itself and its message is shown here
@@ -1467,13 +1481,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `BACK`.
         CLEAR: mv_zip, mv_upload, mv_upload_path, mv_files_open, mt_object_files, mv_files_title,
           mt_object_summary, mt_semantic, mv_object_summary_note.
-        client->nav_app_leave( ).
+        leave_list( ).
       WHEN `HEADER_LABEL`.
         DATA(lv_label) = client->get_event_arg( ).
         IF lv_label IS NOT INITIAL AND line_exists( ms_head-labels[ text = lv_label ] ).
           DATA(lv_label_event) = |LABEL_FILTER:{ lv_label }|.
           CLEAR: mv_zip, mv_upload, mv_upload_path.
-          client->nav_app_leave( r_data = lv_label_event ).
+          leave_list( lv_label_event ).
         ENDIF.
       WHEN `REFRESH`.
         load_status( ).
@@ -1489,19 +1503,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         save_view_settings( ).
         rows_build( ).
       WHEN `REPO_DIFF`.
-        IF can_repo_diff( ) = abap_false.
-          RETURN.
-        ENDIF.
-        " every changed file in file order, independent of filter and sort
-        DATA(lt_changed) = mt_status.
-        DELETE lt_changed WHERE changed = abap_false.
-        client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
-          iv_key   = mv_key
-          iv_title = ms_head-name
-          iv_zip   = mv_zip
-          it_files = zcl_ag2ui5_repo_service=>sort_status_rows( it_rows          = lt_changed
-                                                               iv_by            = `FILE`
-                                                               iv_changes_first = abap_true ) ) ).
+        repo_diff_open( ).
       WHEN `SORT`.
         " the choice comes from the browser: only the known ones
         CASE client->get_event_arg( ).
@@ -1680,6 +1682,31 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         mark_decisions( abap_false ).
     ENDCASE.
 
+  ENDMETHOD.
+
+  METHOD leave_list.
+    zcl_ag2ui5_app_repos=>write_route( client ).
+    IF client->check_app_prev_stack( ).
+      client->nav_app_leave( r_data = iv_message ).
+    ELSE.
+      client->nav_app_leave( app = NEW zcl_ag2ui5_app_repos( ) r_data = iv_message ).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD repo_diff_open.
+    IF can_repo_diff( ) = abap_false.
+      RETURN.
+    ENDIF.
+    " every changed file in file order, independent of filter and sort
+    DATA(lt_changed) = mt_status.
+    DELETE lt_changed WHERE changed = abap_false.
+    client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
+      iv_key   = mv_key
+      iv_title = ms_head-name
+      iv_zip   = mv_zip
+      it_files = zcl_ag2ui5_repo_service=>sort_status_rows( it_rows          = lt_changed
+                                                           iv_by            = `FILE`
+                                                           iv_changes_first = abap_true ) ) ).
   ENDMETHOD.
 
   METHOD load_status.

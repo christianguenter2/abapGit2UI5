@@ -1,13 +1,10 @@
 # Hash navigation route-contract plan
 
-Status: **app-owned identity routes remain the preferred candidate; minimal
-live gate failed on fast Back/Forward**. SAP browser login is resolved. Ordinary
-list/Status navigation, fresh reloads, cold links, app Back and invalid-key
-fallback passed, with the empty list-hash alias. Diff and pending SESSION_END
-remain untested. This is not implementation approval. See the matching
-[spec investigation](../specs/2026-10-09-hash-navigation.md) for tag-1.146.0 source
-evidence, earlier KEEP results, unresolved failure causes and prototype rules.
-Do not ship the initialization-only KEEP prototype.
+Status: **implemented with app-owned replacement routes**. Chris authorized a
+hash listener after the no-listener hash_replace attempt appended the existing
+hash. The final contract and acceptance results are below; the numbered steps
+record the earlier, superseded investigation plan. Browser Back/Forward does
+not acquire an in-app page history. No framework changes.
 
 1. **Resolve the failed minimal gate before implementation.** The 2026-10-09
    app-owned list/Status prototype left the list visible at the Status hash
@@ -75,3 +72,48 @@ both uncommitted; a concurrent README.md edit was left untouched.
 The real list logoff path was observed; the stateful SESSION_END timer was not.
 App-owned routing remains a candidate with a reproduced fast-history blocker;
 an upstream framework fix would require a separate decision.
+
+## Approved implementation: replacement routes (2026-10-09)
+
+Chris postponed an in-app browser history. Framework routing stays DEFAULT/OFF,
+app-state inactive, no KEEP, and every URL write uses hash_replace. The final
+routes are empty/#/#/ for the list, #/repo/<12 digits> for Status, and
+#/repo/<12 digits>/diff for the repository-wide changed-file diff. No indexes,
+file DTOs, credentials or draft IDs enter the URL. Individual-file diff retains
+Status identity. Hash keys are registration identities, not authorization.
+
+The pinned API appends hash_replace to the current hash without a listener.
+Chris therefore authorized hash_attach_changed (ROUTE_CHANGED). Every response
+that writes a route also asserts the listener. Registering only in rendered
+views reproduced a duplicate Diff hash on refresh; unconditional registration
+passed both consecutive refreshes and panel events. The exact frontend cause
+was not established. No pushes means no in-app history entries. Manual URL
+edits dispatch through a fresh root list and the same cold-start validation.
+Fast overlapping URL edits and history after manual edits are not promised.
+
+Cold list initialization validates the raw shape/key and fresh registration
+DTOs through its service, then constructs Status. Aggregate Diff entry reads
+fresh Status through the service, filters changed files and constructs Diff
+directly, without an intermediate Status navigation. Offline, missing changes
+or a failed read fall back to Status with a handover message; Status handles
+load errors and login as before. Explicit list handovers carry bound event data
+so the old request hash cannot reopen the repository. Status Back and label
+handovers construct a list without a caller; Diff Back constructs fresh Status.
+Existing caller handovers remain intact.
+
+Stage, login, single-file diff and new repository keep a safe parent route.
+Manual route edits leave temporary screens without replaying mutations. Offline
+uploads are not restored; refresh returns Status without ZIP. Login clears the
+token before route handling and the Git user before leaving on a route edit.
+List logoff/SESSION_END and all fresh action validation remain unchanged.
+
+Tests in existing app includes cover strict shapes, fresh registration checks,
+cold dispatch versus handover, fresh aggregate files/fallback messages, Back
+with/without caller, replacement-only writes, listener dispatch and excluded
+screens. No new test includes or service/framework edits. npm check passes;
+native app suites total 260/260. Fourteen deployed readbacks match. Live tests
+passed list/Status/Diff navigation, two refreshes each, saved URLs, cold Back,
+invalid/unknown keys, manual edits, panel events, history with no extra app
+entries, Stage/file-diff/creation exclusions and offline fallback. Real Git-login
+SESSION_END remains covered by doubles; no credentials were entered in Chrome.
+Evidence and the full report: /tmp/ag2ui5-hash-routing-impl/.

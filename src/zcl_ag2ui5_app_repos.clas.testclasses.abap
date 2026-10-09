@@ -1,7 +1,8 @@
+CLASS ltcl_routes DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
 CLASS ltcl_delete DEFINITION DEFERRED.
 CLASS ltcl_favorites DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_offline ltcl_delete ltcl_favorites.
+CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_routes ltcl_offline ltcl_delete ltcl_favorites.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -53,7 +54,16 @@ ENDCLASS.
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
+    DATA mt_routes TYPE string_table.
+    DATA mv_route TYPE string.
+    DATA mv_nav_mode TYPE string.
+    DATA mv_app_state TYPE string.
+    DATA mv_listener TYPE string.
+    DATA mv_leave_data TYPE string.
+    DATA mv_has_caller TYPE abap_bool.
+    DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_start TYPE abap_bool.
+    DATA mv_init TYPE abap_bool.
     DATA mv_event TYPE string.
     DATA mo_called TYPE REF TO z2ui5_if_app.
     DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
@@ -72,8 +82,23 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
 ENDCLASS.
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~check_on_init.
+    result = mv_init.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~nav_app_leave.
+    mo_left_to = app.
+    IF r_data IS SUPPLIED.
+      mv_leave_data = r_data.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~check_app_prev_stack.
+    result = mv_has_caller.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~check_on_navigated.
-    result = mv_start.
+    result = xsdbool( mv_start = abap_true OR mv_init = abap_true ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~set_session_stateful.
@@ -81,6 +106,26 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~follow_up_action.
+    IF val = z2ui5_if_client~cs_event-hash_replace
+      OR val = z2ui5_if_client~cs_event-hash_set
+      OR val = z2ui5_if_client~cs_event-hash_attach_changed
+      OR val = z2ui5_if_client~cs_event-hash_routing
+      OR val = z2ui5_if_client~cs_event-app_state_set_active.
+      INSERT val INTO TABLE mt_routes.
+      CASE val.
+        WHEN z2ui5_if_client~cs_event-hash_routing.
+          mv_nav_mode = VALUE #( t_arg[ 1 ] OPTIONAL ).
+        WHEN z2ui5_if_client~cs_event-app_state_set_active.
+          mv_app_state = VALUE #( t_arg[ 1 ] OPTIONAL ).
+        WHEN z2ui5_if_client~cs_event-hash_attach_changed.
+          mv_listener = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDCASE.
+      IF val = z2ui5_if_client~cs_event-hash_replace.
+        mv_route = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDIF.
+      RETURN.
+    ENDIF.
+
     " only the timer is checked; the search field focus comes after it
     IF val = z2ui5_if_client~cs_event-start_timer.
       mv_follow = val.
@@ -384,8 +429,18 @@ CLASS ltd_favorites_service DEFINITION FINAL FOR TESTING.
     DATA mv_fail TYPE abap_bool.
     DATA mv_fail_read TYPE abap_bool.
     DATA mv_logoffs TYPE i.
+    DATA ms_status TYPE zif_ag2ui5_repo_service=>ty_status.
+    DATA mv_status_reads TYPE i.
+    DATA mv_status_fail TYPE abap_bool.
 ENDCLASS.
 CLASS ltd_favorites_service IMPLEMENTATION.
+  METHOD zif_ag2ui5_repo_service~get_status.
+    mv_status_reads = mv_status_reads + 1.
+    IF mv_status_fail = abap_true.
+      zcx_abapgit_exception=>raise( `Cannot read Status` ).
+    ENDIF.
+    rs_status = ms_status.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~logoff.
     mv_logoffs = mv_logoffs + 1.
   ENDMETHOD.
@@ -688,5 +743,156 @@ CLASS ltcl_favorites IMPLEMENTATION.
     event( `REFRESH` ).
     cl_abap_unit_assert=>assert_true( mo_app->mt_repos[ 1 ]-favorite ).
     cl_abap_unit_assert=>assert_equals( exp = `1` act = mo_app->mt_repos[ 1 ]-key ).
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_routes DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_repos.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_favorites_service.
+    METHODS setup.
+    METHODS teardown.
+    METHODS cold_status FOR TESTING.
+    METHODS route_edit_resolves_fresh FOR TESTING.
+    METHODS listener_and_no_push FOR TESTING.
+    METHODS cold_diff FOR TESTING.
+    METHODS missing_diff FOR TESTING.
+    METHODS offline_diff FOR TESTING.
+    METHODS failed_diff FOR TESTING.
+    METHODS malformed FOR TESTING.
+    METHODS unknown_and_removed FOR TESTING.
+    METHODS list_aliases FOR TESTING.
+    METHODS handover_ignores_old_hash FOR TESTING.
+    METHODS list_failure FOR TESTING.
+ENDCLASS.
+CLASS ltcl_routes IMPLEMENTATION.
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_app = NEW #( ).
+    mo_client = NEW #( ).
+    mo_service = NEW #( ).
+    mo_service->mt_repos = VALUE #( ( key = `000000000010` name = `Fresh` ) ).
+    mo_app->mi_service = mo_service.
+    mo_client->mv_start = abap_true.
+    mo_client->mv_init = abap_true.
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+  METHOD route_edit_resolves_fresh.
+    mo_client->mv_start = abap_false.
+    mo_client->mv_init = abap_false.
+    mo_client->mv_event = `ROUTE_CHANGED`.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    DATA(lo_root) = CAST zcl_ag2ui5_app_repos( mo_client->mo_left_to ).
+    lo_root->mi_service = mo_service.
+    CLEAR mo_client->mo_left_to.
+    mo_client->mv_init = abap_true.
+    mo_client->mv_start = abap_true.
+    CLEAR mo_client->mv_event.
+    lo_root->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_reads exp = 1 ).
+  ENDMETHOD.
+  METHOD listener_and_no_push.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_nav_mode exp = `DEFAULT` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_app_state exp = ` ` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_listener exp = `ROUTE_CHANGED` ).
+    cl_abap_unit_assert=>assert_true( xsdbool( line_exists( mo_client->mt_routes[ table_line = mo_client->z2ui5_if_client~cs_event-hash_attach_changed ] ) ) ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( mo_client->mt_routes[ table_line = mo_client->z2ui5_if_client~cs_event-hash_set ] ) ) ).
+  ENDMETHOD.
+  METHOD cold_status.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_reads exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_logoffs exp = 0 ).
+  ENDMETHOD.
+  METHOD cold_diff.
+    mo_service->ms_status = VALUE #( name = `Fresh` rows = VALUE #(
+      ( path = `/fresh/` filename = `new.abap` changed = abap_true lstate = `M` )
+      ( path = `/fresh/` filename = `same.xml` changed = abap_false ) ) ).
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010/diff`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lo_diff->mt_files ) exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 1 ]-file exp = `/fresh/new.abap` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_reads exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_status_reads exp = 1 ).
+  ENDMETHOD.
+  METHOD missing_diff.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010/diff`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_leave_data ).
+  ENDMETHOD.
+  METHOD offline_diff.
+    mo_service->ms_status = VALUE #( offline = abap_true rows = VALUE #( ( changed = abap_true ) ) ).
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010/diff`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_leave_data ).
+  ENDMETHOD.
+  METHOD failed_diff.
+    mo_service->mv_status_fail = abap_true.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010/diff`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_status_reads exp = 1 ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_leave_data ).
+  ENDMETHOD.
+  METHOD malformed.
+    LOOP AT VALUE string_table( ( `#/repo/1` ) ( `#/repo/0000000000100` )
+      ( `#/repo/00000000001x` ) ( `#/repo/000000000010/stage` )
+      ( `#/repo/000000000010/diff?index=1` ) ( `#/app/anything` )
+      ( |#/repo/000000000010{ cl_abap_char_utilities=>newline }| ) ) INTO DATA(lv_hash).
+      mo_client->ms_get-s_config-hash = lv_hash.
+      CLEAR mo_client->mv_error.
+      mo_app->z2ui5_if_app~main( mo_client ).
+      cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+      cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+      cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD unknown_and_removed.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000099`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_error exp = `Unknown*` ).
+    CLEAR mo_service->mt_repos.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_error exp = `Unknown*` ).
+  ENDMETHOD.
+  METHOD list_aliases.
+    LOOP AT VALUE string_table( ( `` ) ( `#` ) ( `#/` ) ) INTO DATA(lv_hash).
+      mo_client->ms_get-s_config-hash = lv_hash.
+      mo_app->z2ui5_if_app~main( mo_client ).
+      cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+      cl_abap_unit_assert=>assert_initial( mo_client->mv_error ).
+      cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
+    ENDLOOP.
+  ENDMETHOD.
+  METHOD handover_ignores_old_hash.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010`.
+    DATA(lv_message) = `Back from Status`.
+    mo_client->ms_get-r_event_data = REF #( lv_message ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_logoffs exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
+  ENDMETHOD.
+  METHOD list_failure.
+    mo_service->mv_fail_read = abap_true.
+    mo_client->ms_get-s_config-hash = `#/repo/000000000010`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
   ENDMETHOD.
 ENDCLASS.

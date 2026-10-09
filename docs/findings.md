@@ -1926,3 +1926,46 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   unknown branch refused with the origin untouched; start state (`main`, no
   commit/origin) restored. No new short dumps. Snippet
   `/tmp/ag2ui5-switch-origin-live/smoke.abap`.
+
+## Hash navigation implementation (2026-10-09)
+
+- Implemented app-owned list (`#` / `#/`), fresh Status
+  (`#/repo/<12-digit key>`) and repository-wide Diff (`.../diff`) routes.
+  Cold starts and manual hash edits share strict shape validation and a fresh
+  registration lookup. Diff resolves changed files from fresh Status; offline,
+  no-change and load-error cases fall back to Status with a message. Identity
+  grants no authorization, and route handling replays no action.
+- Chris explicitly amended the initial no-listener decision: the pinned
+  `hash_replace` appends when no listener exists. Register `ROUTE_CHANGED`
+  with every route response, keep DEFAULT routing and inactive app-state,
+  and write only `hash_replace`. Registering only while rendering reproduced
+  a duplicate Diff hash on refresh; unconditional registration passed cold
+  Diff, two refreshes and panel events. Exact frontend cause not established;
+  no framework changes. App navigation adds no browser history entries.
+- Status/Diff Back works with or without a caller. Explicit list handovers
+  bypass the incoming repository hash. Stage, login, single-file diff and new
+  repository retain parent routes; ZIPs and temporary state are not restored.
+  Login extracts/clears the token before routing and clears its user on route
+  exit. List logoff/SESSION_END and existing server checks are retained.
+- `npm run check`: passes (abaplint clean, UI5 property/render gates clean,
+  one existing unresolved MessageStrip hint). Native app suites: Repos45/45,
+  Status85/85, RepoDiff26/26, Stage41/41, Diff30/30, Login16/16,
+  NewRepo17/17 — 260/260. Tests use existing includes; completed client-double
+  init/navigation methods and copied handover messages into durable values.
+- A4H25: backed up all seven apps' main/test sources, 14/14 matched main HEAD;
+  deployed/activated only those apps, and final 14/14 readbacks match the
+  candidate. Transient ADT activation HTTP500/session errors recovered on retry;
+  native tests ran against final active sources. No new dumps (latest remains
+  2026-10-08 13:50:59). Service/interface and framework were not edited.
+- Isolated Chrome live checks: 26 passed observations covering list -> Status,
+  Status/Diff refresh twice and saved URLs, cold and caller Back, manual
+  list/malformed/unknown routes, Diff Collapse all, browser Back skipping app
+  navigation and Forward loading the final entry, Stage/file-diff/new-repo
+  refresh exclusions, and offline Diff fallback/Status without ZIP. `$UMLAUT`
+  key10 was read-only; no repository actions, settings changes, ZIP uploads or
+  credentials. All test tabs closed. Existing fixture changes preserved.
+- Limits: fast overlapping manual URL edits/history after manual edits are
+  unverified; in-app history remains postponed. Real Git-login session cleanup
+  was not exercised live (no credentials entered); native doubles cover it.
+  README/spec/plan updated. Full evidence/report:
+  `/tmp/ag2ui5-hash-routing-impl/`. Final apps remain deployed, no push or merge.

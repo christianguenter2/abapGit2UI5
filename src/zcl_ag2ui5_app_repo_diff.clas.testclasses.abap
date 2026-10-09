@@ -5,6 +5,10 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION LOCAL FRIENDS ltcl_repo_diff.
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
+    DATA mt_routes TYPE string_table.
+    DATA mv_route TYPE string.
+    DATA mv_has_caller TYPE abap_bool.
+    DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_init TYPE abap_bool.
     DATA mv_event TYPE string.
     DATA mt_args TYPE string_table.
@@ -19,12 +23,29 @@ ENDCLASS.
 
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~check_app_prev_stack.
+    result = mv_has_caller.
+  ENDMETHOD.
+
+  METHOD z2ui5_if_client~follow_up_action.
+    IF val = z2ui5_if_client~cs_event-hash_replace
+      OR val = z2ui5_if_client~cs_event-hash_set
+      OR val = z2ui5_if_client~cs_event-hash_attach_changed
+      OR val = z2ui5_if_client~cs_event-hash_routing
+      OR val = z2ui5_if_client~cs_event-app_state_set_active.
+      INSERT val INTO TABLE mt_routes.
+      IF val = z2ui5_if_client~cs_event-hash_replace.
+        mv_route = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~check_on_init.
     result = mv_init.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_navigated.
-    result = mv_navigated.
+    result = xsdbool( mv_navigated = abap_true OR mv_init = abap_true ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_event.
@@ -44,6 +65,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave.
+    mo_left_to = app.
     mv_left = abap_true.
   ENDMETHOD.
 
@@ -161,6 +183,11 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS summary_counts_loaded FOR TESTING.
     METHODS state_texts FOR TESTING.
     METHODS back_leaves FOR TESTING.
+    METHODS cold_back_parent FOR TESTING.
+    METHODS caller_back_parent FOR TESTING.
+    METHODS route_on_panel FOR TESTING.
+    METHODS route_edit_discards_panels FOR TESTING.
+    METHODS zip_parent_route FOR TESTING.
     METHODS view_panels_from_template FOR TESTING.
     METHODS collapse_drops_lines FOR TESTING.
     METHODS single_expand_capped FOR TESTING.
@@ -407,6 +434,38 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
   ENDMETHOD.
 
+  METHOD cold_back_parent.
+    app( files( 1 ) ).
+    fire( `BACK` ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_status ) ).
+  ENDMETHOD.
+  METHOD caller_back_parent.
+    app( files( 1 ) ).
+    mo_client->mv_has_caller = abap_true.
+    fire( `BACK` ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+  ENDMETHOD.
+  METHOD route_edit_discards_panels.
+    app( files( 1 ) ).
+    CLEAR mo_service->mt_calls.
+    fire( `ROUTE_CHANGED` ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_calls ).
+  ENDMETHOD.
+  METHOD route_on_panel.
+    app( files( 1 ) ).
+    mo_app->mv_key = `000000000010`.
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/repo/000000000010/diff` ).
+  ENDMETHOD.
+  METHOD zip_parent_route.
+    app( files( 1 ) ).
+    mo_app->mv_key = `000000000010`.
+    mo_app->mv_zip = `0102`.
+    fire( `NO_ACTION` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/repo/000000000010` ).
+  ENDMETHOD.
   METHOD back_leaves.
     app( files( 1 ) ).
     fire( `BACK` ).

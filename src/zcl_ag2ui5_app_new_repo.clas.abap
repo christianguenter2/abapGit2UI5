@@ -70,6 +70,11 @@ CLASS zcl_ag2ui5_app_new_repo IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    zcl_ag2ui5_app_repos=>write_route( io_client = client ).
     IF client->check_on_navigated( ).
       " back from the login page: the form is unchanged, Create runs again
       DATA(lr_returned) = client->get( )-r_event_data.

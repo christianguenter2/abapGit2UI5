@@ -165,6 +165,12 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    " ZIP content cannot be reconstructed from an identity route.
+    zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key iv_diff = xsdbool( mv_zip IS INITIAL ) ).
     IF client->check_on_init( ).
       DO nmin( val1 = c_initial val2 = lines( mt_files ) ) TIMES.
         expand( sy-index ).
@@ -204,7 +210,12 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
-        client->nav_app_leave( ).
+        zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
+        IF client->check_app_prev_stack( ).
+          client->nav_app_leave( ).
+        ELSE.
+          client->nav_app_leave( zcl_ag2ui5_app_status=>create( mv_key ) ).
+        ENDIF.
         RETURN.
       WHEN `PANEL`.
         DATA(lv_index) = checked_index( client->get_event_arg( ) ).

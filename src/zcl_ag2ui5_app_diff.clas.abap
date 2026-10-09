@@ -270,6 +270,11 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
     IF client->check_on_init( ).
       load_diff( ).
       view_display( ).

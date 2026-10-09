@@ -5,6 +5,9 @@ CLASS zcl_ag2ui5_app_login DEFINITION LOCAL FRIENDS ltcl_login.
 CLASS ltd_client DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES z2ui5_if_client PARTIALLY IMPLEMENTED.
+    DATA mt_routes TYPE string_table.
+    DATA mv_route TYPE string.
+    DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_init TYPE abap_bool.
     DATA mv_navigated TYPE abap_bool.
     DATA mv_event TYPE string.
@@ -19,6 +22,19 @@ ENDCLASS.
 
 
 CLASS ltd_client IMPLEMENTATION.
+  METHOD z2ui5_if_client~follow_up_action.
+    IF val = z2ui5_if_client~cs_event-hash_replace
+      OR val = z2ui5_if_client~cs_event-hash_set
+      OR val = z2ui5_if_client~cs_event-hash_attach_changed
+      OR val = z2ui5_if_client~cs_event-hash_routing
+      OR val = z2ui5_if_client~cs_event-app_state_set_active.
+      INSERT val INTO TABLE mt_routes.
+      IF val = z2ui5_if_client~cs_event-hash_replace.
+        mv_route = VALUE #( t_arg[ 1 ] OPTIONAL ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
   METHOD z2ui5_if_client~check_on_init.
     result = mv_init.
   ENDMETHOD.
@@ -45,6 +61,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~nav_app_leave.
+    mo_left_to = app.
     mv_left = abap_true.
     IF r_data IS SUPPLIED.
       mv_left_data = r_data.
@@ -115,6 +132,7 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING
     METHODS title_names_host FOR TESTING.
     METHODS title_from_url FOR TESTING.
     METHODS token_cleared_every_event FOR TESTING.
+    METHODS route_clears_credentials FOR TESTING.
     METHODS login_calls_service FOR TESTING.
     METHODS cancel_leaves_plain FOR TESTING.
     METHODS empty_input_stays FOR TESTING.
@@ -165,6 +183,15 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lo_app->mv_title exp = `Log in to git.example.com` ).
   ENDMETHOD.
 
+  METHOD route_clears_credentials.
+    mo_app->mv_user = `someone`.
+    mo_app->mv_token = `secret-token`.
+    fire( `ROUTE_CHANGED` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_token ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_user ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+  ENDMETHOD.
   METHOD token_cleared_every_event.
     " abap2UI5 saves the draft after every event, whatever button was pressed
     LOOP AT VALUE string_table( ( `LOGIN` ) ( `CANCEL` ) ( `OTHER` ) ( `` ) ) INTO DATA(lv_event).
@@ -272,4 +299,29 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
+ENDCLASS.
+
+CLASS ltcl_route_parent DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS parent_on_roundtrip FOR TESTING.
+    METHODS route_edit_fresh_root FOR TESTING.
+ENDCLASS.
+CLASS ltcl_route_parent IMPLEMENTATION.
+  METHOD route_edit_fresh_root.
+    DATA(lo_client) = NEW ltd_client( ).
+    DATA(lo_app) = zcl_ag2ui5_app_login=>create( iv_key = `000000000010` ).
+    lo_client->mv_event = `ROUTE_CHANGED`.
+    lo_client->ms_get-s_config-hash = `#/repo/000000000099`.
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mo_left_to IS INSTANCE OF zcl_ag2ui5_app_repos ) ).
+    cl_abap_unit_assert=>assert_initial( lo_client->mt_routes ).
+  ENDMETHOD.
+
+  METHOD parent_on_roundtrip.
+    DATA(lo_client) = NEW ltd_client( ).
+    DATA(lo_app) = zcl_ag2ui5_app_login=>create( iv_key = `000000000010` ).
+    lo_app->z2ui5_if_app~main( lo_client ).
+    cl_abap_unit_assert=>assert_equals( act = lo_client->mv_route exp = `/repo/000000000010` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lo_client->mt_routes ) exp = 4 ).
+  ENDMETHOD.
 ENDCLASS.

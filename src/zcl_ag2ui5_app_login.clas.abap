@@ -88,6 +88,12 @@ CLASS zcl_ag2ui5_app_login IMPLEMENTATION.
     " (into its draft table): it is taken out of the attribute first, always
     DATA(lv_token) = mv_token.
     CLEAR mv_token.
+    IF client->get_event( ) = `ROUTE_CHANGED`.
+      CLEAR: lv_token, mv_user.
+      zcl_ag2ui5_app_repos=>route_dispatch( client ).
+      RETURN.
+    ENDIF.
+    zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
 
     IF client->check_on_init( ).
       " the host for the texts; a registered repository knows its URL
