@@ -242,3 +242,17 @@ abapGit with the fix.
   the text over with `nav_app_leave( r_data = ... )` and the previous app
   shows it. Either the toast should survive the navigation, or the guide
   should say so next to `nav_app_leave`.
+- **`hash_replace` without a listener appends (docs, 1.146.0):** without a
+  registered `cs_event-hash_attach_changed` listener, `hash_set( )` and
+  `hash_replace( )` append their value to the raw hash. That is deliberate
+  (`writeLegacyUrl` in `Router.js` keeps a Launchpad shell hash such as
+  `#SO-action&/x` intact), so no code change is wanted. But the docs say it
+  only at `hash_set( )`: `hash_replace( )` refers to it with "spelled as for
+  hash_set( )", and the `ty_s_nav-hash_replace` comment in
+  `z2ui5_if_ui5_types` calls it "the same write as set_push_state minus the
+  history entry". An app that writes whole routes with `hash_replace( )` and
+  no listener gets `#//repo/x/repo/x/...`, growing on every round trip (seen
+  on A4H25, 2026-10-09). Suggestion: state at `hash_replace( )` and in the
+  type comment that without a listener the value is a suffix to the current
+  hash, and that whole-hash routes need `hash_attach_changed` registered (in
+  `view_display( )`, since the registration dies with an app switch).
