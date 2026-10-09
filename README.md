@@ -19,8 +19,8 @@ HTML control.
 
 ![Structural method review and side-by-side ABAP diff in test_codeberg](docs/screenshots/demo-diff.jpg)
 
-See the [short walkthrough](docs/walkthrough.md): find changes, review the diff,
-and choose what to commit.
+See the [short walkthrough](docs/walkthrough.md): open a repository, find
+changes, review the diff, and choose what to commit.
 
 ## Highlights
 
