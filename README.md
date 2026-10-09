@@ -18,6 +18,9 @@ Beyond what the conventional abapGit UI offers:
   risk, abapGit's defaults preselected, and checked again before importing.
 - **Structural method review:** the diff summarizes added, removed and
   changed methods, each linked to its source range.
+- **Several commits in a row:** after a push, Stage stays open with the
+  remaining changes, so partial changes (including picked lines) can be
+  committed one after another without starting over from the repository.
 - **Ignore rules with a preview:** edit a pattern and see which files it
   affects before saving or removing it.
 - **Uninstall with a preview:** the objects to be deleted are listed, and the
