@@ -837,6 +837,7 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS repo_diff_passes_changed FOR TESTING.
     METHODS diff_off_offline_without_zip FOR TESTING.
     METHODS diff_disabled_without_changes FOR TESTING.
+    METHODS refresh_follows_changes FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
@@ -892,27 +893,51 @@ CLASS ltcl_overview IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD diff_off_offline_without_zip.
-    mo_app->mv_offline = abap_true.
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    lo_service->ms_status = VALUE #( offline = abap_true
+      rows = VALUE #( ( path = `/src/` filename = `a.abap` lstate = `M` changed = abap_true ) ) ).
     CLEAR mo_app->mv_zip.
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
     mo_client->mv_event = `REPO_DIFF`.
     mo_app->on_event( ).
     cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
-    mo_app->view_display( ).
-    FIND REGEX `<Button[^>]*text="Diff"[^>]*enabled="false"` IN mo_client->mv_view.
-    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD diff_disabled_without_changes.
-    mo_app->mv_offline = abap_false.
-    LOOP AT mo_app->mt_status ASSIGNING FIELD-SYMBOL(<ls_status>).
-      <ls_status>-changed = abap_false.
-    ENDLOOP.
-    mo_app->view_display( ).
-    FIND REGEX `<Button[^>]*text="Diff"[^>]*enabled="false"` IN mo_client->mv_view.
-    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+    CAST ltd_offline_service( mo_app->mi_service )->ms_status-rows = VALUE #(
+      ( path = `/src/` filename = `a.abap` changed = abap_false ) ).
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
     mo_client->mv_event = `REPO_DIFF`.
     mo_app->on_event( ).
     cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+  ENDMETHOD.
+
+  METHOD refresh_follows_changes.
+    " Refresh reloads the status without rendering the view again: the button
+    " state has to come from the reloaded status, not from the first render
+    DATA(lo_service) = CAST ltd_offline_service( mo_app->mi_service ).
+    lo_service->ms_status-rows = VALUE #( ( path = `/src/` filename = `a.abap` changed = abap_false ) ).
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
+    lo_service->ms_status-rows = VALUE #( ( path = `/src/` filename = `a.abap` lstate = `M` changed = abap_true ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_can_diff ).
+    mo_client->mv_event = `REPO_DIFF`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_bound( mo_client->mo_called ).
+    lo_service->ms_status-rows = VALUE #( ( path = `/src/` filename = `a.abap` changed = abap_false ) ).
+    mo_client->mv_event = `REFRESH`.
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
+    lo_service->mv_status_error = `Boom`.
+    lo_service->ms_status-rows = VALUE #( ( path = `/src/` filename = `a.abap` lstate = `M` changed = abap_true ) ).
+    mo_app->on_event( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
   ENDMETHOD.
 
   METHOD return_after_push_reloads.

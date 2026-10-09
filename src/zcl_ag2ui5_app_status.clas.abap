@@ -87,6 +87,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA ms_decisions    TYPE ty_decisions.
     "! Stage is offered online, including rule management with no local changes
     DATA mv_can_stage    TYPE abap_bool.
+    "! Some file differs (and an offline repository has its ZIP). Bound, so a
+    "! refresh enables or disables Diff without rendering the view again
+    DATA mv_can_diff     TYPE abap_bool.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
     "! Filled when the package needs a request: the user's modifiable ones
@@ -467,7 +470,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `text`    v = `Diff`
         )->a( n = `icon`    v = `sap-icon://compare`
         )->a( n = `tooltip` v = `All changes of the repository on one page`
-        )->a( n = `enabled` b = can_repo_diff( )
+        )->a( n = `enabled` v = client->_bind( mv_can_diff )
         )->a( n = `press`   v = client->_event( `REPO_DIFF` ) ).
     table_toolbar->tag( `ToolbarSpacer` ).
     " one menu for the order: the sort key (files only) and changes on top,
@@ -1685,7 +1688,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     TRY.
         DATA(ls_status) = service( )->get_status( iv_key = mv_key iv_zip = mv_zip ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        CLEAR: mt_rows, mt_status, mv_loaded.
+        CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff.
         mv_no_data = `Status could not be loaded`.
         show_error( lx_error ).
         RETURN.
@@ -1705,6 +1708,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                     ELSE ls_status-remote_commit ).
 
     mt_status = ls_status-rows.
+    mv_can_diff = can_repo_diff( ).
     rows_build( ).
   ENDMETHOD.
 
