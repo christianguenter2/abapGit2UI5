@@ -62,9 +62,6 @@ once it is merged, and its open points move here.
   the +N popover.
 - Large offline ZIPs.
 
-Chris verified real Git-login/session navigation and cleanup successfully
-(2026-10-09); it is no longer an outstanding live test.
-
 ## Open decisions
 
 - Interpret a conventional `.gitignore` (today only `.abapgit.xml` rules).
