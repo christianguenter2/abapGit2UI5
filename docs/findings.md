@@ -1903,3 +1903,26 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   it). Diff and SESSION_END after a real Git login are untested.
 - Sources restored; readbacks match backups and HEAD. Evidence
   `/tmp/ag2ui5-routing-live`. Preferred direction: app-owned routes.
+
+## Branch switch with a switched origin (2026-10-09)
+
+- Open point from the tag review: with another origin switched in (abapGit's
+  pull-request checkout), `get_url( )` is the fork, so `switch_branch` checked
+  the branch against the fork but then reset to the registered remote and
+  selected it there. It now checks against a fresh branch list of the
+  registered URL (`registered_url`, split of `switched_origin` at the last
+  `@`, as abapGit does; malformed values refused). The fork's list is not
+  fetched. Still no refusal: switching a branch is the app's way back to the
+  registered remote.
+- The early return for "already selected" ignored a fixed commit or switched
+  origin and could leave the repository on the fork; `switch_needed` now
+  requires branch equal, no commit and no origin.
+- Unchanged: the dialog still lists the fork's branches in that state, and
+  create/delete branch still act on the fork, as in abapGit.
+- A4H25: backup matched HEAD (`/tmp/ag2ui5-switch-origin-backup`); service
+  main/tests deployed via ADT, readbacks match. Service 243/243. Live on
+  `$UMLAUT` with `abapGit-tests/INTF` switched in: same-name `main` reset to
+  the registered remote; `feature/test1234` (registered only) accepted; an
+  unknown branch refused with the origin untouched; start state (`main`, no
+  commit/origin) restored. No new short dumps. Snippet
+  `/tmp/ag2ui5-switch-origin-live/smoke.abap`.

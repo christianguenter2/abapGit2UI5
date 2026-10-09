@@ -273,6 +273,28 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    "! False only when the branch is selected on the registered remote and
+    "! no commit is fixed: anything else still has to be reset
+    CLASS-METHODS switch_needed
+      IMPORTING
+        iv_selected      TYPE string
+        iv_branch        TYPE string
+        iv_commit        TYPE string
+        iv_origin        TYPE string
+      RETURNING
+        VALUE(rv_needed) TYPE abap_bool.
+
+    "! The registered remote's URL, also while another origin is switched in
+    "! (abapGit keeps it as <url>@<branch>, split at the last @)
+    CLASS-METHODS registered_url
+      IMPORTING
+        iv_url              TYPE string
+        iv_switched_origin  TYPE string
+      RETURNING
+        VALUE(rv_url)       TYPE string
+      RAISING
+        zcx_abapgit_exception.
+
     "! The full name of a new branch, as abapGit makes it: blanks at the
     "! ends removed, inner blanks as -, refs/heads/ added unless present
     CLASS-METHODS branch_name
@@ -1476,6 +1498,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD switch_needed.
+    rv_needed = xsdbool( iv_selected <> iv_branch OR iv_commit IS NOT INITIAL OR iv_origin IS NOT INITIAL ).
+  ENDMETHOD.
+
+  METHOD registered_url.
+
+    IF iv_switched_origin IS INITIAL.
+      rv_url = iv_url.
+      RETURN.
+    ENDIF.
+    DATA(lv_offs) = find( val = reverse( iv_switched_origin ) sub = `@` ).
+    IF lv_offs = -1 OR lv_offs = strlen( iv_switched_origin ) - 1.
+      zcx_abapgit_exception=>raise( `Incorrect format of switched origin` ).
+    ENDIF.
+    rv_url = substring( val = iv_switched_origin len = strlen( iv_switched_origin ) - lv_offs - 1 ).
+
+  ENDMETHOD.
+
   METHOD branch_name.
 
     " as abapGit's normalize_branch_name and complete_heads_branch_name
@@ -1806,13 +1846,26 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~switch_branch.
 
-    " list_branches checks the authorization; the name comes from the
-    " browser and is checked against the fresh list
-    assert_branch( iv_branch   = iv_branch
-                   it_branches = zif_ag2ui5_repo_service~list_branches( iv_key ) ).
-
+    " The name comes from the browser and is checked against a fresh list.
+    " With another origin switched in, list_branches would list the fork, but
+    " the reset below selects the branch on the registered remote: check there
+    assert_authorized( ).
+    silence_progress( ).
     DATA(li_repo) = get_online_repo( iv_key ).
-    IF li_repo->get_selected_branch( ) = iv_branch.
+    DATA lt_branches TYPE zif_ag2ui5_repo_service=>ty_branches.
+    IF li_repo->get_switched_origin( ) IS INITIAL.
+      lt_branches = zif_ag2ui5_repo_service~list_branches( iv_key ).
+    ELSE.
+      DATA(lv_url) = registered_url( iv_url = li_repo->get_url( ) iv_switched_origin = li_repo->get_switched_origin( ) ).
+      lt_branches = branch_rows(
+        it_branches    = zcl_abapgit_git_factory=>get_git_transport( )->branches( lv_url )->get_branches_only( )
+        iv_head_symref = ``
+        iv_current     = `` ).
+    ENDIF.
+    assert_branch( iv_branch = iv_branch it_branches = lt_branches ).
+
+    IF switch_needed( iv_selected = li_repo->get_selected_branch( ) iv_branch = iv_branch
+        iv_commit = li_repo->get_selected_commit( ) iv_origin = li_repo->get_switched_origin( ) ) = abap_false.
       RETURN.
     ENDIF.
 

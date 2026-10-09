@@ -1967,6 +1967,10 @@ CLASS ltcl_branches DEFINITION FINAL FOR TESTING
     METHODS push_branch_normalized FOR TESTING RAISING cx_static_check.
     METHODS push_branch_invalid_refused FOR TESTING.
     METHODS push_branch_current_refused FOR TESTING.
+    METHODS registered_url_unswitched FOR TESTING RAISING cx_static_check.
+    METHODS registered_url_switched FOR TESTING RAISING cx_static_check.
+    METHODS registered_url_malformed FOR TESTING.
+    METHODS switch_needed FOR TESTING.
 
 ENDCLASS.
 
@@ -2009,6 +2013,53 @@ CLASS ltcl_branches IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = lt_rows[ 3 ]
       exp = VALUE zif_ag2ui5_repo_service=>ty_branch( name = `refs/heads/zeta` display = `zeta` current = abap_true sha1 = `1111111` ) ).
+  ENDMETHOD.
+
+  METHOD registered_url_unswitched.
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>registered_url( iv_url = `https://github.com/a/repo.git` iv_switched_origin = `` )
+      exp = `https://github.com/a/repo.git` ).
+  ENDMETHOD.
+
+  METHOD registered_url_switched.
+    " abapGit stores the registered remote as <url>@<branch>, split at the last @
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>registered_url( iv_url = `https://github.com/fork/repo.git`
+        iv_switched_origin = `https://github.com/a/repo.git@refs/heads/main` )
+      exp = `https://github.com/a/repo.git` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>registered_url( iv_url = `https://github.com/fork/repo.git`
+        iv_switched_origin = `https://user@git.example/a/repo.git@refs/heads/main` )
+      exp = `https://user@git.example/a/repo.git` ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>registered_url( iv_url = `https://github.com/fork/repo.git`
+        iv_switched_origin = `https://github.com/a/repo.git@` )
+      exp = `https://github.com/a/repo.git` ).
+  ENDMETHOD.
+
+  METHOD registered_url_malformed.
+    " abapGit refuses this format too ("Incorrect format of switched origin")
+    DO 2 TIMES.
+      DATA(lv_origin) = COND string( WHEN sy-index = 1 THEN `https://github.com/a/repo.git` ELSE `@refs/heads/main` ).
+      TRY.
+          zcl_ag2ui5_repo_service=>registered_url( iv_url = `https://github.com/fork/repo.git` iv_switched_origin = lv_origin ).
+          cl_abap_unit_assert=>fail( |A switched origin without registered URL must be refused: { lv_origin }| ).
+        CATCH zcx_abapgit_exception ##NO_HANDLER.
+      ENDTRY.
+    ENDDO.
+  ENDMETHOD.
+
+  METHOD switch_needed.
+    " Same branch on the registered remote: nothing to do
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>switch_needed( iv_selected = `refs/heads/main`
+      iv_branch = `refs/heads/main` iv_commit = `` iv_origin = `` ) ).
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>switch_needed( iv_selected = `refs/heads/main`
+      iv_branch = `refs/heads/dev` iv_commit = `` iv_origin = `` ) ).
+    " Same name, but a fixed commit or a fork still has to be reset
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>switch_needed( iv_selected = `refs/heads/main`
+      iv_branch = `refs/heads/main` iv_commit = `1234567` iv_origin = `` ) ).
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>switch_needed( iv_selected = `refs/heads/main`
+      iv_branch = `refs/heads/main` iv_commit = `` iv_origin = `https://github.com/a/repo.git@refs/heads/main` ) ).
   ENDMETHOD.
 
   METHOD listed_branch_accepted.
