@@ -73,6 +73,10 @@ CLASS zcl_ag2ui5_app_repos DEFINITION
     METHODS resolve_route
       IMPORTING iv_hash TYPE string
       EXPORTING ev_key TYPE string ev_diff TYPE abap_bool ev_error TYPE string.
+    "! The Git diamond of abapGit's logo (github.com/abapGit/abapGit, img/logo.svg, MIT)
+    CLASS-METHODS abapgit_logo RETURNING VALUE(rv_uri) TYPE string.
+    "! abap2UI5's logo, 64 pixels (github.com/abap2UI5/abap2UI5-documentation, MIT)
+    CLASS-METHODS abap2ui5_logo RETURNING VALUE(rv_uri) TYPE string.
     METHODS view_display.
     METHODS tiles_display
       IMPORTING
@@ -245,6 +249,102 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD abapgit_logo.
+    rv_uri = `data:image/svg+xml;base64,`
+      && `PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjEwMiA0NzYuNiAxMTYgMTE2Ij48cGF0aCBm`
+      && `aWxsPSIjZjAzYzJlIiBkPSJtIDIxNC45MzY5OCw1MjkuNTM1MzkgLTQ5Ljc0NTAxLC00OS43Mzg5IGMgLTIuODYyMiwtMi44NjQ4`
+      && `IC03LjUwODIsLTIuODY0OCAtMTAuMzc0LDAgbCAtMTAuMzI5LDEwLjMzIDEzLjEwMiwxMy4xMDIgYyAzLjA0NTksLTEuMDI4NCA2`
+      && `LjUzNzEsLTAuMzM4ODggOC45NjM5LDIuMDg4NCAyLjQzOTQsMi40NDI0IDMuMTI0LDUuOTYzNCAyLjA2OTgsOS4wMTk1IGwgMTIu`
+      && `NjI4LDEyLjYyOCBjIDMuMDU1MSwtMS4wNTI4IDYuNTgsLTAuMzcyNjIgOS4wMTk1LDIuMDcxMiAzLjQxMDYsMy40MDk2IDMuNDEw`
+      && `Niw4LjkzNDUgMCwxMi4zNDUgLTMuNDExMSwzLjQxMTYgLTguOTM2LDMuNDExNiAtMTIuMzQ5LDAgLTIuNTY0NSwtMi41NjY1IC0z`
+      && `LjE5ODgsLTYuMzM0NSAtMS44OTk5LC05LjQ5NDIgbCAtMTEuNzc3LC0xMS43NzcgLTAuMDAxLDMwLjk5MSBjIDAuODMxNSwwLjQx`
+      && `MTYyIDEuNjE2MiwwLjk2MSAyLjMwOTEsMS42NTA5IDMuNDA5NiwzLjQwOTIgMy40MDk2LDguOTMzMSAwLDEyLjM0OCAtMy40MTA2`
+      && `LDMuNDA5MSAtOC45MzgsMy40MDkxIC0xMi4zNDUsMCAtMy40MTAxLC0zLjQxNDYgLTMuNDEwMSwtOC45Mzg1IDAsLTEyLjM0OCAw`
+      && `Ljg0Mjc1LC0wLjg0MTI1IDEuODE3OSwtMS40NzggMi44NTg0LC0xLjkwNDggdiAtMzEuMjc5IGMgLTEuMDQxLC0wLjQyNSAtMi4w`
+      && `MTUsLTEuMDU3IC0yLjg1OSwtMS45MDUgLTIuNTgzLC0yLjU4MSAtMy4yMDUxLC02LjM3MiAtMS44ODA0LC05LjU0MzkgbCAtMTIu`
+      && `OTE2LC0xMi45MTggLTM0LjEwNiwzNC4xMDUgYyAtMi44NjU3LDIuODY3IC0yLjg2NTcsNy41MTMgMCwxMC4zNzggbCA0OS43NDIs`
+      && `NDkuNzM5IGMgMi44NjM4LDIuODY0OCA3LjUwODIsMi44NjQ4IDEwLjM3NiwwIGwgNDkuNTEyLC00OS41MDQgYyAyLjg2NDgxLC0y`
+      && `Ljg2NjIgMi44NjQ4MSwtNy41MTM2IDAsLTEwLjM3OSIvPjwvc3ZnPg==`.
+  ENDMETHOD.
+
+  METHOD abap2ui5_logo.
+    rv_uri = `data:image/png;base64,`
+      && `iVBORw0KGgoAAAANSUhEUgAAAEAAAAA/CAYAAABQHc7KAAAVOUlEQVRo3tWbeZRW1Znuf3vvM3xzzUWNTCKKIBhxhohxus5GbAU0`
+      && `MUa7W+1M5uYmnVxvr+6k091ZnU7alRsz2SZ2O0UIccDZqAslGEQQCGgjggw1z19VfcP5zjl79x+nLCExVBWg0fefWutbdc5X77Of`
+      && `d3reXYIjZK8uvRFrXzsmEUOUfPB9TCbtiKLXiDGzMOZ4jJkFTAXqBFQZiBuQ0hAiyBvoBdoQYiewVUix2Ui5PThlXpe9ZoMRtoVJ`
+      && `JsD3SZw8j6O//XeH/XeLw33BxsuuIf7okxTPPhNR8tGppCOKxWOENmdizFnA8RhTByQBNYHvDIBBhNgDvIKUz0ulXs49//C+5KJL`
+      && `Ma4DQYioqWbug//xwQPwyiVLcbt6CJIJVNFDx+OVMgzPQ+urMJwBpu5IAHwAIELsEkI8JaR80CTi60Uu7xNzIdT4Jx7P/H/95vsP`
+      && `wMYvfh3z+9cxUmJ5HoHjVKgwXCy0uRFj5gMO77MJIfoR4imk/KmoLF9D30CYb27A6enjxCeXv38ArLtoCdW/f53s9CkE8ZhtFYoX`
+      && `Cm1uFcYsBGw+YBNCDAgpfmmUut3KFbYH6RRoTW91BWcv/8WRBWD9uVdgpMDJFQgde5oMw68JbZYBZfwZTURA7EDJ75hY7D68kqc8`
+      && `j8FJVZzx0H1jPi/H+oWGZIrXzrocqTUnP/NrtGX9LxmEK4Q2N/+5nQcwgDbmaBPqH4l84f8jRaOxbfxjp7P14iWHx4Dti66iSBEj`
+      && `BL7r2FaheJPQ+jagjg+hCUBIuVpY1q3CDzYF1RWEQcD8VQ9MnAGvf+d7FHQBgwCpElah+A9C6+9+WJ1/hw1G60UEwX3Y1pluayfC`
+      && `stly6bUTByD39ItoKUCIBKXSN4XWXwNifMjNAFrr40wQ/CJIJT5hd3fjJ5NsvOK68QOw4ZwrEAK8mOsYHd4G5ouAxUfERkCYLoLg`
+      && `J8J2Tom3tpF4ezcvX3fT2ACsv+AqjBS88vnrcAvFW4TWX/4gavv7AUKo9UxC/UPtWEcFFRWk97YfPAluuv5zzLv7DraccQGhbV0s`
+      && `Q/0LoIaPsEkhkFKuMI5zI1oPGcti7tMr3psB4e59vLboEgLHniG0+cePuvNEJRKj9ZXS9/+m7rnHMJZiw9Ib/5gB6y5ZiioUMUq5`
+      && `VqH4I2HMDYfFP/F+8tvs3w6OqzwqKTuFZS0WWq8VQjDrhUcOZEDF9l1YhSLK8y4Xxiw5RLhBCGQ8BlIeWYe1Hv0pE3FUdRUylcQY`
+      && `cyAgf7pZmkQY/q2JuUltW2xaHFUFK5rsljCUKwDUyiC8dWR0nVgTIiXlF55N5tSTkIkYrbf/lFJL6/iBeMcRIQ48VaVQyQRWeRnB`
+      && `4BCZM06h6sJzUdWVhNlBBp5/ib5VT6Pz+YOyQRuD1OYC6ZUuF0Fwf6ov+y4A+aZ6qjZsxY/HlghjTj60QzKk559A+TkfxwQhTkMd`
+      && `3r6WMSPBaI1QCqu8DFJJ8DyC3n4IQ4wxZBacSv1ffhqrLENuxy4y8+ciXTd6uKmB5HHHYNdU0fHTuzFBOFY+cITWN5OIP+nFYv1b`
+      && `rv1rrFc++SnU9l2UUsk6GQSfOdR6b4KA4u69ERsshdvUwNA6QOuIpoAQEuSBkCTnzqby4vNJzj4WmUlhih7ZF1+m679+STCQBWOI`
+      && `TZ8SMaymilJnN9kX1iBch/KzP45VlqHqsgsZWrueoVc3IdSfZpzGILU5TZT880UYPujsa8OK724hTMYxSl0gjDn+cELV29eKCTVC`
+      && `SdzJjSAlTnMj8WlTMMZQ3LmbUlv7KFUrLj6fhpuvxyovw4QatEZUWdQuW0w4OETnfz5Aqb2TMDuEVVGGLhRp+8HPGHjhJYSUeC1t`
+      && `NHzuRlQiTuqUExnasGk8VcEWWl8r06lHdBgWrVJVOUaIhPJKV42r4TEGo81IaomysJAShKDU3oHO51HpFO6UZqqvupzaJVfg1FZj`
+      && `jKHU0UXnvcvpf+JZMKAScZCS7Jrf0fvQEyAFDbfcQGz6FMrPOZO+VU8R9Pbh9/VjVZTh9/aR2/oGQkqMMQyvf41waBirLINbNwmh`
+      && `1DgSosEYs8AUisdjzHpL+gFIMUcYcwrjiFeVThGfPg2nqR6UpPjWbgpvvoXQBr+nj6B/AJVOkZo7m9QJc5C2jS4UkYk4bmM9jZ//`
+      && `S4LefgbXrKNn5Spyv38d7ZVw6+tIzj0uqiCA21CH29xEbtsblNo7iR81FSuTxq2vw+/sivJjZQXSic4s9LwxnR8dmIypROvzRLG4`
+      && `3lJeidB1zgKqxmipyJx+KrXLriQxayYyFiWiIDtIx3/cS+/DjxMODVPq6MKd3ISMufg9vbTedR/FnbspP+dMqhdfgkomqbr8IoZf`
+      && `3YQJApz6SdR+6mriM6ZhSiWCoRxmpNQ5zQ0Mv7YZb19r5HAmTf3f3EDXAysxQO01V44CVti2HROGEQvGkbCNMWeLivIfWKV0Mq68`
+      && `0scP1roYrUmdMI/Jt/1vrLIMfncvxR27cJobscoz1H76aoZf20Jx1268lnbSI1zqffQpeh9+AgQU9+wlfuwMUvPmEJ8xDauyHKe+`
+      && `nqavfgErnaLvqefpWbkKqyzD1G99HZGIR3lkJLe8mzSPY+qcY8GYUWeHNmwmu+blKBTHOzYbc5wplWZYMggmC2OOG0N7w9uzj/5n`
+      && `V6NSSbruWU6YHaRq8SXUfXYZTm01qRPnUdixE2/vvneTYlcPYBDKQufyBO1dMA9kzEXEYsRnz8RKp9CFIgNPP4+3ey/pZYtHTzXW`
+      && `3ISwbbyWNrTnIV0Xb18rfm8/bnMjuugxvHEzXfetiEqnFOMGAGOq0Wa+JYyZDUwaQ30k6O2n/Y47ic04ivKzF5KafwKxqc2jGT0+`
+      && `8yiEUngtbRjfR9g25QtOZWj1WoKBLO6UJtyZR0XxOpxDDw8TdHSBMch4jKavfh5dKOI01BEWiqhEHKuyHJmI43d2Ew4OI2tcguwQ`
+      && `e7/5rwjXxZRK+L19EITjdn4/EGyMmW8Jw/FAfBxjFZlFC2i4+bM4dbV4LW0MvbqZxJxjcOsm4TY1IONxSh2dhEM5rMpyyhacgvzW`
+      && `1ynu2EXyY3OJT58SiS2v/Z6gb4ChdRvpfewZys9agF1TTTA4RNevHqX41i6k61J8ey/GKxFks5S6e7FrqrBrqxG2hbd332j1majz`
+      && `o+OEYY4FHDumOGoMdm0NdTdci1NXy8CLL9P6vTsIc3mmffebuHWTsGurscoyBL0D+L19WJXlo91h+uSPjb5qeNt/0/nASghDwqEh`
+      && `Wm//Cb0PPY6VSuJ191Jqa8f4QXRGIyXWFIqU2tpJHjcTK5PGnhQdwHgGoYOVQzBTLIxpHg9cKpHAymRGpyunqYH0/BNIzpoJgF1Z`
+      && `gT2phvzWN/DaOohNm0zu9e30P7uaxHHHIFyH4va3GHjuRfyOztEZwZRK5LfviJKaECDlH3Vzxg/w9rVFRIy5OI31MI6mZxwDUrU1`
+      && `ZvkbyQGl7m7yb75F5pQTKTvzdDJnnAxCkH9zJ3Z1JUFfFqEsTKjpvGc5Pb96lFJbB35nF30PP46RItrl/eGwMzJIjTXP5rZso+/J`
+      && `3+DtbSX/xpsHPmPMuEfjP7C42LTworeJNrZjssA9aiq1SxbjTp+CyeXJrn2F7OrfIh2HIDtImMvBSEtrjHk3Ro/MGijqQv3gnW0I`
+      && `QgiE46BSSVAyqgQTMEsIxGsLL2oV0DDued9SUZkKAnShOBIQ7zHGHgENwLwTFiPvlfEYVmUFdm0NblMD7pQmYs2NOI0N5LfvoOVf`
+      && `bscEwYTkMgvQE3gCtEYP50ayrzyUFeN76gARYxQIEI6DlUljVVXid3RGU6EQ1Cz7C6ouuwCVSrw7Eu8X1TKVJOwfGPdBSASWQHij`
+      && `g81E6HioMtb+zwqBSqexqytRFeUU/vtNdC5P9dWfpPrSC1CZFK3//mP6nvxNRHnbwq6qiMhYKOL39eN3duO1tlPY/hbGK010lRRa`
+      && `SDGMNryvJgQykUBYinBw6N2PHZuGL91E5vSTQBve/trfk9uyDWlZOA1Rb+ZOnTwa/6WOrlEw2+9+gIEnno2aqqI32nGO93BGlqqD`
+      && `loB2A/MOXXYdiSDbjkLC9yOVR0rQBqepntrrlhCfPo3C27tp/e4PR+PUlHyEkliZNBiD01DP8KatFPfsG32H29yIsCyM7+N39WCC`
+      && `AGFZKNfBaW4kVl1N6HkUdu+h1NYxQQKIDsvAzsM53PgxR1O2aAHuUVPBtQnbuxh4YQ3DGzdjdICwbcoWnoZVlkHGXFQqSTASpyYI`
+      && `8fa0jLLEndyIkIJSWwc6X0Clkjj1k1CJBEE2S9Dbhy54qLRFzdLF1F57FdJxMDqk1NlN173L6Xv8GcbD6Ci58paFENuAkOj+zoSs`
+      && `4qLzqP+r67CrKw/4vPzsj9P2g5/R9/gzBCNxapVlsCrLsSorCPr6R6hq8Pa1HHjato3f00vQn0WlktjVVVgVZREA2UHCfB6VTiKU`
+      && `JBgaQtp2JIg01NFwyw14LW0Mb9g8Zm8hIgZsshBsAbJA5bjzmdYk58yK5KyKcnS+QG7HTpzKCtzmRlQqSc3SxQyu20DQP4DX3kF8`
+      && `5lGoZAKnfhKFHTujuiEEXlsHulBEJRO4jfXIRDzSFTq7cZsbUOkU9qRaim/vJRzOMbxlG0FXD0PrNuB1dqGSSeo+s4yyRaej0iky`
+      && `C08jt3HLeBiQM1Kst5BqB0LvwZjKiURP2VkLsSrKAei8ZzndDz6EO3Uy0/75/+HU1WLX1eLUTYqy9N7WEbHUwm1qOICGQXdvpCIl`
+      && `E9Fpl5fhtbThtbaRPmke0rEjgVWALuSjGWRwCLRBKEkpDOl+5HHSp5+EdGyculqwVNSQHTwBtgiltsjSv3yjCyFemVDysBTSdSi2`
+      && `dTC89Q2yL65FF4uUWtqi+B5JjkaHYEwkaIyEpTu56V3VRgiCoWFKnT2jio9dWwP754Z3npESQo0JQzKfWEjq1PmRK0rh1E9CWNE7`
+      && `w6HcQZ1/B3ghxKuyuqrFcv/Pt0DK54AbzXglca3pvOteOv7rlxg/wAznIrVm3mzcyU0AFHftodTSDlJSam1HF4vIeAynqQHhOqM1`
+      && `23gefnsHMBfpOri1NQwbg9fSOprx3eYGhGVhVVXSeOvNpE+bP7IUWYNQirKzFkRTo+8ztO7VUWX6IA2QRoindWtbaAnbRgix1mi9`
+      && `0xhzzHhZEGQHD2hynMYG6m74FCqZQBeKdC9/mGBwECElflcPQXYQJx7DbajDqqyk1NoWnaox73aUQiCVAiHwO7oIh3NY5WU4dbWo`
+      && `dAqdy2N8H2nbyOoqaq6+fL+J0ad75SoGf/vKQRNgdI1G7BSWtRqlkCaZQD63qhUpnxAT7Qbf6dGTCer/6joSs44GoHvlKrIvjWh0`
+      && `UkSJsDXazTuTaqi85HxUMoGwLFInfYzU/Hmj3V2hvQOkjLq8keHGrq7CqqkiyA7S8r0f0f6Tu8ltjdTi4t5Wsi/9jr3f/j4dd96D`
+      && `8byDduZSCISQj6lnV+4N0yks4fuEZ10IQj6I1p+ZWDKMgKi+8jLKzz0TgIHVa+m650FMqRTN9lISFgpkX1xL+sR5IAS1SxeTnjcH`
+      && `XSwSnzkDq6JsVNwsbN+BUBKdy+PtbcWuqsRrbUcqC6QgzGbpumc5PQ89jkomMGFIODiE9kpjTp8iAqAHJR8IPnE5olRC9N11P3se`
+      && `XEloW5YzlPu50frTZgLlsOzMM5j8f7+MSqco7m2h5fs/RufzuM2NuE0NZNeso/DGdqyyDI1f+RwV5y56z3cNb9pK6/fuoLhr92hI`
+      && `uM3Rdino7Ufn8xitD3lFDqCEQCl1Z1hRfosoFMIpN1wTkWXTOZ9EhSEIucAEwSPamKrxJEJ32hSm/tNtxKZEopLfP4DOF7AqylHx`
+      && `GAhB2x130XXfCoSUqLIMFRedR/nC01A1lRBo/I5OBn+3gYHnVhP09B64TX7H4SMwagvAkqpd2NYlQpuNWklm/+bXI9vhynISQzn8`
+      && `8szLsfau+6TWX9RjrZiMwZ3STKy5cfQzu6IcRnoD4/uE+QLCcUapGWYH6b7/V/Q98iQilYAwGq11sTgqhx0YsEfujoGK9MU7pz/3`
+      && `0MYdl16DapwEv9kvXWw+bzEykpen4wePaq1nmzHonzh2JtO//48IpQj6Byh1dEVNzJ4WvJZWSh1d+D296Fz+sG54HIl7QpaULxvH`
+      && `WYwxHca2mDNyqXr021d/6W+59/bvcOuCC9GOu5QwuCs0JnGw+V4mEyTnziboz+L39BIODWM8bzRWR9WcD8DJg1Nf9grLWiaC4FlV`
+      && `LDHzlWf++I4QwKZLr0F4JUzMtVR28DtG66+MGQphOKrP/Tkd/ZN3g4QMpKW+MeuFR/5t68VLMTGXuSv/870BANhy7uKojZWiSpT8`
+      && `nxutLzN8NE1FjdXPdDx2qwjCglGS459a8Qdd4R+Y6yukHyDCsNfY1pellGvFR9f5Xxvbvk2W/ILQ+o+cf08Ajlm9AupqCYeGkEG4`
+      && `S0nrry2p1kshPmrOrzKu8wUVhj1WEKIXnPIn5oL3sDkrfk6srp7S6lWI0N8mlbpeSfnSRwGEkWZnuXadm/CDNko++yrTHP+tb4wf`
+      && `AIBZj91P7IrrSf/2d4ggeB3bvk5KuVIKwYcRhpFsX5JK/cA49s0yCNql78OMqZx7kP8cGdOXTUs+S2ZnC4V0Am1Z5cL3v4rWX9Da`
+      && `pDUfjvQohUAJ0SaU+rZOJu4ShWKJMKQ4aybzf/xvY+wGxrATHvwFrUdHt7zQesCvqfo7odR1SsmN6s/MBgFYQmpLqqew7Ctjvf0/`
+      && `puSXEAL3/EVjOj+hlY6tFBvOvhykxM4X0a7dJILwc1rrz2pjJhljPjA+jEx1SCm3Cyl/aBz7HlEsZUtlaaTvM3cC/zo37mbbD0Pm`
+      && `PvtrtGWR6OsHY1ryX7rpG9K2LraUutOSsuv9ZkS0ypLYSu1QyvoHYdsXilz+h2iTFRhUJjUh5w9rqbf1gqswloXK5TG11VL09M0j`
+      && `DK82xlxqtJmpjbENh8cKsZ+GJ4UYlkK8JqT8FUo9Kva17tZNDQSTG1Hdfcx+7P7D+o5Dsi23fAW1cw/GUsiCh9mzFzVjer32/dON`
+      && `1udiOBXMNGPIGIwyhlFIzEGcHdHsS0LQgxDbEeIlKeVz0nE2mcGhQROP4VeWowreITt+RADY316/ZBnGdVCDw5hSic2rV3HC+X9R`
+      && `K8LwGKP1CcaYucYw02AaBVQGxiRNdDPVKERRCAYFdIPYK4R4Q0ixGSE2Y1u7dE/fsEinwHE49ukVbLvyeuasvPuI/N3/A7vfpW7H`
+      && `EM2GAAAAAElFTkSuQmCC`.
+  ENDMETHOD.
+
   METHOD view_display.
 
     DATA(view) = z2ui5_cl_ui5_view_builder=>factory(
@@ -261,8 +361,23 @@ CLASS zcl_ag2ui5_app_repos IMPLEMENTATION.
     " into its menu, the title stays
     DATA(page) = view->ele( `Page` ).
     DATA(header_content) = page->ele( `customHeader` )->ele( `OverflowToolbar` ).
+    " the logos name abapGit and abap2UI5; not decorative, so UI5 keeps alt
+    header_content->tag( `Image`
+        )->a( n = `src`        v = abapgit_logo( )
+        )->a( n = `alt`        v = `abapGit`
+        )->a( n = `tooltip`    v = `abapGit`
+        )->a( n = `height`     v = `2rem`
+        )->a( n = `width`      v = `2rem`
+        )->a( n = `decorative` v = `false` ).
+    header_content->tag( `Image`
+        )->a( n = `src`        v = abap2ui5_logo( )
+        )->a( n = `alt`        v = `abap2UI5`
+        )->a( n = `tooltip`    v = `abap2UI5`
+        )->a( n = `height`     v = `2rem`
+        )->a( n = `width`      v = `2rem`
+        )->a( n = `decorative` v = `false` ).
     header_content->ele( `Title`
-        )->a( n = `text`  v = `abapGit - Repositories`
+        )->a( n = `text`  v = `Repositories`
         )->a( n = `level` v = `H2`
         )->ele( `layoutData`
             )->tag( `OverflowToolbarLayoutData`

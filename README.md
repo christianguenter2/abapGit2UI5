@@ -1,3 +1,12 @@
+<p align="center">
+  <a href="https://github.com/abapGit/abapGit"><picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logos/abapgit-dark.svg">
+    <img src="docs/logos/abapgit.svg" alt="abapGit" height="56">
+  </picture></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/abap2UI5/abap2UI5"><img src="docs/logos/abap2ui5.png" alt="abap2UI5" height="64"></a>
+</p>
+
 # abapGit2UI5
 
 A browser frontend for [abapGit](https://github.com/abapGit/abapGit), built with
@@ -161,4 +170,6 @@ open points and known limits (`findings.md`), issues for upstream projects
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The logos belong to
+[abapGit](https://github.com/abapGit/abapGit) and
+[abap2UI5](https://github.com/abap2UI5/abap2UI5-documentation), both MIT.

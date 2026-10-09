@@ -2,7 +2,8 @@ CLASS ltcl_routes DEFINITION DEFERRED.
 CLASS ltcl_offline DEFINITION DEFERRED.
 CLASS ltcl_delete DEFINITION DEFERRED.
 CLASS ltcl_favorites DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_routes ltcl_offline ltcl_delete ltcl_favorites.
+CLASS ltcl_logos DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_repos DEFINITION LOCAL FRIENDS ltcl_routes ltcl_offline ltcl_delete ltcl_favorites ltcl_logos.
 
 "! Settings double: preset values, and every set( ) call recorded
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
@@ -78,6 +79,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     "! The last set_session_stateful( ) value; `-` when it was never called
     DATA mv_stateful TYPE string VALUE `-`.
     DATA mv_follow TYPE string.
+    DATA mv_view TYPE string.
     DATA mt_follow_args TYPE string_table.
 ENDCLASS.
 
@@ -138,7 +140,8 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~get_event.
     result = mv_event.
   ENDMETHOD.
-  METHOD z2ui5_if_client~view_display ##NEEDED.
+  METHOD z2ui5_if_client~view_display.
+    mv_view = val.
   ENDMETHOD.
   METHOD z2ui5_if_client~message_box_display.
     mv_error = text.
@@ -895,4 +898,53 @@ CLASS ltcl_routes IMPLEMENTATION.
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/` ).
   ENDMETHOD.
+ENDCLASS.
+
+
+CLASS ltcl_logos DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    METHODS logos_are_images FOR TESTING.
+    METHODS header_shows_logos FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_logos IMPLEMENTATION.
+
+  METHOD logos_are_images.
+    " a truncated or mistyped line in the embedded data breaks the image
+    DATA(lv_svg) = zcl_ag2ui5_app_repos=>abapgit_logo( ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `data:image/svg+xml;base64,*` act = lv_svg ).
+    DATA(lv_xml) = cl_abap_codepage=>convert_from(
+      cl_http_utility=>decode_x_base64( substring_after( val = lv_svg sub = `,` ) ) ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `<svg *</svg>` act = lv_xml ).
+
+    DATA(lv_png) = zcl_ag2ui5_app_repos=>abap2ui5_logo( ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `data:image/png;base64,*` act = lv_png ).
+    DATA(lv_bytes) = cl_http_utility=>decode_x_base64( substring_after( val = lv_png sub = `,` ) ).
+    DATA lv_head TYPE x LENGTH 8.
+    DATA lv_tail TYPE x LENGTH 8.
+    lv_head = lv_bytes.
+    " the PNG ends with its IEND chunk
+    DATA(lv_end) = xstrlen( lv_bytes ) - 8.
+    lv_tail = lv_bytes+lv_end(8).
+    cl_abap_unit_assert=>assert_equals( exp = '89504E470D0A1A0A' act = lv_head ).
+    cl_abap_unit_assert=>assert_equals( exp = '49454E44AE426082' act = lv_tail ).
+  ENDMETHOD.
+
+  METHOD header_shows_logos.
+    DATA(lo_client) = NEW ltd_client( ).
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    lo_client->mv_start = abap_true.
+    NEW zcl_ag2ui5_app_repos( )->z2ui5_if_app~main( lo_client ).
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mv_view CS zcl_ag2ui5_app_repos=>abapgit_logo( ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mv_view CS zcl_ag2ui5_app_repos=>abap2ui5_logo( ) ) ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*text="Repositories"*` act = lo_client->mv_view ).
+    " UI5 drops alt of a decorative image
+    cl_abap_unit_assert=>assert_char_cp( exp = `*alt="abap2UI5"*decorative="false"*` act = lo_client->mv_view ).
+  ENDMETHOD.
+
 ENDCLASS.
