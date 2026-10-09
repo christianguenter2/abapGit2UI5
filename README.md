@@ -12,18 +12,18 @@ HTML control.
 
 Beyond what the conventional abapGit UI offers:
 
-- **Runs in any browser**, no SAP GUI HTML control; Status and diff pages have
+- 🌐 **Runs in any browser**, no SAP GUI HTML control; Status and diff pages have
   URLs that survive a refresh and can be bookmarked.
-- **One pull dialog** instead of a sequence of popups: every change grouped by
+- 🛡️ **One pull dialog** instead of a sequence of popups: every change grouped by
   risk, abapGit's defaults preselected, and checked again before importing.
-- **Structural method review:** the diff summarizes added, removed and
+- 🔍 **Structural method review:** the diff summarizes added, removed and
   changed methods, each linked to its source range.
-- **Several commits in a row:** after a push, Stage stays open with the
+- 🔁 **Several commits in a row:** after a push, Stage stays open with the
   remaining changes, so partial changes (including picked lines) can be
   committed one after another without starting over from the repository.
-- **Ignore rules with a preview:** edit a pattern and see which files it
+- 🙈 **Ignore rules with a preview:** edit a pattern and see which files it
   affects before saving or removing it.
-- **Uninstall with a preview:** the objects to be deleted are listed, and the
+- 🗑️ **Uninstall with a preview:** the objects to be deleted are listed, and the
   package name must be typed to confirm.
 
 ## Screenshots
