@@ -1863,3 +1863,28 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   including the binding assertion. Activated test readback matches local source.
   Backups/readback: `/tmp/ag2ui5-diff-binding`. No fixture changes. User
   authorized committing and pushing this follow-up.
+
+
+## Hash navigation investigation (2026-10-09)
+
+- Tested temporary KEEP initialization in the repository list on A4H25 via
+  ADT, using an isolated Chrome tab and existing `$UMLAUT` changes. Status
+  refresh and a saved Status URL restore the correct repository; status events
+  advance the URL draft. No fixture source, branch, tag or settings changes.
+- A one-line opt-in is not ready: diff refresh restores content but clears the
+  hash (twice); browser Back then changes the URL without changing the view.
+  Diff/Status browser Back/Forward works before reload. Browser Back to list
+  works, but Forward from that list settled on the list rather than Status.
+  App Back on cold-restored Status/diff stays on the page. A nonexistent draft
+  starts Status without its repository key and shows an error instead of
+  returning to the list. Both inspected saved containers had KEEP enabled.
+- Native suites: Status80/80, Login13/13. Repositories initially5/33 because
+  the kernel rejects its unimplemented check_on_init client-double method;
+  completing it in a temporary test include gives33/33. The existing suites
+  do not establish real authenticated browser-history cleanup. No tokens used.
+- Spec and plan: `docs/superpowers/{specs,plans}/2026-10-09-hash-navigation.md`.
+  Resolve hash/history failures, add cold-restore Back and missing-key fallbacks,
+  and validate login/session cleanup before choosing a permanent route contract.
+- Restored repository-list main/test include to pre-test backups and verified
+  readbacks. Test tab closed. Scratch artifacts: `/tmp/ag2ui5-hash-routing`.
+  Only documentation changes remain; no implementation commit or push.
