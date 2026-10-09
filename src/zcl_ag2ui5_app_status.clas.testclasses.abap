@@ -54,6 +54,8 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_navigated TYPE abap_bool.
     DATA mv_init TYPE abap_bool.
     DATA mv_view TYPE string.
+    "! A test may identify the data object whose binding it wants to verify
+    DATA mr_diff_binding TYPE REF TO data.
     DATA mv_popup TYPE string.
     DATA mv_error TYPE string.
     DATA mt_box_actions TYPE string_table.
@@ -119,8 +121,11 @@ CLASS ltd_client IMPLEMENTATION.
   METHOD z2ui5_if_client~get_event_arg.
     result = VALUE #( mt_args[ v ] OPTIONAL ).
   ENDMETHOD.
-  "! bindings and events are not checked here
-  METHOD z2ui5_if_client~_bind ##NEEDED.
+  METHOD z2ui5_if_client~_bind.
+    DATA(lr_value) = REF #( val ).
+    IF mr_diff_binding IS BOUND AND lr_value = mr_diff_binding.
+      result = COND #( WHEN path = abap_true THEN `/MV_CAN_DIFF` ELSE `{/MV_CAN_DIFF}` ).
+    ENDIF.
   ENDMETHOD.
   METHOD z2ui5_if_client~_event ##NEEDED.
   ENDMETHOD.
@@ -838,6 +843,7 @@ CLASS ltcl_overview DEFINITION FINAL FOR TESTING
     METHODS diff_off_offline_without_zip FOR TESTING.
     METHODS diff_disabled_without_changes FOR TESTING.
     METHODS refresh_follows_changes FOR TESTING.
+    METHODS diff_button_binding FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_overview IMPLEMENTATION.
@@ -914,6 +920,14 @@ CLASS ltcl_overview IMPLEMENTATION.
     mo_client->mv_event = `REPO_DIFF`.
     mo_app->on_event( ).
     cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+  ENDMETHOD.
+
+  METHOD diff_button_binding.
+    " Compare references, not boolean values: binding another flag must fail.
+    mo_client->mr_diff_binding = REF #( mo_app->mv_can_diff ).
+    mo_app->view_display( ).
+    FIND REGEX `<Button[^>]*text="Diff"[^>]*enabled="\{/MV_CAN_DIFF\}"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD refresh_follows_changes.

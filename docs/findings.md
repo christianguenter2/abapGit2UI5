@@ -1847,3 +1847,19 @@ Reviews by Codex and omp of `177f6c5..b6bcbc0`, checked against abap2UI5
   `ag2ui5-verify-annotated-20261009` listed with verified commit `a7730ef`
   (annotated with its own raw hash), then deleted by raw ref; remote tags
   empty again, `feature/test1234` still selected. No new short dumps.
+
+
+## Diff binding regression coverage (2026-10-09)
+
+- Status client double can identify the bound data object by reference and
+  return its binding path. The new `diff_button_binding` test checks that the
+  rendered Diff button binds enabled to `mv_can_diff`; a static boolean or
+  another bound flag fails the assertion. Existing refresh transition tests
+  continue to cover the state changes and server event guard.
+- `npm run check` passes: abaplint 0 issues, UI5 property/render gates 0
+  errors/warnings and the existing unresolved MessageStrip hint.
+- With user approval, updated and activated only the Status test include on
+  A4H25; the main source already matched Git. Native Status suite 80/80 passes,
+  including the binding assertion. Activated test readback matches local source.
+  Backups/readback: `/tmp/ag2ui5-diff-binding`. No fixture changes. User
+  authorized committing and pushing this follow-up.
