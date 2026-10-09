@@ -8,6 +8,11 @@ HTML control.
 **Status: experimental.** Tested end to end on one SAP NetWeaver 7.5x system
 (A4H). Other releases are untested.
 
+![Structural method review and side-by-side ABAP diff in test_codeberg](docs/screenshots/demo-diff.jpg)
+
+See the [short walkthrough](docs/walkthrough.md): find changes, review the diff,
+and choose what to commit.
+
 ## Highlights
 
 Beyond what the conventional abapGit UI offers:
@@ -40,7 +45,7 @@ Beyond what the conventional abapGit UI offers:
 
 **Prerequisites**
 
-- The abapGit **developer version** (the `ZCL_ABAPGIT_*` classes). The
+- The latest abapGit **developer version** (the `ZCL_ABAPGIT_*` classes). The
   standalone program is not enough, because its classes are local.
 - abap2UI5 1.146.0 or later.
 - ABAP 7.50 or later, and abapGit's startup authorization
@@ -127,9 +132,9 @@ modifiable requests; create it in SE09 first.
 
 Credentials for private repositories come from an abapGit user exit. Without
 one, a login page asks for the Git user and token (only through
-`/sap/bc/zabapgit2ui5`). They are kept in session memory only, never stored,
-and dropped after 30 minutes without use, when you return to the repository
-list, or when the session ends.
+`/sap/bc/zabapgit2ui5`). The normal login flow keeps them in session memory.
+They are dropped after 30 minutes without use, when you return to the
+repository list, or when the session ends.
 
 ## Security
 
@@ -138,7 +143,10 @@ list, or when the session ends.
 - Only one class talks to abapGit, and it never opens abapGit's GUI popups.
 - Pulling, uninstalling or registering a package tree that contains abapGit,
   abap2UI5 or this frontend is refused.
-- Tokens are removed from abap2UI5's saved app state on every round trip.
+- The login app clears tokens before abap2UI5 saves its state. A framework
+  caveat remains: a hand-crafted generic leave request can bypass that clearing
+  and save the logged-on user's own submitted token in their draft. The login
+  page does not send that event (see the Secrets rule in [AGENTS.md](AGENTS.md)).
 
 ## Development
 
@@ -147,8 +155,9 @@ npm install
 npm run check   # abaplint + abap2UI5 linter, no SAP system needed
 ```
 
-ABAP Unit runs on an SAP system (`src/*.clas.testclasses.abap`). Design notes,
-plans and test results are in `docs/` (`superpowers/`, `findings.md`).
+ABAP Unit runs on an SAP system (`src/*.clas.testclasses.abap`). In `docs/`:
+open points and known limits (`findings.md`), issues for upstream projects
+(`upstream.md`) and feature ideas (`feature-ideas.md`).
 
 ## License
 

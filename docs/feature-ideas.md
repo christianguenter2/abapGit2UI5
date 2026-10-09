@@ -1,4 +1,4 @@
-# Feature ideas (2026-10-04)
+# Feature ideas
 
 Ideas discussed with Chris for features that could distinguish abapGit2UI5.
 These are candidates, not committed scope or implementation plans. Their
@@ -38,28 +38,6 @@ Limits and questions:
 - Define overlap rules for groups, stale picks, and the baseline after one
   group has been committed. Different target branches need their own fresh
   comparison and validation.
-
-## Semantic ABAP diff
-
-Review changes in terms of ABAP objects and their components, with the raw
-file and line diffs available underneath.
-
-Example for `ZCL_INVOICE`:
-
-- Public method `CALCULATE` gained parameter `IV_CURRENCY`.
-- Implementation of `ROUND_AMOUNT` changed.
-- Test method `ROUND_JPY` added.
-
-Example for `ZINVOICE`: field `CURRENCY` added; field `AMOUNT` changed.
-
-The per-object status view is implemented (2026-10-04). A next slice could
-add structural summaries for classes/interfaces and supported metadata.
-Link each summary to its source diff. Other object types can fall back to
-the raw diff.
-
-Structural observations must be distinguished from claims about behavior.
-Parsing support, method boundaries, renames and metadata format differences
-need investigation; an AI summary is not required for the first version.
 
 ## Pull impact preview
 
@@ -107,13 +85,3 @@ First slice: an on-demand overview of local and remote status for selected
 repositories. PR and CI information can follow through provider integrations.
 Investigate fetch costs, caching, authentication and provider support;
 ordinary repository listing should remain quick.
-
-## Suggested direction
-
-Named change sets are the strongest candidate for a flagship workflow.
-Semantic object review is the suggested smaller first slice: it extends the
-available per-object view and makes the benefit visible immediately.
-
-Together: understand what changed, organize it by task, and publish precisely
-that work. This is a recommendation from the discussion; prioritization and
-design still need to be agreed before implementation.

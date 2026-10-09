@@ -1,76 +1,21 @@
-# Upstream drafts (to post by Chris)
+# Upstream: open points
 
-Texts ready to paste, one issue each. Background and evidence are in
-`upstream-notes.md`. Searched on 2026-10-06: none of these is filed yet.
+Issues found while building abapGit2UI5 in abapGit, abap2UI5 and related
+tools. Fixed, merged or dropped points are removed; Git history has them.
+Texts marked with `>` are ready to post (Chris files them).
+
+## Tracking
+
+- **abapGit #7941** (discussion: pull and push without the UI layer) and
+  **PR #7951** (`zcl_abapgit_repo_pull`): open. Once merged, abapGit2UI5's
+  own pull steps in `ZCL_AG2UI5_REPO_SERVICE` can use them.
+- **AJSON PR sbcgua/ajson#228** (escape every control character): open.
+  Until then a form feed or other control character in a JSON string blanks
+  the abap2UI5 page; abapGit2UI5 replaces them itself (`visible`). After the
+  merge, abap2UI5 has to refresh `ajson_mirror`.
+- Parked by Chris: the self-update guard deciding by package (abapGit).
 
 ## abapGit
-
-### A. Self-update guard: decide by package, not by URL and program
-
-Not posted (Chris, 2026-10-06): left out for now.
-
-> **Title:** Self-update protection misses headless callers and mirrored URLs
->
-> `zcl_abapgit_services_repo=>check_self_update` (and the restart in
-> `gui_deserialize`) only apply when `sy-cprog = 'ZABAPGIT'` and
-> `zcl_abapgit_url=>is_abapgit_repo( )` is true, which only matches github.com
-> URLs ending in `/abapGit` or `/abapGit.git`.
->
-> So the check is skipped when the developer version is pulled
-> - by a headless caller (ADT backend, abapgit-agent, a web frontend), or
-> - from a mirror (GitLab, Bitbucket, an internal Git server).
->
-> In both cases the pull can overwrite classes that are running in the same
-> session.
->
-> Idea: decide by package. Compare the TADIR package of a running abapGit
-> class (for example `ZCL_ABAPGIT_REPO`) with the repository's package tree
-> and refuse (or warn) when they overlap. abapGit2UI5 does this for its own
-> pulls (`assert_pull_allowed`) and could contribute a PR. Is that the
-> direction you would want?
-
-### B. Pull and push for headless callers (discussion first, no code yet)
-
-Posted by Chris as abapGit/abapGit#7941 (2026-10-06), without the self-update parts.
-
-> **Title:** Discussion: pull and push without the UI layer
->
-> The steps of a pull and a push live in `ui/routing`
-> (`zcl_abapgit_services_repo`, `zcl_abapgit_services_git`). Every entry
-> point that is not the SAP GUI popup flow puts them together itself, and the
-> copies already differ inside abapGit:
->
-> | Entry point | Pull steps | Push exits |
-> |---|---|---|
-> | Pull with popups | `gui_deserialize` → `real_deserialize` | - |
-> | HTML pull page (Flow, `gui_page_pull`) | calls `real_deserialize` directly | - |
-> | Background pull | deletes and deserializes itself, calling the UI class `zcl_abapgit_services_repo` for the deletion | - |
-> | Commit page (`services_git=>commit`) | - | yes |
-> | Background push (`push_au`, `push_fi`) | - | **no**: `validate_before_push` / `validate_after_push` are not called |
->
-> Outside abapGit, the ADT backend, abapgit-agent and abapGit2UI5 (an abap2UI5
-> frontend) each have their own copy too. abapGit2UI5, for example, first
-> missed the push exits and the `COMMIT WORK`.
->
-> **Proposal:** two small classes in the repo layer that hold the steps without
-> any UI, and that every entry point calls:
->
-> 1. **Pull:** `checks` (as today, `deserialize_checks( )`) → the caller fills
->    in the decisions → `pull( is_checks )` deletes the removed objects,
->    deserializes and returns the log. The GUI keeps the popups, the success
->    message and the restart; the background job keeps its "yes to all".
-> 2. **Push:** `push( is_comment, io_stage )` calls `validate_before_push`,
->    pushes, commits and calls `validate_after_push`. The commit page keeps
->    the form checks and saving the committer per user.
->
-> Each would be one PR, moving code without changing behaviour for the SAP GUI
-> flow, with unit tests for the new classes.
->
-> **Questions:**
-> - Is this a direction you would accept, and in which package (`src/repo`)?
-> - Should the background push call the push exits? Today it does not. Adding
->   them changes behaviour for users with an exit, so we would make it an
->   explicit decision.
 
 ### C. Form feed marker in diff output
 
@@ -81,6 +26,13 @@ Posted by Chris as abapGit/abapGit#7941 (2026-10-06), without the self-update pa
 > #7922 had to strip it from staged files, and abapGit2UI5's JSON response
 > broke on it. A flag in `ty_diff` (or on the diff object) would keep the line
 > texts clean. Low priority.
+
+### Proposal: replaceable popups
+
+`ZCL_ABAPGIT_UI_INJECTOR` is `FOR TESTING`, so a headless caller (ADT
+backend, abapgit-agent, web frontends) cannot register a non-interactive
+popup implementation that raises cleanly. Not drafted yet; it could join
+the discussion in #7941.
 
 ## abapgit-agent (SylvosCai/abapgit-agent)
 
@@ -126,9 +78,6 @@ Posted by Chris as abapGit/abapGit#7941 (2026-10-06), without the self-update pa
 
 ## abap2UI5
 
-Control characters (AJSON PR sbcgua/ajson#228) need nothing more here until
-it is merged; then `ajson_mirror` needs a refresh.
-
 ### H. Secrets in the draft table
 
 > **Title:** Password fields are stored in Z2UI5_T_01
@@ -164,3 +113,9 @@ it is merged; then `ajson_mirror` needs a refresh.
 > There is no direct way to style a row from data. abapGit2UI5 uses
 > `CustomData` with `writeToDom` plus a `<style>` block via `core:HTML`. A
 > recipe in the guide, or a helper, would save apps the search.
+
+### L. Linter `--screenshot` limits
+
+Not drafted yet: `abap2ui5lint --screenshot` does not follow values passed
+into helper methods, and it renders every branch of an `IF`, so dialogs need
+a system or a scratch copy with the helpers inlined.
