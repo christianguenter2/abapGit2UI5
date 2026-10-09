@@ -8,15 +8,30 @@ HTML control.
 **Status: experimental.** Tested end to end on one SAP NetWeaver 7.5x system
 (A4H). Other releases are untested.
 
+## Highlights
+
+Beyond what the conventional abapGit UI offers:
+
+- **Runs in any browser**, no SAP GUI HTML control; Status and diff pages have
+  URLs that survive a refresh and can be bookmarked.
+- **One pull dialog** instead of a sequence of popups: every change grouped by
+  risk, abapGit's defaults preselected, and checked again before importing.
+- **Structural method review:** the diff summarizes added, removed and
+  changed methods, each linked to its source range.
+- **Ignore rules with a preview:** edit a pattern and see which files it
+  affects before saving or removing it.
+- **Uninstall with a preview:** the objects to be deleted are listed, and the
+  package name must be typed to confirm.
+
 ## Screenshots
 
-| Repositories | Status | Diff |
-|---|---|---|
-| ![Repository tiles with labels and favorites](docs/screenshots/repos-tiles.png) | ![Status of a repository](docs/screenshots/status.png) | ![Side-by-side diff](docs/screenshots/diff.png) |
+| Repositories | Status | Diff | Pull |
+|---|---|---|---|
+| ![Repository tiles with labels and favorites](docs/screenshots/repos-tiles.png) | ![Status of a repository](docs/screenshots/status.png) | ![Side-by-side diff](docs/screenshots/diff.png) | ![Pull decision dialog](docs/screenshots/pull-dialog.png) |
 
-| Pull | Stage | Branches and tags |
+| Stage | Pick lines | Branches and tags |
 |---|---|---|
-| ![Pull decision dialog](docs/screenshots/pull-dialog.png) | ![Staging page](docs/screenshots/stage.png) | ![Branches and tags dialog](docs/screenshots/branches.png) |
+| ![Staging page](docs/screenshots/stage.png) | ![Picking single lines to commit](docs/screenshots/pick-lines.png) | ![Branches and tags dialog](docs/screenshots/branches.png) |
 
 ## Getting started
 
