@@ -914,13 +914,7 @@ CLASS ltcl_logos IMPLEMENTATION.
 
   METHOD logos_are_images.
     " a truncated or mistyped line in the embedded data breaks the image
-    DATA(lv_svg) = zcl_ag2ui5_app_repos=>abapgit_logo( ).
-    cl_abap_unit_assert=>assert_char_cp( exp = `data:image/svg+xml;base64,*` act = lv_svg ).
-    DATA(lv_xml) = cl_abap_codepage=>convert_from(
-      cl_http_utility=>decode_x_base64( substring_after( val = lv_svg sub = `,` ) ) ).
-    cl_abap_unit_assert=>assert_char_cp( exp = `<svg *</svg>` act = lv_xml ).
-
-    DATA(lv_png) = zcl_ag2ui5_app_repos=>abap2ui5_logo( ).
+    DATA(lv_png) = zcl_ag2ui5_app_repos=>project_logo( ).
     cl_abap_unit_assert=>assert_char_cp( exp = `data:image/png;base64,*` act = lv_png ).
     DATA(lv_bytes) = cl_http_utility=>decode_x_base64( substring_after( val = lv_png sub = `,` ) ).
     DATA lv_head TYPE x LENGTH 8.
@@ -940,11 +934,10 @@ CLASS ltcl_logos IMPLEMENTATION.
     NEW zcl_ag2ui5_app_repos( )->z2ui5_if_app~main( lo_client ).
     zcl_ag2ui5_settings=>inject( VALUE #( ) ).
 
-    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mv_view CS zcl_ag2ui5_app_repos=>abapgit_logo( ) ) ).
-    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mv_view CS zcl_ag2ui5_app_repos=>abap2ui5_logo( ) ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( lo_client->mv_view CS zcl_ag2ui5_app_repos=>project_logo( ) ) ).
     cl_abap_unit_assert=>assert_char_cp( exp = `*text="Repositories"*` act = lo_client->mv_view ).
     " UI5 drops alt of a decorative image
-    cl_abap_unit_assert=>assert_char_cp( exp = `*alt="abap2UI5"*decorative="false"*` act = lo_client->mv_view ).
+    cl_abap_unit_assert=>assert_char_cp( exp = `*alt="abapGit2UI5"*decorative="false"*` act = lo_client->mv_view ).
   ENDMETHOD.
 
 ENDCLASS.

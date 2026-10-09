@@ -1,10 +1,8 @@
 <p align="center">
-  <a href="https://github.com/abapGit/abapGit"><picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/logos/abapgit-dark.svg">
-    <img src="docs/logos/abapgit.svg" alt="abapGit" height="56">
-  </picture></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/abap2UI5/abap2UI5"><img src="docs/logos/abap2ui5.png" alt="abap2UI5" height="64"></a>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logos/abapgit2ui5-dark.svg">
+    <img src="docs/logos/abapgit2ui5.png" alt="abapGit2UI5" width="480">
+  </picture>
 </p>
 
 # abapGit2UI5
