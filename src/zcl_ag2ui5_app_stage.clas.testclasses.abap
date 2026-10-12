@@ -3,7 +3,9 @@ CLASS ltcl_object_links DEFINITION DEFERRED.
 CLASS ltcl_push DEFINITION DEFERRED.
 CLASS ltcl_patch DEFINITION DEFERRED.
 CLASS ltcl_header DEFINITION DEFERRED.
-CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_ignore ltcl_push ltcl_patch ltcl_header ltcl_object_links.
+CLASS ltcl_filter DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_app_stage DEFINITION LOCAL FRIENDS ltcl_ignore ltcl_push ltcl_patch ltcl_header ltcl_object_links
+  ltcl_filter.
 
 "! Settings double: always the default, nothing stored - so a diff app the
 "! stage app creates does not read the tester's own settings
@@ -743,4 +745,134 @@ CLASS ltcl_route_parent IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = lo_client->mv_route exp = `/repo/000000000010` ).
     cl_abap_unit_assert=>assert_equals( act = lines( lo_client->mt_routes ) exp = 4 ).
   ENDMETHOD.
+ENDCLASS.
+
+
+"! The Changed by filter: Select all / none and the push see only the visible rows
+CLASS ltcl_filter DEFINITION FINAL FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA mo_app TYPE REF TO zcl_ag2ui5_app_stage.
+    DATA mo_client TYPE REF TO ltd_client.
+    DATA mo_service TYPE REF TO ltd_service.
+
+    METHODS setup.
+    METHODS teardown.
+    METHODS users_offered FOR TESTING.
+    METHODS select_all_filtered FOR TESTING.
+    METHODS select_none_filtered FOR TESTING.
+    METHODS select_all_without_filter FOR TESTING.
+    METHODS push_skips_hidden FOR TESTING.
+    METHODS push_needs_visible_selection FOR TESTING.
+    METHODS reload_drops_gone_user FOR TESTING.
+    METHODS reload_keeps_user FOR TESTING.
+    METHODS filter_in_view FOR TESTING.
+
+ENDCLASS.
+
+
+CLASS ltcl_filter IMPLEMENTATION.
+
+  METHOD teardown.
+    zcl_ag2ui5_settings=>inject( VALUE #( ) ).
+  ENDMETHOD.
+
+  METHOD setup.
+    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_client  = NEW #( ).
+    mo_service = NEW #( ).
+    mo_app = zcl_ag2ui5_app_stage=>create( iv_key = `000000000001` iv_title = `test` ).
+    mo_app->mi_service = mo_service.
+    mo_app->client = mo_client.
+    mo_service->ms_stage-items = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` action = `ADD` lstate = `M` changed_by = `BOB` )
+      ( path = `/src/` filename = `zcl_b.clas.abap` action = `ADD` lstate = `M` changed_by = `UNKNOWN` )
+      ( path = `/src/` filename = `zcl_c.clas.abap` action = `ADD` lstate = `M` changed_by = `ALICE` )
+      ( path = `/src/` filename = `zcl_d.clas.abap` action = `ADD` lstate = `M` changed_by = `BOB` ) ).
+    mo_app->load_stage( ).
+    mo_app->ms_commit-title = `Test`.
+    mo_app->ms_commit-name  = `Someone`.
+    mo_app->ms_commit-email = `someone@example.com`.
+  ENDMETHOD.
+
+  METHOD users_offered.
+    " all users first, then the names sorted, UNKNOWN last, each with its count
+    cl_abap_unit_assert=>assert_equals(
+      act = mo_app->mt_users
+      exp = VALUE zcl_ag2ui5_app_stage=>ty_users( ( key = `` text = `All users (4)` )
+                                                  ( key = `ALICE` text = `ALICE (1)` )
+                                                  ( key = `BOB` text = `BOB (2)` )
+                                                  ( key = `UNKNOWN` text = `UNKNOWN (1)` ) ) ).
+  ENDMETHOD.
+
+  METHOD select_all_filtered.
+    mo_app->mv_user_filter = `BOB`.
+    mo_client->mv_event = `ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 2 ]-selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 3 ]-selected ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 4 ]-selected ).
+  ENDMETHOD.
+
+  METHOD select_none_filtered.
+    mo_app->select_all( abap_true ).
+    mo_app->mv_user_filter = `BOB`.
+    mo_client->mv_event = `NONE`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 2 ]-selected ).
+  ENDMETHOD.
+
+  METHOD select_all_without_filter.
+    mo_client->mv_event = `ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_false( xsdbool( line_exists( mo_app->mt_rows[ selected = abap_false ] ) ) ).
+  ENDMETHOD.
+
+  METHOD push_skips_hidden.
+    " a file the filter hides is never committed, even when it is ticked
+    mo_app->select_all( abap_true ).
+    mo_app->mv_user_filter = `ALICE`.
+    mo_client->mv_event = `PUSH`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_push_calls exp = 1 ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_received_items ) exp = 4 ).
+    LOOP AT mo_service->mt_received_items INTO DATA(ls_item).
+      cl_abap_unit_assert=>assert_equals( act = ls_item-selected
+                                          exp = xsdbool( ls_item-changed_by = `ALICE` ) ).
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD push_needs_visible_selection.
+    mo_app->mt_rows[ 1 ]-selected = abap_true.
+    mo_app->mv_user_filter = `ALICE`.
+    mo_client->mv_event = `PUSH`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_push_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `Select at least one file` ).
+  ENDMETHOD.
+
+  METHOD reload_drops_gone_user.
+    " after a push nobody may be left under the chosen name: show all again
+    mo_app->mv_user_filter = `ALICE`.
+    DELETE mo_service->ms_stage-items WHERE changed_by = `ALICE`.
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mv_user_filter ).
+  ENDMETHOD.
+
+  METHOD reload_keeps_user.
+    mo_app->mv_user_filter = `BOB`.
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_user_filter exp = `BOB` ).
+  ENDMETHOD.
+
+  METHOD filter_in_view.
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*<Select*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*{CHANGED_BY}*` ).
+  ENDMETHOD.
+
 ENDCLASS.

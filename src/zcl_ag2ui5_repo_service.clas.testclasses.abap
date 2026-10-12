@@ -3360,6 +3360,9 @@ CLASS ltcl_changed_by DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION 
     METHODS other_objects_ignored FOR TESTING.
     METHODS no_transport_unknown FOR TESTING.
     METHODS empty_owner_unknown FOR TESTING.
+    METHODS local_user_wins FOR TESTING.
+    METHODS git_only_file_owner FOR TESTING.
+    METHODS empty_local_user_unknown FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_changed_by IMPLEMENTATION.
@@ -3394,6 +3397,39 @@ CLASS ltcl_changed_by IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>owner_of( it_owners = lt_owners iv_obj_type = `CLAS` iv_obj_name = `ZCL_A` )
       exp = `UNKNOWN` ).
+  ENDMETHOD.
+
+  METHOD local_user_wins.
+    " a file in SAP: who changed the object last, not the transport owner
+    DATA(lt_items) = VALUE zif_ag2ui5_repo_service=>ty_stage_items(
+      ( path = `/src/` filename = `zcl_a.clas.abap` obj_type = `CLAS` obj_name = `ZCL_A` lstate = `M` rstate = `M` ) ).
+    zcl_ag2ui5_repo_service=>assign_changed_by(
+      EXPORTING it_local_users = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` user = `BOB` ) )
+                it_owners      = VALUE #( ( obj_type = `CLAS` obj_name = `ZCL_A` trkorr = `A4HK900001` as4user = `ALICE` ) )
+      CHANGING  ct_items       = lt_items ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ 1 ]-changed_by exp = `BOB` ).
+  ENDMETHOD.
+
+  METHOD git_only_file_owner.
+    " deleted in SAP, only in Git: the owner of the first request that holds it
+    DATA(lt_items) = VALUE zif_ag2ui5_repo_service=>ty_stage_items(
+      ( path = `/src/` filename = `zcl_a.clas.abap` obj_type = `CLAS` obj_name = `ZCL_A` lstate = `D` ) ).
+    zcl_ag2ui5_repo_service=>assign_changed_by(
+      EXPORTING it_local_users = VALUE #( )
+                it_owners      = VALUE #( ( obj_type = `CLAS` obj_name = `ZCL_A` trkorr = `A4HK900001` as4user = `ALICE` ) )
+      CHANGING  ct_items       = lt_items ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ 1 ]-changed_by exp = `ALICE` ).
+  ENDMETHOD.
+
+  METHOD empty_local_user_unknown.
+    " every row gets a name, so the Stage filter can offer it
+    DATA(lt_items) = VALUE zif_ag2ui5_repo_service=>ty_stage_items(
+      ( path = `/` filename = `.abapgit.xml` lstate = `M` ) ).
+    zcl_ag2ui5_repo_service=>assign_changed_by(
+      EXPORTING it_local_users = VALUE #( ( path = `/` filename = `.abapgit.xml` user = `` ) )
+                it_owners      = VALUE #( )
+      CHANGING  ct_items       = lt_items ).
+    cl_abap_unit_assert=>assert_equals( act = lt_items[ 1 ]-changed_by exp = `UNKNOWN` ).
   ENDMETHOD.
 
 ENDCLASS.

@@ -40,6 +40,25 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_user)   TYPE string.
 
+    "! Who last changed a file in SAP, from abapGit's object handler
+    TYPES:
+      BEGIN OF ty_file_user,
+        path     TYPE string,
+        filename TYPE string,
+        user     TYPE string,
+      END OF ty_file_user,
+      ty_file_users TYPE STANDARD TABLE OF ty_file_user WITH EMPTY KEY.
+
+    "! Who changed each staging file, as abapGit's Stage page: for a file in
+    "! SAP the object's last changer (it_local_users), for a file only in Git
+    "! the owner of the object's first transport request; UNKNOWN without one
+    CLASS-METHODS assign_changed_by
+      IMPORTING
+        it_local_users TYPE ty_file_users
+        it_owners      TYPE ty_object_owners
+      CHANGING
+        ct_items       TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+
     "! abapGit asks for credentials and neither its user exit nor login( )
     "! supplied any, or the remote rejected them
     CLASS-METHODS login_required
@@ -2183,6 +2202,22 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD assign_changed_by.
+
+    LOOP AT ct_items ASSIGNING FIELD-SYMBOL(<ls_item>).
+      READ TABLE it_local_users INTO DATA(ls_local)
+        WITH KEY path = <ls_item>-path filename = <ls_item>-filename.
+      IF sy-subrc = 0.
+        <ls_item>-changed_by = COND #( WHEN ls_local-user IS NOT INITIAL THEN ls_local-user ELSE c_user_unknown ).
+      ELSE.
+        <ls_item>-changed_by = owner_of( it_owners   = it_owners
+                                         iv_obj_type = <ls_item>-obj_type
+                                         iv_obj_name = <ls_item>-obj_name ).
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD transport_owners.
 
     " only the files that also exist in Git: abapGit looks up only those
@@ -2229,18 +2264,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_stage-items = stage_candidates( it_results = CONV zif_abapgit_definitions=>ty_results_tt( ls_files-status ) is_files = ls_files
       is_dot = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( ) ).
     rs_stage-ignore_rules = li_repo->zif_abapgit_repo~get_dot_abapgit( )->get_data( )-ignore.
-    " as abapGit: every remote-changed file gets a name, UNKNOWN for files that
-    " are no object (.abapgit.xml, readme) and for objects without a transport
+    " as abapGit: a file in SAP names the object's last changer, a file only
+    " in Git the owner of the object's first transport request
+    DATA lt_local_users TYPE ty_file_users.
+    LOOP AT ls_files-local INTO DATA(ls_local) WHERE item IS NOT INITIAL.
+      INSERT VALUE #( path = ls_local-file-path filename = ls_local-file-filename
+                      user = zcl_abapgit_objects=>changed_by( is_item     = ls_local-item
+                                                              iv_filename = ls_local-file-filename ) )
+        INTO TABLE lt_local_users.
+    ENDLOOP.
     DATA lt_remote_objects TYPE ty_object_owners.
-    LOOP AT rs_stage-items INTO DATA(ls_item) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
-      INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_remote_objects.
+    LOOP AT rs_stage-items INTO DATA(ls_item) WHERE obj_type IS NOT INITIAL.
+      IF NOT line_exists( lt_local_users[ path = ls_item-path filename = ls_item-filename ] ).
+        INSERT VALUE #( obj_type = ls_item-obj_type obj_name = ls_item-obj_name ) INTO TABLE lt_remote_objects.
+      ENDIF.
     ENDLOOP.
-    DATA(lt_owners) = transport_owners( lt_remote_objects ).
-    LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_item>) WHERE rstate IS NOT INITIAL.
-      <ls_item>-changed_by = owner_of( it_owners = lt_owners
-                                       iv_obj_type = <ls_item>-obj_type
-                                       iv_obj_name = <ls_item>-obj_name ).
-    ENDLOOP.
+    assign_changed_by( EXPORTING it_local_users = lt_local_users
+                                 it_owners      = transport_owners( lt_remote_objects )
+                       CHANGING  ct_items       = rs_stage-items ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type

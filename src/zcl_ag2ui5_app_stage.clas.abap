@@ -45,6 +45,17 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     "! Placeholder of the new-branch input; bound, a branch name may contain braces
     DATA mv_branch_hint TYPE string.
 
+    TYPES: BEGIN OF ty_user,
+             "! Changed by name; empty for all users
+             key  TYPE string,
+             text TYPE string,
+           END OF ty_user,
+           ty_users TYPE STANDARD TABLE OF ty_user WITH EMPTY KEY.
+    "! The Changed by filter's choices, from the rows
+    DATA mt_users TYPE ty_users.
+    "! Only rows of this Changed by name are shown; empty for all
+    DATA mv_user_filter TYPE string.
+
     CLASS-METHODS create
       IMPORTING
         iv_key        TYPE string
@@ -105,9 +116,17 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     METHODS show_error
       IMPORTING
         ix_error TYPE REF TO zcx_abapgit_exception.
+    "! Only the rows the filter shows are selected, unselected or pushed
     METHODS select_all
       IMPORTING
         iv_selected TYPE abap_bool.
+    METHODS is_shown
+      IMPORTING
+        is_row          TYPE ty_row
+      RETURNING
+        VALUE(rv_shown) TYPE abap_bool.
+    "! The filter's choices: all users, the names sorted, UNKNOWN last
+    METHODS load_users.
 
     METHODS service
       RETURNING
@@ -223,6 +242,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->ele( n = `View` ns = `mvc`
             )->a( n = `xmlns`        v = `sap.m`
             )->a( n = `xmlns:mvc`    v = `sap.ui.core.mvc`
+            )->a( n = `xmlns:core`   v = `sap.ui.core`
             )->a( n = `xmlns:form`   v = `sap.ui.layout.form`
             )->a( n = `displayBlock` v = `true`
             )->a( n = `height`       v = `100%` ).
@@ -264,6 +284,23 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `items`      v = client->_bind( mt_rows )
         )->a( n = `noDataText` v = `SAP and Git files match` ).
 
+    " filters in the browser: choosing a name needs no round trip
+    DATA(table_toolbar) = table->ele( `headerToolbar`
+        )->ele( `OverflowToolbar`
+            )->ele( `content` ).
+    table_toolbar->tag( `ToolbarSpacer` ).
+    table_toolbar->tag( `Label`
+        )->a( n = `text`     v = `Changed by`
+        )->a( n = `labelFor` v = `stageUserFilter` ).
+    table_toolbar->ele( `Select`
+        )->a( n = `id`          v = `stageUserFilter`
+        )->a( n = `selectedKey` v = client->_bind( mv_user_filter )
+        )->a( n = `items`       v = client->_bind( mt_users )
+        )->ele( `items`
+            )->tag( n = `Item` ns = `core`
+                )->a( n = `key`  v = `{KEY}`
+                )->a( n = `text` v = `{TEXT}` ).
+
     DATA(columns) = table->ele( `columns` ).
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
@@ -295,6 +332,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
             )->a( n = `type`  v = `Navigation`
+            )->a( n = `visible`
+                  v = |\{= ${ client->_bind( mv_user_filter ) } === '' \|\| $\{CHANGED_BY\} === ${ client->_bind( mv_user_filter ) } \}|
             )->a( n = `press` v = client->_event( val = `DIFF` t_arg = VALUE #( ( `${PATH}` ) ( `${FILENAME}` ) ) )
             )->ele( `cells` ).
     cells->tag( `CheckBox`
@@ -582,6 +621,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       ls_row-change = change_text( ls_row ).
       INSERT ls_row INTO TABLE mt_rows.
     ENDLOOP.
+    load_users( ).
     IF ms_commit-name IS INITIAL.
       ms_commit-name = ls_stage-name.
     ENDIF.
@@ -622,7 +662,14 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     DATA lt_items TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 
-    IF NOT line_exists( mt_rows[ selected = abap_true ] ).
+    DATA lv_selected TYPE abap_bool.
+    LOOP AT mt_rows INTO DATA(ls_shown) WHERE selected = abap_true.
+      IF is_shown( ls_shown ) = abap_true.
+        lv_selected = abap_true.
+        EXIT.
+      ENDIF.
+    ENDLOOP.
+    IF lv_selected = abap_false.
       client->message_toast_display( `Select at least one file` ).
       RETURN.
     ENDIF.
@@ -637,6 +684,10 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     LOOP AT mt_rows INTO DATA(ls_row).
       DATA(ls_item) = CORRESPONDING zif_ag2ui5_repo_service=>ty_stage_item( ls_row ).
+      " a file the filter hides is never committed
+      IF is_shown( ls_row ) = abap_false.
+        ls_item-selected = abap_false.
+      ENDIF.
       READ TABLE mt_patches INTO DATA(ls_patch)
         WITH KEY path = ls_row-path filename = ls_row-filename.
       IF sy-subrc = 0.
@@ -682,8 +733,41 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
   METHOD select_all.
 
     LOOP AT mt_rows ASSIGNING FIELD-SYMBOL(<ls_row>).
-      <ls_row>-selected = iv_selected.
+      IF is_shown( <ls_row> ) = abap_true.
+        <ls_row>-selected = iv_selected.
+      ENDIF.
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD is_shown.
+
+    rv_shown = xsdbool( mv_user_filter IS INITIAL OR is_row-changed_by = mv_user_filter ).
+
+  ENDMETHOD.
+
+  METHOD load_users.
+
+    DATA lt_names TYPE string_table.
+    LOOP AT mt_rows INTO DATA(ls_row) WHERE changed_by IS NOT INITIAL.
+      INSERT ls_row-changed_by INTO TABLE lt_names.
+    ENDLOOP.
+    SORT lt_names.
+    DELETE ADJACENT DUPLICATES FROM lt_names.
+    DELETE lt_names WHERE table_line = zcl_ag2ui5_repo_service=>c_user_unknown.
+    IF line_exists( mt_rows[ changed_by = zcl_ag2ui5_repo_service=>c_user_unknown ] ).
+      APPEND zcl_ag2ui5_repo_service=>c_user_unknown TO lt_names.
+    ENDIF.
+
+    mt_users = VALUE #( ( key = `` text = |All users ({ lines( mt_rows ) })| ) ).
+    LOOP AT lt_names INTO DATA(lv_name).
+      DATA(lv_count) = REDUCE i( INIT n = 0 FOR r IN mt_rows WHERE ( changed_by = lv_name ) NEXT n = n + 1 ).
+      APPEND VALUE #( key = lv_name text = |{ lv_name } ({ lv_count })| ) TO mt_users.
+    ENDLOOP.
+    " the chosen name may be gone after a reload
+    IF NOT line_exists( mt_users[ key = mv_user_filter ] ).
+      CLEAR mv_user_filter.
+    ENDIF.
 
   ENDMETHOD.
 
