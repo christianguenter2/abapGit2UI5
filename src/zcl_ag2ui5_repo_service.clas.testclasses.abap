@@ -3363,6 +3363,9 @@ CLASS ltcl_changed_by DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION 
     METHODS local_user_wins FOR TESTING.
     METHODS git_only_file_owner FOR TESTING.
     METHODS empty_local_user_unknown FOR TESTING.
+    METHODS deleted_in_sap_only_in_git FOR TESTING.
+    METHODS added_in_git_only_in_git FOR TESTING.
+    METHODS local_file_in_sap FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_changed_by IMPLEMENTATION.
@@ -3430,6 +3433,21 @@ CLASS ltcl_changed_by IMPLEMENTATION.
                 it_owners      = VALUE #( )
       CHANGING  ct_items       = lt_items ).
     cl_abap_unit_assert=>assert_equals( act = lt_items[ 1 ]-changed_by exp = `UNKNOWN` ).
+  ENDMETHOD.
+
+  METHOD deleted_in_sap_only_in_git.
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>only_in_git( iv_lstate = `D` iv_rstate = `` ) ).
+  ENDMETHOD.
+
+  METHOD added_in_git_only_in_git.
+    " new in Git, never pulled: abapGit gives it no local state
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>only_in_git( iv_lstate = `` iv_rstate = `A` ) ).
+  ENDMETHOD.
+
+  METHOD local_file_in_sap.
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>only_in_git( iv_lstate = `M` iv_rstate = `M` ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>only_in_git( iv_lstate = `A` iv_rstate = `` ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>only_in_git( iv_lstate = `` iv_rstate = `M` ) ).
   ENDMETHOD.
 
 ENDCLASS.

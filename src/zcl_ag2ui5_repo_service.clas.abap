@@ -59,6 +59,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       CHANGING
         ct_items       TYPE zif_ag2ui5_repo_service=>ty_stage_items.
 
+    "! A status row whose file is in Git but not in SAP: deleted in SAP, or
+    "! new in Git and never pulled
+    CLASS-METHODS only_in_git
+      IMPORTING
+        iv_lstate          TYPE string
+        iv_rstate          TYPE string
+      RETURNING
+        VALUE(rv_only_git) TYPE abap_bool.
+
     "! abapGit asks for credentials and neither its user exit nor login( )
     "! supplied any, or the remote rejected them
     CLASS-METHODS login_required
@@ -2218,6 +2227,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD only_in_git.
+
+    rv_only_git = xsdbool( iv_lstate = zif_abapgit_definitions=>c_state-deleted
+                           OR ( iv_lstate IS INITIAL AND iv_rstate = zif_abapgit_definitions=>c_state-added ) ).
+
+  ENDMETHOD.
+
   METHOD transport_owners.
 
     " only the files that also exist in Git: abapGit looks up only those
@@ -2734,16 +2750,34 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                                    iv_obj_name = <ls_row>-obj_name
                                          CHANGING ct_links = lt_links ).
     ENDLOOP.
-    " who changed each object, as the Stage page shows it (see changed_by there)
+    " who changed each changed file, by the Stage page's rule (assign_changed_by);
+    " unchanged files get no name: asking every object handler takes too long
+    DATA lt_changed TYPE zif_ag2ui5_repo_service=>ty_stage_items.
+    DATA lt_local_users TYPE ty_file_users.
     DATA lt_status_objects TYPE ty_object_owners.
-    LOOP AT rs_status-rows INTO DATA(ls_status_row) WHERE rstate IS NOT INITIAL AND obj_type IS NOT INITIAL.
-      INSERT VALUE #( obj_type = ls_status_row-obj_type obj_name = ls_status_row-obj_name ) INTO TABLE lt_status_objects.
+    LOOP AT rs_status-rows INTO DATA(ls_status_row) WHERE changed = abap_true.
+      APPEND CORRESPONDING #( ls_status_row ) TO lt_changed.
+      IF only_in_git( iv_lstate = ls_status_row-lstate iv_rstate = ls_status_row-rstate ) = abap_false.
+        INSERT VALUE #( path = ls_status_row-path filename = ls_status_row-filename
+                        user = COND #( WHEN ls_status_row-obj_type IS NOT INITIAL
+                                       THEN zcl_abapgit_objects=>changed_by(
+                                              is_item     = VALUE #( obj_type = ls_status_row-obj_type
+                                                                     obj_name = ls_status_row-obj_name )
+                                              iv_filename = ls_status_row-filename ) ) )
+          INTO TABLE lt_local_users.
+      ELSEIF ls_status_row-obj_type IS NOT INITIAL.
+        INSERT VALUE #( obj_type = ls_status_row-obj_type obj_name = ls_status_row-obj_name ) INTO TABLE lt_status_objects.
+      ENDIF.
     ENDLOOP.
-    DATA(lt_status_owners) = transport_owners( lt_status_objects ).
-    LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_status>) WHERE rstate IS NOT INITIAL.
-      <ls_status>-changed_by = owner_of( it_owners = lt_status_owners
-                                         iv_obj_type = <ls_status>-obj_type
-                                         iv_obj_name = <ls_status>-obj_name ).
+    assign_changed_by( EXPORTING it_local_users = lt_local_users
+                                 it_owners      = transport_owners( lt_status_objects )
+                       CHANGING  ct_items       = lt_changed ).
+    LOOP AT lt_changed INTO DATA(ls_changed).
+      READ TABLE rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_status>)
+        WITH KEY path = ls_changed-path filename = ls_changed-filename.
+      IF sy-subrc = 0.
+        <ls_status>-changed_by = ls_changed-changed_by.
+      ENDIF.
     ENDLOOP.
 
   ENDMETHOD.
