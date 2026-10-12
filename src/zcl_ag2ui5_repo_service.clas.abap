@@ -659,16 +659,6 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_text) TYPE string.
 
-    "! Deletes the objects whose deletion was selected, as abapGit's
-    "! delete_unnecessary_objects does before deserializing
-    METHODS delete_selected
-      IMPORTING
-        ii_repo   TYPE REF TO zif_abapgit_repo
-        is_checks TYPE zif_abapgit_definitions=>ty_deserialize_checks
-        ii_log    TYPE REF TO zif_abapgit_log
-      RAISING
-        zcx_abapgit_exception.
-
     "! Adds the object, or moves it to the new group if that is more dangerous
     CLASS-METHODS add_item
       IMPORTING
@@ -2794,7 +2784,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_pull_allowed( li_repo->get_package( ) ).
     li_repo->refresh( iv_drop_cache = abap_true ).
 
-    rs_preview = preview( li_repo->deserialize_checks( ) ).
+    rs_preview = preview( zcl_abapgit_factory=>get_repo_pull( li_repo )->checks( ) ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_preview-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
@@ -2817,7 +2807,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     li_repo->refresh( iv_drop_cache = abap_true ).
 
     " check again - the remote or the system may have changed since the preview
-    DATA(ls_checks)  = li_repo->deserialize_checks( ).
+    DATA(ls_checks)  = zcl_abapgit_factory=>get_repo_pull( li_repo )->checks( ).
     DATA(ls_preview) = preview( ls_checks ).
 
     CASE ls_preview-outcome.
@@ -2901,11 +2891,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     DATA(li_log) = ii_repo->create_new_log( `Pull Log` ).
 
     TRY.
-        delete_selected( ii_repo   = ii_repo
-                         is_checks = is_checks
-                         ii_log    = li_log ).
-        ii_repo->deserialize( is_checks = is_checks
-                              ii_log    = li_log ).
+        " abapGit's own pull steps: delete the confirmed objects, then deserialize
+        zcl_abapgit_factory=>get_repo_pull( ii_repo )->pull( is_checks = is_checks
+                                                             ii_log    = li_log ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         " objects may already be imported - the log says which
         li_log->add_exception( lx_error ).
@@ -2918,33 +2906,6 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                   THEN zif_ag2ui5_repo_service=>c_outcome-failed
                                   ELSE zif_ag2ui5_repo_service=>c_outcome-pulled ).
     ENDIF.
-
-  ENDMETHOD.
-
-  METHOD delete_selected.
-
-    DATA lt_tadir TYPE zif_abapgit_definitions=>ty_tadir_tt.
-    DATA ls_delete_checks TYPE zif_abapgit_definitions=>ty_delete_checks.
-
-    LOOP AT is_checks-overwrite INTO DATA(ls_change)
-        WHERE ( action = zif_abapgit_objects=>c_deserialize_action-delete
-             OR action = zif_abapgit_objects=>c_deserialize_action-delete_add )
-          AND decision = zif_abapgit_definitions=>c_yes.
-      INSERT VALUE #( pgmid    = 'R3TR'
-                      object   = ls_change-obj_type
-                      obj_name = ls_change-obj_name
-                      devclass = ls_change-devclass ) INTO TABLE lt_tadir.
-    ENDLOOP.
-
-    IF lt_tadir IS INITIAL.
-      RETURN.
-    ENDIF.
-
-    ls_delete_checks-transport = is_checks-transport.
-    zcl_abapgit_objects=>delete( it_tadir  = lt_tadir
-                                 is_checks = ls_delete_checks
-                                 ii_log    = ii_log ).
-    ii_repo->refresh( iv_drop_log = abap_false ).
 
   ENDMETHOD.
 

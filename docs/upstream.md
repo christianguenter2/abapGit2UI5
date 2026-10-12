@@ -6,9 +6,11 @@ Texts marked with `>` are ready to post (Chris files them).
 
 ## Tracking
 
-- **abapGit #7941** (discussion: pull and push without the UI layer) and
-  **PR #7951** (`zcl_abapgit_repo_pull`): open. Once merged, abapGit2UI5's
-  own pull steps in `ZCL_AG2UI5_REPO_SERVICE` can use them.
+- **abapGit #7941** (discussion: pull and push without the UI layer): open
+  for the push part. The pull part (`zcl_abapgit_repo_pull`, PR #7951) is
+  merged and `ZCL_AG2UI5_REPO_SERVICE` uses it. Deferred in #7951's review:
+  `zcl_abapgit_gui_page_pull` still calls `deserialize_checks( )` directly
+  instead of `zif_abapgit_repo_pull~checks`.
 - **AJSON PR sbcgua/ajson#228** (escape every control character): open.
   Until then a form feed or other control character in a JSON string blanks
   the abap2UI5 page; abapGit2UI5 replaces them itself (`visible`). After the
