@@ -519,8 +519,10 @@ CLASS ltcl_offline IMPLEMENTATION.
     mo_client->mv_navigated = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-package_link exp = mo_service->ms_status-package_link ).
-    " titleActive follows the link: a package without one stays plain text
-    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*<ObjectHeader *titleActive="{= !!*titleHref=*` ).
+    " the repository name is the title; the package is the first attribute and links to ADT
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
+      exp = `*<ObjectHeader title=*><attributes><ObjectAttribute title="Package"><customContent><Link *href=*enabled=*` ).
+    cl_abap_unit_assert=>assert_false( xsdbool( mo_client->mv_view CS `titleActive` ) ).
   ENDMETHOD.
 
   METHOD labels_edit_save.

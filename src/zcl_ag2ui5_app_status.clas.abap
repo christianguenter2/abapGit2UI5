@@ -415,12 +415,17 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                 `tr[data-change="Indication03"] .sapMLIBHighlight \{ background-color: #e9c000 \}` &&
                                 `</style>` ).
 
-    " the package opens in ADT; without a link it stays plain text
     DATA(attributes) = content->ele( `ObjectHeader`
-        )->a( n = `title`        v = client->_bind( ms_head-package )
-        )->a( n = `titleActive`  v = |\{= !!$\{{ client->_bind( val = ms_head-package_link path = abap_true ) }\} \}|
-        )->a( n = `titleHref`    v = client->_bind( ms_head-package_link )
+        )->a( n = `title` v = client->_bind( ms_head-name )
         )->ele( `attributes` ).
+    " the package opens in ADT; without a link it stays plain text
+    attributes->ele( `ObjectAttribute`
+        )->a( n = `title` v = `Package`
+        )->ele( `customContent`
+            )->tag( `Link`
+                )->a( n = `text`    v = client->_bind( ms_head-package )
+                )->a( n = `href`    v = client->_bind( ms_head-package_link )
+                )->a( n = `enabled` v = |\{= !!$\{{ client->_bind( val = ms_head-package_link path = abap_true ) }\} \}| ).
     attributes->ele( `ObjectAttribute`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )
         )->a( n = `title` v = `URL`
