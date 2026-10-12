@@ -436,6 +436,7 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS archive RETURNING VALUE(rv_zip) TYPE xstring RAISING zcx_abapgit_exception.
     METHODS start_loads_offline FOR TESTING.
     METHODS header_labels FOR TESTING.
+    METHODS header_package_link FOR TESTING.
     METHODS labels_edit_save FOR TESTING.
     METHODS labels_edit_cancel FOR TESTING.
     METHODS labels_edit_errors FOR TESTING.
@@ -510,6 +511,16 @@ CLASS ltcl_offline IMPLEMENTATION.
     fire( `HEADER_LABEL` ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_leave_data exp = `LABEL_FILTER:ui5` ).
     cl_abap_unit_assert=>assert_initial( mo_app->mv_zip ).
+  ENDMETHOD.
+
+  METHOD header_package_link.
+    mo_service->ms_status-package_link = `adt://A4H/sap/bc/adt/packages/%24test_offline`.
+    mo_client->mv_init = abap_true.
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-package_link exp = mo_service->ms_status-package_link ).
+    " titleActive follows the link: a package without one stays plain text
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*<ObjectHeader *titleActive="{= !!*titleHref=*` ).
   ENDMETHOD.
 
   METHOD labels_edit_save.

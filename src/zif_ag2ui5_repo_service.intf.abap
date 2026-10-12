@@ -104,6 +104,8 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       key           TYPE string,
       name          TYPE string,
       package       TYPE string,
+      "! ADT link of the package; empty when ADT cannot map it
+      package_link  TYPE string,
       url           TYPE string,
       branch        TYPE string,
       branch_display TYPE string,

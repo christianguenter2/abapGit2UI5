@@ -11,6 +11,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
       BEGIN OF ty_head,
         name          TYPE string,
         package       TYPE string,
+        package_link  TYPE string,
         url           TYPE string,
         branch_display TYPE string,
         branch_link    TYPE string,
@@ -414,8 +415,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                 `tr[data-change="Indication03"] .sapMLIBHighlight \{ background-color: #e9c000 \}` &&
                                 `</style>` ).
 
+    " the package opens in ADT; without a link it stays plain text
     DATA(attributes) = content->ele( `ObjectHeader`
-        )->a( n = `title` v = client->_bind( ms_head-package )
+        )->a( n = `title`        v = client->_bind( ms_head-package )
+        )->a( n = `titleActive`  v = |\{= !!$\{{ client->_bind( val = ms_head-package_link path = abap_true ) }\} \}|
+        )->a( n = `titleHref`    v = client->_bind( ms_head-package_link )
         )->ele( `attributes` ).
     attributes->ele( `ObjectAttribute`
         )->a( n = `visible` b = xsdbool( mv_offline = abap_false )

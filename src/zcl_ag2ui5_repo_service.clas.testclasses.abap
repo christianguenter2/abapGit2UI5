@@ -2500,9 +2500,20 @@ CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
     METHODS missing_object FOR TESTING.
     METHODS invalid_key FOR TESTING.
     METHODS cache_by_object FOR TESTING.
+    METHODS existing_package FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_object_links IMPLEMENTATION.
+  METHOD existing_package.
+    " the Status header links the repository's package
+    DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
+    DATA(lv_link) = zcl_ag2ui5_repo_service=>object_link(
+      EXPORTING iv_obj_type = `DEVC` iv_obj_name = `$ABAPGIT2UI5`
+      CHANGING ct_links = lt_links ).
+    cl_abap_unit_assert=>assert_equals(
+      act = lv_link exp = |adt://{ sy-sysid }/sap/bc/adt/packages/%24abapgit2ui5| ).
+  ENDMETHOD.
+
   METHOD existing_interface.
     DATA lt_links TYPE zcl_ag2ui5_repo_service=>ty_object_links.
     DATA(lv_link) = zcl_ag2ui5_repo_service=>object_link(

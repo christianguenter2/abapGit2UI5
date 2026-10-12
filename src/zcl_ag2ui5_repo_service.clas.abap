@@ -2685,6 +2685,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDIF.
     rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
     DATA lt_links TYPE ty_object_links.
+    rs_status-package_link = object_link( EXPORTING iv_obj_type = `DEVC`
+                                                    iv_obj_name = rs_status-package
+                                          CHANGING ct_links = lt_links ).
     LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
                                                    iv_obj_name = <ls_row>-obj_name
