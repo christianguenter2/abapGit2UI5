@@ -80,6 +80,9 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       changed  TYPE abap_bool,
       "! Who changed the object, see ty_stage_item-changed_by
       changed_by TYPE string,
+      "! SHA1 of the file in Git; empty when it is not in Git or the
+      "! repository is offline
+      remote_sha1 TYPE string,
     END OF ty_status_row,
     ty_status_rows TYPE STANDARD TABLE OF ty_status_row WITH EMPTY KEY.
 
@@ -310,6 +313,9 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       "! in SAP who changed the object last, for a file only in Git the owner
       "! of the first transport request that contains it; UNKNOWN without one
       changed_by  TYPE string,
+      "! SHA1 of the file in Git; empty when it is not in Git or the
+      "! repository is offline
+      remote_sha1 TYPE string,
       "! The picked lines (patch IDs of get_diff); empty for the whole file
       patch_ids   TYPE string_table,
       "! get_diff's fingerprint the lines were picked on

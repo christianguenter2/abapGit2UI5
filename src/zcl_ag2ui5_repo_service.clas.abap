@@ -195,6 +195,16 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_yes) TYPE abap_bool.
 
+    "! The file's SHA1 in a remote file list, lower case; empty when the
+    "! file is not in Git
+    CLASS-METHODS remote_sha1
+      IMPORTING
+        it_remote      TYPE zif_abapgit_git_definitions=>ty_files_tt
+        iv_path        TYPE string
+        iv_filename    TYPE string
+      RETURNING
+        VALUE(rv_sha1) TYPE string.
+
     "! The same lines side by side: old left, new right; a changed block is
     "! paired line by line, the longer side padded with empty cells
     CLASS-METHODS to_side_by_side
@@ -1352,6 +1362,14 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD remote_sha1.
+    READ TABLE it_remote INTO DATA(ls_file)
+      WITH KEY file_path COMPONENTS path = iv_path filename = iv_filename.
+    IF sy-subrc = 0.
+      rv_sha1 = to_lower( ls_file-sha1 ).
+    ENDIF.
+  ENDMETHOD.
+
   METHOD remote_is_new.
     rv_yes = xsdbool( iv_lstate IS INITIAL AND iv_rstate IS NOT INITIAL ).
   ENDMETHOD.
@@ -2290,6 +2308,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                        CHANGING  ct_items       = rs_stage-items ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-remote_sha1 = remote_sha1( it_remote = ls_files-remote iv_path = <ls_row>-path
+                                          iv_filename = <ls_row>-filename ).
+
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
                                                    iv_obj_name = <ls_row>-obj_name
                                          CHANGING ct_links = lt_links ).
@@ -2735,7 +2756,16 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_status-package_link = object_link( EXPORTING iv_obj_type = `DEVC`
                                                     iv_obj_name = rs_status-package
                                           CHANGING ct_links = lt_links ).
+    " calculate( ) fetched the remote files already: no second request
+    DATA lt_remote TYPE zif_abapgit_git_definitions=>ty_files_tt.
+    IF rs_status-offline = abap_false.
+      lt_remote = li_repo->get_files_remote( ).
+    ENDIF.
+
     LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_row>).
+      <ls_row>-remote_sha1 = remote_sha1( it_remote = lt_remote iv_path = <ls_row>-path
+                                          iv_filename = <ls_row>-filename ).
+
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
                                                    iv_obj_name = <ls_row>-obj_name
                                          CHANGING ct_links = lt_links ).

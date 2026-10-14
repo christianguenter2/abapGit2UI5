@@ -3578,3 +3578,25 @@ CLASS ltcl_delete_tags IMPLEMENTATION.
     ENDTRY.
   ENDMETHOD.
 ENDCLASS.
+
+CLASS ltcl_remote_sha1 DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    METHODS found_lower_case FOR TESTING.
+    METHODS missing_is_empty FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_remote_sha1 IMPLEMENTATION.
+  METHOD found_lower_case.
+    DATA(lt_remote) = VALUE zif_abapgit_git_definitions=>ty_files_tt(
+      ( path = `/src/` filename = `zcl_a.clas.abap` sha1 = `84D35DD847B3DC2361F9EEA4CF2BDC76A8D1B349` ) ).
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>remote_sha1( it_remote = lt_remote iv_path = `/src/` iv_filename = `zcl_a.clas.abap` )
+      exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
+  ENDMETHOD.
+  METHOD missing_is_empty.
+    DATA(lt_remote) = VALUE zif_abapgit_git_definitions=>ty_files_tt(
+      ( path = `/src/` filename = `zcl_a.clas.abap` sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ) ).
+    cl_abap_unit_assert=>assert_initial(
+      zcl_ag2ui5_repo_service=>remote_sha1( it_remote = lt_remote iv_path = `/src/` iv_filename = `zcl_b.clas.abap` ) ).
+  ENDMETHOD.
+ENDCLASS.
