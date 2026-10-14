@@ -554,6 +554,11 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       iv_path        TYPE string
       iv_filename    TYPE string
       iv_remote_is_new TYPE abap_bool DEFAULT abap_false
+      "! The file's SHA1 in Git from a status or stage row
+      iv_remote_sha1   TYPE string OPTIONAL
+      "! The caller knows the remote side from such a row: the file is
+      "! fetched alone, and an empty iv_remote_sha1 means "not in Git"
+      iv_remote_known  TYPE abap_bool DEFAULT abap_false
       "! Original uploaded ZIP; offline only, restored on every request
       iv_zip           TYPE xstring OPTIONAL
     RETURNING

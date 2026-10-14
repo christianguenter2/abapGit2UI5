@@ -205,6 +205,16 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rv_sha1) TYPE string.
 
+    "! The one blob Git sent for iv_sha1, checked against the hash
+    CLASS-METHODS checked_blob
+      IMPORTING
+        it_objects     TYPE zif_abapgit_definitions=>ty_objects_tt
+        iv_sha1        TYPE string
+      RETURNING
+        VALUE(rv_data) TYPE xstring
+      RAISING
+        zcx_abapgit_exception.
+
     "! The same lines side by side: old left, new right; a changed block is
     "! paired line by line, the longer side padded with empty cells
     CLASS-METHODS to_side_by_side
@@ -524,6 +534,38 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
     "! Tests set the time; initial means now
     CLASS-DATA gv_now TYPE timestampl.
   PRIVATE SECTION.
+
+    TYPES:
+      BEGIN OF ty_blob,
+        sha1 TYPE string,
+        data TYPE xstring,
+      END OF ty_blob,
+      ty_blobs TYPE HASHED TABLE OF ty_blob WITH UNIQUE KEY sha1.
+    "! Single files fetched in this request, cleared by request_start( )
+    CLASS-DATA gt_blobs TYPE ty_blobs.
+    "! Tests replace it
+    CLASS-DATA gi_blob_source TYPE REF TO zif_ag2ui5_blob_source.
+
+    CLASS-METHODS blob_source
+      RETURNING
+        VALUE(ri_source) TYPE REF TO zif_ag2ui5_blob_source.
+
+    "! The file's remote side: fetched alone when a row gave its SHA1,
+    "! otherwise (and when the server refuses) from the whole repository
+    METHODS remote_file
+      IMPORTING
+        ii_repo         TYPE REF TO zif_abapgit_repo
+        ii_filter       TYPE REF TO zif_abapgit_object_filter
+        iv_path         TYPE string
+        iv_filename     TYPE string
+        iv_remote_sha1  TYPE string
+        iv_remote_known TYPE abap_bool
+      EXPORTING
+        ev_data         TYPE xstring
+        ev_found        TYPE abap_bool
+      RAISING
+        zcx_abapgit_exception.
+
     TYPES:
       BEGIN OF ty_component,
         owner TYPE string,
@@ -633,6 +675,8 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
         ii_repo     TYPE REF TO zif_abapgit_repo
         iv_path     TYPE string
         iv_filename TYPE string
+        iv_remote_sha1 TYPE string OPTIONAL
+        iv_remote_known TYPE abap_bool DEFAULT abap_false
       EXPORTING
         ev_local    TYPE xstring
         ev_remote   TYPE xstring
@@ -1285,11 +1329,13 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     silence_progress( ).
 
     DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
-    read_file_pair( EXPORTING ii_repo     = li_repo
-                              iv_path     = iv_path
-                              iv_filename = iv_filename
-                    IMPORTING ev_local    = DATA(lv_local)
-                              ev_remote   = DATA(lv_remote) ).
+    read_file_pair( EXPORTING ii_repo          = li_repo
+                              iv_path          = iv_path
+                              iv_filename      = iv_filename
+                              iv_remote_sha1   = iv_remote_sha1
+                              iv_remote_known  = iv_remote_known
+                    IMPORTING ev_local         = DATA(lv_local)
+                              ev_remote        = DATA(lv_remote) ).
     rs_diff-fingerprint = fingerprint( iv_local = lv_local iv_remote = lv_remote ).
 
     IF zcl_abapgit_utils=>is_binary( COND #( WHEN lv_local IS NOT INITIAL THEN lv_local ELSE lv_remote ) ) = abap_true.
@@ -1349,17 +1395,87 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       lv_found = abap_true.
       EXIT.
     ENDLOOP.
-    LOOP AT ii_repo->get_files_remote( iv_ignore_files = abap_true
-                                                        ii_obj_filter   = li_filter ) INTO DATA(ls_remote)
-        USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
-      ev_remote = ls_remote-data.
+    remote_file( EXPORTING ii_repo         = ii_repo
+                           ii_filter       = li_filter
+                           iv_path         = iv_path
+                           iv_filename     = iv_filename
+                           iv_remote_sha1  = iv_remote_sha1
+                           iv_remote_known = iv_remote_known
+                 IMPORTING ev_data         = ev_remote
+                           ev_found        = DATA(lv_remote_found) ).
+    IF lv_remote_found = abap_true.
       lv_found = abap_true.
-      EXIT.
-    ENDLOOP.
+    ENDIF.
     IF lv_found = abap_false.
       zcx_abapgit_exception=>raise( |File not found: { iv_path }{ iv_filename }| ).
     ENDIF.
 
+  ENDMETHOD.
+
+  METHOD remote_file.
+
+    CLEAR: ev_data, ev_found.
+
+    IF iv_remote_known = abap_true AND ii_repo->is_offline( ) = abap_false.
+      IF iv_remote_sha1 IS INITIAL.
+        " the row says the file is only in the system
+        RETURN.
+      ENDIF.
+      DATA(lv_sha1) = to_lower( iv_remote_sha1 ).
+      IF strlen( lv_sha1 ) = 40 AND lv_sha1 CO `0123456789abcdef`.
+        READ TABLE gt_blobs INTO DATA(ls_blob) WITH TABLE KEY sha1 = lv_sha1.
+        IF sy-subrc = 0.
+          ev_data  = ls_blob-data.
+          ev_found = abap_true.
+          RETURN.
+        ENDIF.
+        TRY.
+            ev_data = checked_blob(
+              it_objects = blob_source( )->fetch( iv_url  = CAST zif_abapgit_repo_online( ii_repo )->get_url( )
+                                                  iv_sha1 = CONV #( lv_sha1 ) )
+              iv_sha1    = lv_sha1 ).
+            INSERT VALUE #( sha1 = lv_sha1 data = ev_data ) INTO TABLE gt_blobs.
+            ev_found = abap_true.
+            RETURN.
+          CATCH zcx_abapgit_exception INTO DATA(lx_error).
+            " the full fetch would ask for the same credentials
+            IF login_required( lx_error ) = abap_true.
+              RAISE EXCEPTION lx_error.
+            ENDIF.
+            " a server that refuses single objects: the whole repository
+        ENDTRY.
+      ENDIF.
+    ENDIF.
+
+    LOOP AT ii_repo->get_files_remote( iv_ignore_files = abap_true
+                                       ii_obj_filter   = ii_filter ) INTO DATA(ls_remote)
+        USING KEY file_path WHERE path = iv_path AND filename = iv_filename.
+      ev_data  = ls_remote-data.
+      ev_found = abap_true.
+      EXIT.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD checked_blob.
+
+    IF lines( it_objects ) <> 1.
+      zcx_abapgit_exception=>raise( |Git sent { lines( it_objects ) } objects for { iv_sha1 }| ).
+    ENDIF.
+    DATA(ls_object) = it_objects[ 1 ].
+    IF ls_object-type <> zif_abapgit_git_definitions=>c_type-blob
+        OR to_lower( zcl_abapgit_hash=>sha1_blob( ls_object-data ) ) <> to_lower( iv_sha1 ).
+      zcx_abapgit_exception=>raise( |Git sent another object for { iv_sha1 }| ).
+    ENDIF.
+    rv_data = ls_object-data.
+
+  ENDMETHOD.
+
+  METHOD blob_source.
+    IF gi_blob_source IS NOT BOUND.
+      gi_blob_source = NEW zcl_ag2ui5_blob_source( ).
+    ENDIF.
+    ri_source = gi_blob_source.
   ENDMETHOD.
 
   METHOD remote_sha1.
@@ -3009,6 +3125,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD request_start.
     zcl_abapgit_repo_srv=>get_instance( )->init( ).
+    CLEAR gt_blobs.
   ENDMETHOD.
 
   METHOD login_required.

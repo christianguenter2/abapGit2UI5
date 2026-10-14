@@ -184,6 +184,9 @@ CLASS ltcl_repo_labels IMPLEMENTATION.
   ENDMETHOD.
 ENDCLASS.
 
+CLASS ltcl_remote_file DEFINITION DEFERRED.
+CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_remote_file.
+
 CLASS ltcl_login DEFINITION DEFERRED.
 CLASS zcl_ag2ui5_repo_service DEFINITION LOCAL FRIENDS ltcl_login.
 
@@ -3598,5 +3601,202 @@ CLASS ltcl_remote_sha1 IMPLEMENTATION.
       ( path = `/src/` filename = `zcl_a.clas.abap` sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ) ).
     cl_abap_unit_assert=>assert_initial(
       zcl_ag2ui5_repo_service=>remote_sha1( it_remote = lt_remote iv_path = `/src/` iv_filename = `zcl_b.clas.abap` ) ).
+  ENDMETHOD.
+ENDCLASS.
+
+"! An online or offline repository that counts full fetches
+CLASS ltd_remote_repo DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_abapgit_repo PARTIALLY IMPLEMENTED.
+    INTERFACES zif_abapgit_repo_online PARTIALLY IMPLEMENTED.
+    DATA mv_offline TYPE abap_bool.
+    DATA mv_full_fetches TYPE i.
+    DATA mt_remote TYPE zif_abapgit_git_definitions=>ty_files_tt.
+ENDCLASS.
+
+CLASS ltd_remote_repo IMPLEMENTATION.
+  METHOD zif_abapgit_repo~is_offline.
+    rv_offline = mv_offline.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo_online~get_url.
+    rv_url = `https://example.org/repo.git`.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo~get_files_remote.
+    mv_full_fetches = mv_full_fetches + 1.
+    rt_files = mt_remote.
+  ENDMETHOD.
+ENDCLASS.
+
+"! Returns given objects or raises a given text, and counts requests
+CLASS ltd_blob_source DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_blob_source.
+    DATA mt_objects TYPE zif_abapgit_definitions=>ty_objects_tt.
+    DATA mv_error TYPE string.
+    DATA mv_calls TYPE i.
+ENDCLASS.
+
+CLASS ltd_blob_source IMPLEMENTATION.
+  METHOD zif_ag2ui5_blob_source~fetch.
+    mv_calls = mv_calls + 1.
+    IF mv_error IS NOT INITIAL.
+      zcx_abapgit_exception=>raise( mv_error ).
+    ENDIF.
+    rt_objects = mt_objects.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_remote_file DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT.
+  PRIVATE SECTION.
+    DATA mo_repo TYPE REF TO ltd_remote_repo.
+    DATA mo_source TYPE REF TO ltd_blob_source.
+    DATA mv_data TYPE xstring.
+    DATA mv_sha1 TYPE string.
+    METHODS setup RAISING zcx_abapgit_exception.
+    METHODS teardown.
+    METHODS read
+      IMPORTING iv_sha1  TYPE string OPTIONAL
+                iv_known TYPE abap_bool DEFAULT abap_true
+      EXPORTING ev_data  TYPE xstring
+                ev_found TYPE abap_bool
+      RAISING   zcx_abapgit_exception.
+    METHODS known_hash_fetches_blob FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS second_read_cached FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS wrong_content_falls_back FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS refused_falls_back FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS login_error_no_fallback FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS known_empty_not_in_git FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS unknown_uses_full_fetch FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS offline_ignores_known FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS invalid_hash_skips_request FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS upper_case_hash_lowered FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS empty_blob_is_found FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS two_objects_refused FOR TESTING.
+    METHODS commit_object_refused FOR TESTING.
+ENDCLASS.
+
+CLASS ltcl_remote_file IMPLEMENTATION.
+  METHOD setup.
+    mv_data = zcl_abapgit_convert=>string_to_xstring_utf8( |hello\n| ).
+    mv_sha1 = to_lower( zcl_abapgit_hash=>sha1_blob( mv_data ) ).
+    mo_repo = NEW #( ).
+    mo_repo->mt_remote = VALUE #( ( path = `/src/` filename = `a.abap`
+      data = zcl_abapgit_convert=>string_to_xstring_utf8( |full\n| ) ) ).
+    mo_source = NEW #( ).
+    mo_source->mt_objects = VALUE #( ( sha1 = mv_sha1 type = zif_abapgit_git_definitions=>c_type-blob data = mv_data ) ).
+    zcl_ag2ui5_repo_service=>gi_blob_source = mo_source.
+    CLEAR zcl_ag2ui5_repo_service=>gt_blobs.
+  ENDMETHOD.
+
+  METHOD teardown.
+    CLEAR: zcl_ag2ui5_repo_service=>gi_blob_source, zcl_ag2ui5_repo_service=>gt_blobs.
+  ENDMETHOD.
+
+  METHOD read.
+    NEW zcl_ag2ui5_repo_service( )->remote_file(
+      EXPORTING ii_repo         = mo_repo
+                ii_filter       = NEW zcl_ag2ui5_object_filter( )
+                iv_path         = `/src/`
+                iv_filename     = `a.abap`
+                iv_remote_sha1  = iv_sha1
+                iv_remote_known = iv_known
+      IMPORTING ev_data         = ev_data
+                ev_found        = ev_found ).
+  ENDMETHOD.
+
+  METHOD known_hash_fetches_blob.
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ev_found = DATA(lv_found) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mv_data ).
+    cl_abap_unit_assert=>assert_true( lv_found ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 0 ).
+  ENDMETHOD.
+
+  METHOD second_read_cached.
+    read( iv_sha1 = mv_sha1 ).
+    read( iv_sha1 = mv_sha1 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls exp = 1 ).
+  ENDMETHOD.
+
+  METHOD wrong_content_falls_back.
+    mo_source->mt_objects[ 1 ]-data = zcl_abapgit_convert=>string_to_xstring_utf8( |other\n| ).
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mo_repo->mt_remote[ 1 ]-data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 1 ).
+  ENDMETHOD.
+
+  METHOD refused_falls_back.
+    mo_source->mv_error = `ERR upload-pack: not our ref`.
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mo_repo->mt_remote[ 1 ]-data ).
+  ENDMETHOD.
+
+  METHOD login_error_no_fallback.
+    mo_source->mv_error = `Unauthorized access. Check your credentials`.
+    TRY.
+        read( iv_sha1 = mv_sha1 ).
+        cl_abap_unit_assert=>fail( `login error expected` ).
+      CATCH zcx_abapgit_exception.
+    ENDTRY.
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 0 ).
+  ENDMETHOD.
+
+  METHOD known_empty_not_in_git.
+    read( IMPORTING ev_found = DATA(lv_found) ).
+    cl_abap_unit_assert=>assert_false( lv_found ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls + mo_repo->mv_full_fetches exp = 0 ).
+  ENDMETHOD.
+
+  METHOD unknown_uses_full_fetch.
+    read( EXPORTING iv_sha1 = mv_sha1 iv_known = abap_false IMPORTING ev_found = DATA(lv_found) ).
+    cl_abap_unit_assert=>assert_true( lv_found ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 1 ).
+  ENDMETHOD.
+
+  METHOD offline_ignores_known.
+    mo_repo->mv_offline = abap_true.
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mo_repo->mt_remote[ 1 ]-data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls exp = 0 ).
+  ENDMETHOD.
+
+  METHOD invalid_hash_skips_request.
+    read( iv_sha1 = `../../etc` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls exp = 0 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 1 ).
+  ENDMETHOD.
+
+  METHOD upper_case_hash_lowered.
+    read( EXPORTING iv_sha1 = to_upper( mv_sha1 ) IMPORTING ev_data = DATA(lv_data) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mv_data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 0 ).
+  ENDMETHOD.
+
+  METHOD empty_blob_is_found.
+    CLEAR mv_data.
+    mv_sha1 = to_lower( zcl_abapgit_hash=>sha1_blob( mv_data ) ).
+    mo_source->mt_objects = VALUE #( ( sha1 = mv_sha1 type = zif_abapgit_git_definitions=>c_type-blob ) ).
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ev_found = DATA(lv_found) ).
+    cl_abap_unit_assert=>assert_true( lv_found ).
+    cl_abap_unit_assert=>assert_initial( lv_data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 0 ).
+  ENDMETHOD.
+
+  METHOD two_objects_refused.
+    INSERT mo_source->mt_objects[ 1 ] INTO TABLE mo_source->mt_objects.
+    TRY.
+        zcl_ag2ui5_repo_service=>checked_blob( it_objects = mo_source->mt_objects iv_sha1 = mv_sha1 ).
+        cl_abap_unit_assert=>fail( `two objects must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+
+  METHOD commit_object_refused.
+    mo_source->mt_objects[ 1 ]-type = zif_abapgit_git_definitions=>c_type-commit.
+    TRY.
+        zcl_ag2ui5_repo_service=>checked_blob( it_objects = mo_source->mt_objects iv_sha1 = mv_sha1 ).
+        cl_abap_unit_assert=>fail( `a commit object must be refused` ).
+      CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
   ENDMETHOD.
 ENDCLASS.
