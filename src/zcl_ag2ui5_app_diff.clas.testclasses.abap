@@ -653,10 +653,14 @@ CLASS ltd_login_service DEFINITION FINAL FOR TESTING.
     INTERFACES zif_ag2ui5_repo_service PARTIALLY IMPLEMENTED.
     DATA mv_error TYPE string.
     DATA mv_calls TYPE i.
+    DATA mv_got_sha1 TYPE string.
+    DATA mv_got_known TYPE abap_bool.
 ENDCLASS.
 
 CLASS ltd_login_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~get_diff.
+    mv_got_sha1 = iv_remote_sha1.
+    mv_got_known = iv_remote_known.
     mv_calls = mv_calls + 1.
     IF mv_error IS NOT INITIAL.
       zcx_abapgit_exception=>raise( mv_error ).
@@ -676,6 +680,7 @@ CLASS ltcl_login DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION SHORT
     METHODS login_error_opens_login FOR TESTING.
     METHODS other_error_message FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
+    METHODS remote_hash_reaches_service FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_login IMPLEMENTATION.
@@ -722,6 +727,17 @@ CLASS ltcl_login IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = mo_service->mv_calls exp = 2 ).
     cl_abap_unit_assert=>assert_equals( act = mo_client->mv_toast
                                         exp = `Logged in to github.com - repeat the action if it did not run` ).
+  ENDMETHOD.
+  METHOD remote_hash_reaches_service.
+    mo_app = zcl_ag2ui5_app_diff=>create( iv_key = `000000000001` iv_path = `/src/` iv_filename = `a.abap`
+                                          iv_obj_type = `CLAS` iv_obj_name = `ZCL_A`
+                                          iv_remote_sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349`
+                                          iv_remote_known = abap_true ).
+    mo_app->mi_service = mo_service.
+    start( ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_got_sha1 exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
+    cl_abap_unit_assert=>assert_true( mo_service->mv_got_known ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->get_remote( )-sha1 exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
   ENDMETHOD.
 ENDCLASS.
 

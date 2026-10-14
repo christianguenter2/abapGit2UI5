@@ -8,6 +8,17 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
     INTERFACES z2ui5_if_app.
 
     TYPES:
+      BEGIN OF ty_remote,
+        sha1 TYPE string,
+        known TYPE abap_bool,
+      END OF ty_remote.
+
+    "! The remote side handed in by the caller
+    METHODS get_remote
+      RETURNING
+        VALUE(rs_remote) TYPE ty_remote.
+
+    TYPES:
       BEGIN OF ty_head,
         title     TYPE string,
         object_name TYPE string,
@@ -99,6 +110,10 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         iv_focus      TYPE string OPTIONAL
         iv_patch      TYPE abap_bool DEFAULT abap_false
         it_picked     TYPE string_table OPTIONAL
+        "! The file's SHA1 in Git, from the caller's server-side row
+        iv_remote_sha1  TYPE string OPTIONAL
+        "! The caller knows the remote side (see get_diff)
+        iv_remote_known TYPE abap_bool DEFAULT abap_false
       RETURNING
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_diff.
 
@@ -108,6 +123,7 @@ CLASS zcl_ag2ui5_app_diff DEFINITION
         VALUE(rs_patch) TYPE ty_patch.
 
   PROTECTED SECTION.
+    DATA ms_remote TYPE ty_remote.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
     METHODS service
@@ -171,9 +187,14 @@ ENDCLASS.
 
 CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
 
+  METHOD get_remote.
+    rs_remote = ms_remote.
+  ENDMETHOD.
+
   METHOD create.
 
     ro_app = NEW #( ).
+    ro_app->ms_remote = VALUE #( sha1 = iv_remote_sha1 known = iv_remote_known ).
     ro_app->mv_key       = iv_key.
     IF iv_patch = abap_false.
       ro_app->mv_focus = iv_focus.
@@ -640,6 +661,8 @@ CLASS zcl_ag2ui5_app_diff IMPLEMENTATION.
           iv_zip      = mv_zip
           iv_path     = mv_path
           iv_filename = mv_filename
+          iv_remote_sha1 = ms_remote-sha1
+          iv_remote_known = ms_remote-known
           iv_remote_is_new = mv_remote_is_new ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         show_error( lx_error ).
