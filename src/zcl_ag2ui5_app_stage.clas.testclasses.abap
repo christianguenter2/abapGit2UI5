@@ -645,7 +645,7 @@ CLASS ltcl_patch IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
     cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-patched ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-change exp = `modify - 2 of 7 lines` ).
-    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ 1 ]-fingerprint exp = `new-fp` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ filename = `zcl_a.clas.abap` ]-fingerprint exp = `new-fp` ).
     cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 2 ]-selected ).
     cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 2 ]-patched ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 2 ]-change exp = `modify` ).
@@ -654,7 +654,7 @@ CLASS ltcl_patch IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 3 ]-change exp = `modify` ).
     cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_patches ) exp = 2 ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 4 ] exp = ls_untouched ).
-    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ 2 ] exp = ls_keep_patch ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ filename = `untouched.abap` ] exp = ls_keep_patch ).
     " no lines restores the tick from before the first single-file patch too
     mo_app->take_picks( VALUE #( applied = abap_true picks = VALUE #(
       ( path = `/src/` filename = `zcl_a.clas.abap` total = 7 ) ) ) ).
