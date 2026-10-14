@@ -69,10 +69,15 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         path     TYPE string,
         filename TYPE string,
         sha1     TYPE string,
+        obj_type TYPE string,
+        obj_name TYPE string,
+        object_link TYPE string,
+        lstate   TYPE string,
+        rstate   TYPE string,
       END OF ty_remote,
       ty_remotes TYPE HASHED TABLE OF ty_remote WITH UNIQUE KEY path filename.
-    "! Each file's SHA1 in Git from the service - mt_rows comes back from
-    "! the browser, so the diff page never takes the hash from there
+    "! Each stage file from the service - mt_rows comes back from the browser,
+    "! so diff hashes and the all-file list come only from this server copy
     DATA mt_remote TYPE ty_remotes.
 
     DATA client TYPE REF TO z2ui5_if_client.
@@ -100,6 +105,14 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     METHODS take_patch
       IMPORTING
         is_patch TYPE zcl_ag2ui5_app_diff=>ty_patch.
+    "! Takes only the files Apply handed back; unopened files stay untouched
+    METHODS take_picks
+      IMPORTING
+        is_result TYPE zcl_ag2ui5_app_repo_diff=>ty_pick_result.
+    "! Shared per-file selection handling for both Pick lines pages
+    METHODS apply_pick
+      IMPORTING
+        is_patch TYPE zcl_ag2ui5_app_repo_diff=>ty_pick.
     "! The row's Change text: the action, how many lines, Git's change
     METHODS change_text
       IMPORTING
@@ -163,6 +176,23 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     IF is_patch-applied = abap_false.
       RETURN.
     ENDIF.
+    apply_pick( CORRESPONDING #( is_patch ) ).
+
+  ENDMETHOD.
+
+  METHOD take_picks.
+
+    IF is_result-applied = abap_false.
+      RETURN.
+    ENDIF.
+    LOOP AT is_result-picks INTO DATA(ls_pick).
+      apply_pick( ls_pick ).
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD apply_pick.
+
     READ TABLE mt_rows ASSIGNING FIELD-SYMBOL(<ls_row>)
       WITH KEY path = is_patch-path filename = is_patch-filename.
     IF sy-subrc <> 0.
@@ -224,7 +254,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       " back from the diff page: in patch mode it hands the picked lines back
       TRY.
           take_patch( CAST zcl_ag2ui5_app_diff( client->get_app_prev( ) )->get_patch( ) ).
-        CATCH cx_sy_move_cast_error ##NO_HANDLER.
+        CATCH cx_sy_move_cast_error.
+          TRY.
+              take_picks( CAST zcl_ag2ui5_app_repo_diff( client->get_app_prev( ) )->get_picks( ) ).
+            CATCH cx_sy_move_cast_error ##NO_HANDLER.
+          ENDTRY.
       ENDTRY.
       " back from the login page: reading the list failed, or a push did
       DATA(lr_returned) = client->get( )-r_event_data.
@@ -285,6 +319,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->a( n = `text`  v = `Select none`
         )->a( n = `press` v = client->_event( `NONE` ) ).
 
+    header_content->tag( `Button`
+        )->a( n = `text`    v = `Pick lines in all files`
+        )->a( n = `icon`    v = `sap-icon://multi-select`
+        )->a( n = `enabled` b = xsdbool( mt_remote IS NOT INITIAL )
+        )->a( n = `press`   v = client->_event( `PATCH_ALL` ) ).
     header_content->tag( `Button`
         )->a( n = `text` v = `Ignore rules`
         )->a( n = `press` v = client->_event( `RULES` ) ).
@@ -590,6 +629,13 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             iv_patch    = abap_true
             it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
+      WHEN `PATCH_ALL`.
+        IF mt_remote IS NOT INITIAL.
+          DATA(lt_files) = CORRESPONDING zif_ag2ui5_repo_service=>ty_status_rows( mt_remote MAPPING remote_sha1 = sha1 ).
+          DATA(lt_picked) = CORRESPONDING zcl_ag2ui5_app_repo_diff=>ty_picks( mt_patches ).
+          client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
+            iv_key = mv_key iv_title = mv_title it_files = lt_files iv_pick = abap_true it_picked = lt_picked ) ).
+        ENDIF.
       WHEN `RULES`.
         rules_display( ).
       WHEN `IGNORE`.
@@ -642,7 +688,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     " after a reload the fingerprints are stale anyway
     CLEAR: mt_rows, mt_patches, mt_remote.
     LOOP AT ls_stage-items INTO DATA(ls_item).
-      INSERT VALUE #( path = ls_item-path filename = ls_item-filename sha1 = ls_item-remote_sha1 ) INTO TABLE mt_remote.
+      INSERT CORRESPONDING #( ls_item MAPPING sha1 = remote_sha1 ) INTO TABLE mt_remote.
       DATA(ls_row) = CORRESPONDING ty_row( ls_item ).
       ls_row-change = change_text( ls_row ).
       INSERT ls_row INTO TABLE mt_rows.

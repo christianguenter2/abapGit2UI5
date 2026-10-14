@@ -40,6 +40,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mv_arg2 TYPE string VALUE `zcl_a.clas.abap`.
     DATA mv_left_data TYPE string.
     DATA mv_navigated TYPE abap_bool.
+    DATA mo_prev TYPE REF TO z2ui5_if_app.
     DATA ms_get TYPE z2ui5_if_client=>ty_s_get.
 ENDCLASS.
 
@@ -63,8 +64,7 @@ CLASS ltd_client IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_app_prev.
-    " the app abap2UI5 returns from: here the login page
-    result = zcl_ag2ui5_app_login=>create( ).
+    result = COND #( WHEN mo_prev IS BOUND THEN mo_prev ELSE zcl_ag2ui5_app_login=>create( ) ).
   ENDMETHOD.
 
   METHOD z2ui5_if_client~check_on_init.
@@ -434,6 +434,13 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS remote_change_notice FOR TESTING.
     METHODS patch_uses_server_hash FOR TESTING.
     METHODS load_keeps_hashes FOR TESTING.
+    METHODS pick_all_uses_server_files FOR TESTING.
+    METHODS pick_all_passes_earlier FOR TESTING.
+    METHODS pick_all_needs_files FOR TESTING.
+    METHODS pick_all_button FOR TESTING.
+    METHODS take_picks_per_file FOR TESTING.
+    METHODS take_picks_without_apply FOR TESTING.
+    METHODS pick_all_back_keeps_state FOR TESTING.
 ENDCLASS.
 
 
@@ -561,6 +568,120 @@ CLASS ltcl_patch IMPLEMENTATION.
     mo_app->load_stage( ).
     cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_remote ) exp = 2 ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_remote[ path = `/src/` filename = `zcl_b.clas.abap` ]-sha1 ).
+  ENDMETHOD.
+
+  METHOD pick_all_uses_server_files.
+    mo_service->ms_stage-items = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` obj_type = `CLAS` obj_name = `ZCL_A`
+        object_link = `adt://A4H/example` lstate = `M` rstate = `A` remote_sha1 = `server-hash` changed_by = `ALICE` )
+      ( path = `/other/` filename = `zcl_b.clas.abap` lstate = `D` changed_by = `BOB` ) ).
+    mo_app->load_stage( ).
+    mo_app->mv_user_filter = `ALICE`.
+    " posted rows cannot change the files, metadata or hashes handed to Diff
+    mo_app->mt_rows = VALUE #( ( path = `/forged/` filename = `forged.abap` obj_name = `FORGED` ) ).
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = lines( lo_diff->mt_files ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 1 ]-file exp = `/src/zcl_a.clas.abap` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 1 ]-object_text exp = `CLAS ZCL_A` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 1 ]-object_link exp = `adt://A4H/example` ).
+    cl_abap_unit_assert=>assert_equals( act = lo_diff->mt_files[ 2 ]-file exp = `/other/zcl_b.clas.abap` ).
+    " inspect serialized server state without friendship with the other app
+    DATA lv_xml TYPE string.
+    CALL TRANSFORMATION id SOURCE app = lo_diff RESULT XML lv_xml.
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<REMOTE_SHA1>server-hash</REMOTE_SHA1>*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<LSTATE>M</LSTATE><RSTATE>A</RSTATE>*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<MV_PICK>X</MV_PICK>*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_xml exp = `*FORGED*` ).
+  ENDMETHOD.
+
+  METHOD pick_all_passes_earlier.
+    mo_service->ms_stage-items = CORRESPONDING #( mo_app->mt_rows ).
+    mo_app->load_stage( ).
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ( `O9` ) ) ) ).
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mv_called ).
+    DATA lv_xml TYPE string.
+    CALL TRANSFORMATION id SOURCE app = lo_diff RESULT XML lv_xml.
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<MT_PICKED_IN>*<PATH>/src/</PATH>*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<FILENAME>zcl_a.clas.abap</FILENAME>*<IDS>*N2*O9*</IDS>*` ).
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<FINGERPRINT>fp</FINGERPRINT>*` ).
+  ENDMETHOD.
+
+  METHOD pick_all_needs_files.
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_called ).
+  ENDMETHOD.
+
+  METHOD pick_all_button.
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
+      exp = `*<Button*text="Pick lines in all files"*icon="sap-icon://multi-select"*enabled="false"*` ).
+    mo_service->ms_stage-items = CORRESPONDING #( mo_app->mt_rows ).
+    mo_app->load_stage( ).
+    mo_app->view_display( ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
+      exp = `*<Button*text="Pick lines in all files"*icon="sap-icon://multi-select"*enabled="true"*` ).
+  ENDMETHOD.
+
+  METHOD take_picks_per_file.
+    APPEND VALUE #( path = `/src/` filename = `all.abap` lstate = `M` ) TO mo_app->mt_rows.
+    APPEND VALUE #( path = `/src/` filename = `none.abap` lstate = `M` selected = abap_true ) TO mo_app->mt_rows.
+    APPEND VALUE #( path = `/src/` filename = `untouched.abap` lstate = `M` selected = abap_true ) TO mo_app->mt_rows.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_app->take_picks( VALUE #( applied = abap_true picks = VALUE #(
+      ( path = `/src/` filename = `all.abap` ids = VALUE #( ( `N1` ) ) total = 3 fingerprint = `all-fp` )
+      ( path = `/src/` filename = `none.abap` ids = VALUE #( ( `N1` ) ) total = 3 fingerprint = `none-fp` )
+      ( path = `/src/` filename = `untouched.abap` ids = VALUE #( ( `O1` ) ) total = 4 fingerprint = `keep-fp` ) ) ) ).
+    DATA(ls_untouched) = mo_app->mt_rows[ 4 ].
+    DATA(ls_keep_patch) = mo_app->mt_patches[ filename = `untouched.abap` ].
+    mo_app->take_picks( VALUE #( applied = abap_true picks = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` ids = VALUE #( ( `N2` ) ( `O9` ) ) total = 7 fingerprint = `new-fp` )
+      ( path = `/src/` filename = `all.abap` ids = VALUE #( ( `N1` ) ( `N2` ) ) total = 2 )
+      ( path = `/src/` filename = `none.abap` total = 3 ) ) ) ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 1 ]-patched ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 1 ]-change exp = `modify - 2 of 7 lines` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ filename = `zcl_a.clas.abap` ]-fingerprint exp = `new-fp` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 2 ]-selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 2 ]-patched ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 2 ]-change exp = `modify` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_rows[ 3 ]-selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 3 ]-patched ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 3 ]-change exp = `modify` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_patches ) exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows[ 4 ] exp = ls_untouched ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches[ filename = `untouched.abap` ] exp = ls_keep_patch ).
+    " no lines restores the tick from before the first single-file patch too
+    mo_app->take_picks( VALUE #( applied = abap_true picks = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` total = 7 ) ) ) ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 1 ]-selected ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_rows[ 1 ]-patched ).
+  ENDMETHOD.
+
+  METHOD take_picks_without_apply.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    DATA(lt_rows) = mo_app->mt_rows.
+    DATA(lt_patches) = mo_app->mt_patches.
+    mo_app->take_picks( VALUE #( picks = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` total = 7 ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows exp = lt_rows ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches exp = lt_patches ).
+  ENDMETHOD.
+
+  METHOD pick_all_back_keeps_state.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    DATA(lt_rows) = mo_app->mt_rows.
+    DATA(lt_patches) = mo_app->mt_patches.
+    mo_client->mo_prev = zcl_ag2ui5_app_repo_diff=>create(
+      iv_key = `000000000001` iv_title = `test` it_files = VALUE #( ) iv_pick = abap_true ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_rows exp = lt_rows ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_patches exp = lt_patches ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
   ENDMETHOD.
 ENDCLASS.
 
