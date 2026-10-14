@@ -2422,9 +2422,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assign_changed_by( EXPORTING it_local_users = lt_local_users
                                  it_owners      = transport_owners( lt_remote_objects )
                        CHANGING  ct_items       = rs_stage-items ).
+    " stage logic fetched and cached the full list; its remote list omits local files
+    DATA(lt_remote) = li_repo->zif_abapgit_repo~get_files_remote( ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
-      <ls_row>-remote_sha1 = remote_sha1( it_remote = ls_files-remote iv_path = <ls_row>-path
+      <ls_row>-remote_sha1 = remote_sha1( it_remote = lt_remote iv_path = <ls_row>-path
                                           iv_filename = <ls_row>-filename ).
 
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
