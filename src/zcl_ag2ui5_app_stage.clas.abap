@@ -64,6 +64,17 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_stage.
 
   PROTECTED SECTION.
+    TYPES:
+      BEGIN OF ty_remote,
+        path     TYPE string,
+        filename TYPE string,
+        sha1     TYPE string,
+      END OF ty_remote,
+      ty_remotes TYPE HASHED TABLE OF ty_remote WITH UNIQUE KEY path filename.
+    "! Each file's SHA1 in Git from the service - mt_rows comes back from
+    "! the browser, so the diff page never takes the hash from there
+    DATA mt_remote TYPE ty_remotes.
+
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mv_key TYPE string.
     DATA mv_title TYPE string.
@@ -528,6 +539,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
   METHOD on_event.
 
     DATA ls_row TYPE ty_row.
+    DATA ls_remote TYPE ty_remote.
+    DATA lv_known TYPE abap_bool.
 
     CASE client->get_event( ).
       WHEN `BACK`.
@@ -544,17 +557,27 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         READ TABLE mt_rows INTO ls_row
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
         IF sy-subrc = 0.
+          CLEAR ls_remote.
+          READ TABLE mt_remote INTO ls_remote
+            WITH TABLE KEY path = ls_row-path filename = ls_row-filename.
+          lv_known = xsdbool( sy-subrc = 0 ).
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
                                                              iv_path     = ls_row-path
                                                              iv_filename = ls_row-filename
                                                              iv_obj_type = ls_row-obj_type
                                                              iv_obj_name = ls_row-obj_name
-                                                             iv_object_link = ls_row-object_link ) ).
+                                                             iv_object_link = ls_row-object_link
+                                                             iv_remote_sha1 = ls_remote-sha1
+                                                             iv_remote_known = lv_known ) ).
         ENDIF.
       WHEN `PATCH`.
         READ TABLE mt_rows INTO ls_row
           WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
         IF sy-subrc = 0.
+          CLEAR ls_remote.
+          READ TABLE mt_remote INTO ls_remote
+            WITH TABLE KEY path = ls_row-path filename = ls_row-filename.
+          lv_known = xsdbool( sy-subrc = 0 ).
           client->nav_app_call( zcl_ag2ui5_app_diff=>create(
             iv_key      = mv_key
             iv_path     = ls_row-path
@@ -562,6 +585,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             iv_obj_type = ls_row-obj_type
             iv_obj_name = ls_row-obj_name
             iv_object_link = ls_row-object_link
+            iv_remote_sha1 = ls_remote-sha1
+            iv_remote_known = lv_known
             iv_patch    = abap_true
             it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
@@ -615,8 +640,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       APPEND VALUE #( rule = lv_rule ) TO mt_ignore_rules.
     ENDLOOP.
     " after a reload the fingerprints are stale anyway
-    CLEAR: mt_rows, mt_patches.
+    CLEAR: mt_rows, mt_patches, mt_remote.
     LOOP AT ls_stage-items INTO DATA(ls_item).
+      INSERT VALUE #( path = ls_item-path filename = ls_item-filename sha1 = ls_item-remote_sha1 ) INTO TABLE mt_remote.
       DATA(ls_row) = CORRESPONDING ty_row( ls_item ).
       ls_row-change = change_text( ls_row ).
       INSERT ls_row INTO TABLE mt_rows.

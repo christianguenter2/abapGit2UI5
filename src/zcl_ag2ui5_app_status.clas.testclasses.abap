@@ -823,6 +823,7 @@ CLASS ltcl_object_links DEFINITION FINAL FOR TESTING
     METHODS setup.
     METHODS teardown.
     METHODS link_handoff FOR TESTING.
+    METHODS diff_uses_server_hash FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_object_links IMPLEMENTATION.
@@ -845,6 +846,20 @@ CLASS ltcl_object_links IMPLEMENTATION.
     lo_app->on_event( ).
     DATA(lo_diff) = CAST zcl_ag2ui5_app_diff( lo_client->mo_called ).
     cl_abap_unit_assert=>assert_equals( act = lo_diff->ms_head-object_link exp = `adt://A4H/example` ).
+  ENDMETHOD.
+  METHOD diff_uses_server_hash.
+    DATA(lo_app) = zcl_ag2ui5_app_status=>create( `1` ).
+    DATA(lo_client) = NEW ltd_client( ).
+    lo_app->client = lo_client.
+    lo_app->mt_status = VALUE #( ( obj_type = `CLAS` obj_name = `ZCL_A` path = `/src/` filename = `zcl_a.clas.abap`
+                                   remote_sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ) ).
+    lo_app->rows_build( ).
+    lo_client->mv_event = `DIFF`.
+    lo_client->mt_args = VALUE #( ( `/src/` ) ( `zcl_a.clas.abap` ) ).
+    lo_app->on_event( ).
+    DATA(ls_remote) = CAST zcl_ag2ui5_app_diff( lo_client->mo_called )->get_remote( ).
+    cl_abap_unit_assert=>assert_equals( act = ls_remote-sha1 exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
+    cl_abap_unit_assert=>assert_true( ls_remote-known ).
   ENDMETHOD.
 ENDCLASS.
 

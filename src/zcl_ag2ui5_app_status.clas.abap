@@ -1550,6 +1550,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           iv_key = mv_key iv_zip = mv_zip iv_path = ls_semantic-path iv_filename = ls_semantic-filename
           iv_obj_type = ls_semantic_file-obj_type iv_obj_name = ls_semantic_file-obj_name
           iv_object_link = ls_semantic_file-object_link iv_focus = ls_semantic-id
+          iv_remote_sha1 = ls_semantic_file-remote_sha1 iv_remote_known = abap_true
           iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
             iv_lstate = ls_semantic_file-lstate iv_rstate = ls_semantic_file-rstate ) ) ).
       WHEN `OBJECT`.
@@ -1573,6 +1574,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
             WITH KEY path = client->get_event_arg( ) filename = client->get_event_arg( 2 ).
         ENDIF.
         IF sy-subrc = 0.
+          READ TABLE mt_status INTO DATA(ls_server)
+            WITH KEY path = ls_row-path filename = ls_row-filename.
+          DATA(lv_known) = xsdbool( sy-subrc = 0 ).
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
                                                              iv_zip      = mv_zip
                                                              iv_path     = ls_row-path
@@ -1580,6 +1584,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                              iv_obj_type = ls_row-obj_type
                                                              iv_obj_name = ls_row-obj_name
                                                              iv_object_link = ls_row-object_link
+                                                             iv_remote_sha1 = ls_server-remote_sha1
+                                                             iv_remote_known = lv_known
                                                              iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new(
                                                                                   iv_lstate = ls_row-lstate
                                                                                   iv_rstate = ls_row-rstate ) ) ).

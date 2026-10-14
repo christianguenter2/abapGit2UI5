@@ -102,11 +102,15 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA mt_calls TYPE string_table.
     "! /auth/ needs credentials until this is set
     DATA mv_logged_in TYPE abap_bool.
+    DATA mv_got_sha1 TYPE string.
+    DATA mv_got_known TYPE abap_bool.
 ENDCLASS.
 
 
 CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~get_diff.
+    mv_got_sha1 = iv_remote_sha1.
+    mv_got_known = iv_remote_known.
     INSERT |{ iv_path }{ iv_filename }| INTO TABLE mt_calls.
     IF iv_path = `/auth/` AND mv_logged_in = abap_false.
       zcx_abapgit_exception=>raise( `Unauthorized access. Check your credentials` ).
@@ -197,6 +201,7 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS login_error_opens_login FOR TESTING.
     METHODS other_error_in_panel FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
+    METHODS panel_passes_hash FOR TESTING.
 ENDCLASS.
 
 
@@ -224,6 +229,9 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     DO iv_count TIMES.
       INSERT VALUE #( path = `/src/` filename = |f{ sy-index }.abap| lstate = `M` ) INTO TABLE rt_files.
     ENDDO.
+    IF rt_files IS NOT INITIAL.
+      rt_files[ 1 ]-remote_sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349`.
+    ENDIF.
   ENDMETHOD.
 
   METHOD fire.
@@ -472,4 +480,11 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
   ENDMETHOD.
 
+  METHOD panel_passes_hash.
+    app( files( 1 ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_service->mv_got_sha1 exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
+    cl_abap_unit_assert=>assert_true( mo_service->mv_got_known ).
+    fire( iv_event = `OPEN` iv_arg1 = `1` ).
+    cl_abap_unit_assert=>assert_true( CAST zcl_ag2ui5_app_diff( mo_client->mo_called )->get_remote( )-known ).
+  ENDMETHOD.
 ENDCLASS.

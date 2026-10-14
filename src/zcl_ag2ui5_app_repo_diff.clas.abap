@@ -295,6 +295,8 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
             iv_key           = mv_key
             iv_path          = ls_source-path
             iv_filename      = ls_source-filename
+            iv_remote_sha1   = ls_source-remote_sha1
+            iv_remote_known  = abap_true
             iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = ls_source-lstate
                                                                       iv_rstate = ls_source-rstate )
             iv_zip           = mv_zip ).
@@ -374,6 +376,8 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       iv_zip           = mv_zip
       iv_path          = ls_source-path
       iv_filename      = ls_source-filename
+      iv_remote_sha1   = ls_source-remote_sha1
+      iv_remote_known  = abap_true
       iv_obj_type      = ls_source-obj_type
       iv_obj_name      = ls_source-obj_name
       iv_object_link   = ls_source-object_link

@@ -432,6 +432,8 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS push_sends_patch FOR TESTING.
     METHODS pick_opens_patch_mode FOR TESTING.
     METHODS remote_change_notice FOR TESTING.
+    METHODS patch_uses_server_hash FOR TESTING.
+    METHODS load_keeps_hashes FOR TESTING.
 ENDCLASS.
 
 
@@ -540,6 +542,26 @@ CLASS ltcl_patch IMPLEMENTATION.
     cl_abap_unit_assert=>assert_char_cp( act = lo_diff->ms_head-title exp = `Pick lines - *` ).
   ENDMETHOD.
 
+  METHOD patch_uses_server_hash.
+    mo_app->mt_remote = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap`
+                                   sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ) ).
+    mo_client->mv_event = `PATCH`.
+    mo_client->mv_arg1 = `/src/`.
+    mo_client->mv_arg2 = `zcl_a.clas.abap`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(ls_remote) = CAST zcl_ag2ui5_app_diff( mo_client->mv_called )->get_remote( ).
+    cl_abap_unit_assert=>assert_equals( act = ls_remote-sha1 exp = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` ).
+    cl_abap_unit_assert=>assert_true( ls_remote-known ).
+  ENDMETHOD.
+
+  METHOD load_keeps_hashes.
+    mo_service->ms_stage-items = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` action = `ADD` lstate = `M`
+                                             remote_sha1 = `84d35dd847b3dc2361f9eea4cf2bdc76a8d1b349` )
+                                           ( path = `/src/` filename = `zcl_b.clas.abap` action = `ADD` lstate = `A` ) ).
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_remote ) exp = 2 ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_remote[ path = `/src/` filename = `zcl_b.clas.abap` ]-sha1 ).
+  ENDMETHOD.
 ENDCLASS.
 
 
