@@ -2559,13 +2559,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       li_repo->create_branch( iv_name = lv_new_branch iv_from = lv_head ).
     ENDIF.
 
-    " the same sequence as abapGit's own commit: exit, push, commit work, exit
+    " abapGit's push without UI: exit, push, commit work, exit
     TRY.
-        zcl_abapgit_exit=>get_instance( )->validate_before_push( is_comment     = ls_comment
-                                                                 io_stage       = lo_stage
-                                                                 ii_repo_online = li_repo ).
-        li_repo->push( is_comment = ls_comment
-                       io_stage   = lo_stage ).
+        zcl_abapgit_repo_factory=>get_repo_push( li_repo )->push( is_comment = ls_comment
+                                                                 io_stage   = lo_stage ).
       CATCH zcx_abapgit_exception INTO DATA(lx_push).
         IF lv_new_branch IS INITIAL.
           RAISE EXCEPTION lx_push.
@@ -2577,9 +2574,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
           |Branch { branch_display( lv_new_branch ) } was created and is now followed, | &&
           |but nothing was pushed: { lx_push->get_text( ) }| ).
     ENDTRY.
-    " push( ) writes the new checksums; abap2UI5 rolls back after main( )
+    " push( ) commits without waiting; abap2UI5 rolls back after main( )
     COMMIT WORK AND WAIT.
-    zcl_abapgit_exit=>get_instance( )->validate_after_push( li_repo ).
 
     rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
     rs_result-commit  = substring( val = li_repo->get_current_remote( ) len = 7 ).
@@ -2934,7 +2930,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_pull_allowed( li_repo->get_package( ) ).
     li_repo->refresh( iv_drop_cache = abap_true ).
 
-    rs_preview = preview( zcl_abapgit_factory=>get_repo_pull( li_repo )->checks( ) ).
+    rs_preview = preview( zcl_abapgit_repo_factory=>get_repo_pull( li_repo )->checks( ) ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_preview-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-object_link = object_link( EXPORTING iv_obj_type = <ls_row>-obj_type
@@ -2957,7 +2953,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     li_repo->refresh( iv_drop_cache = abap_true ).
 
     " check again - the remote or the system may have changed since the preview
-    DATA(ls_checks)  = zcl_abapgit_factory=>get_repo_pull( li_repo )->checks( ).
+    DATA(ls_checks)  = zcl_abapgit_repo_factory=>get_repo_pull( li_repo )->checks( ).
     DATA(ls_preview) = preview( ls_checks ).
 
     CASE ls_preview-outcome.
@@ -3042,7 +3038,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     TRY.
         " abapGit's own pull steps: delete the confirmed objects, then deserialize
-        zcl_abapgit_factory=>get_repo_pull( ii_repo )->pull( is_checks = is_checks
+        zcl_abapgit_repo_factory=>get_repo_pull( ii_repo )->pull( is_checks = is_checks
                                                              ii_log    = li_log ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         " objects may already be imported - the log says which
