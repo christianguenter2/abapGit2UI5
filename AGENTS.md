@@ -127,6 +127,13 @@ present. It is Git-ignored.
   requires root `.abapgit.xml` and wraps invalid XML as an abapGit exception.
   Keep uploads and downloads binary; the framework's generic file popups
   convert through text. Export uses `encode_files`, never SAP GUI file APIs.
+- **Single-file diffs:** Status and Stage rows carry `remote_sha1`. The
+  apps keep it server-side (Stage `mt_remote`, Status `mt_status`, Repo
+  diff `mt_source`) and pass it to `get_diff` with `iv_remote_known`, which
+  fetches only that blob (`ZIF_AG2UI5_BLOB_SOURCE`), checks it with
+  `checked_blob` and caches it per request. Refusals fall back to the full
+  fetch; login errors do not. Commit/push and the object overview keep the
+  full fetch.
 - **User settings** (the apps' toggles, table `ZAG2UI5_SETTING`) go through
   `ZCL_AG2UI5_SETTINGS`, not the service: they have nothing to do with
   abapGit. It always uses `sy-uname`, and its `set( )` commits itself. Apps
