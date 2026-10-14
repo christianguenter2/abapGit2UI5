@@ -104,11 +104,14 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     DATA mv_logged_in TYPE abap_bool.
     DATA mv_got_sha1 TYPE string.
     DATA mv_got_known TYPE abap_bool.
+    DATA mv_got_remote_is_new TYPE abap_bool.
+    DATA mv_pick_fixture TYPE abap_bool.
 ENDCLASS.
 
 
 CLASS ltd_service IMPLEMENTATION.
   METHOD zif_ag2ui5_repo_service~get_diff.
+    mv_got_remote_is_new = iv_remote_is_new.
     mv_got_sha1 = iv_remote_sha1.
     mv_got_known = iv_remote_known.
     INSERT |{ iv_path }{ iv_filename }| INTO TABLE mt_calls.
@@ -127,6 +130,16 @@ CLASS ltd_service IMPLEMENTATION.
       ( local_num = `1` remote_num = `1` text = `same` kind = zif_ag2ui5_repo_service=>c_line_kind-same )
       ( local_num = `2` text = `new` kind = zif_ag2ui5_repo_service=>c_line_kind-local ) ).
     rs_diff-local_count = 1.
+    IF mv_pick_fixture = abap_true.
+      rs_diff-fingerprint = |fingerprint:{ iv_filename }|.
+      rs_diff-lines = VALUE #(
+        ( local_num = `1` remote_num = `1` text = `same` kind = zif_ag2ui5_repo_service=>c_line_kind-same )
+        ( remote_num = `2` text = `old` kind = zif_ag2ui5_repo_service=>c_line_kind-remote patch_id = `L2` )
+        ( local_num = `2` text = `new` kind = zif_ag2ui5_repo_service=>c_line_kind-local patch_id = `L2` )
+        ( local_num = `3` text = `next` kind = zif_ag2ui5_repo_service=>c_line_kind-local patch_id = `L3` ) ).
+      rs_diff-local_count = 2.
+      rs_diff-remote_count = 1.
+    ENDIF.
   ENDMETHOD.
 ENDCLASS.
 
@@ -163,7 +176,9 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     "! Starts the page as abap2UI5 does, then switches the client to events
     METHODS app
       IMPORTING
-        it_files TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+        it_files TYPE zif_ag2ui5_repo_service=>ty_status_rows
+        iv_pick TYPE abap_bool DEFAULT abap_false
+        it_picked TYPE zcl_ag2ui5_app_repo_diff=>ty_picks OPTIONAL.
     METHODS files
       IMPORTING
         iv_count        TYPE i
@@ -173,7 +188,8 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
       IMPORTING
         iv_event TYPE string
         iv_arg1  TYPE string OPTIONAL
-        iv_arg2  TYPE string OPTIONAL.
+        iv_arg2  TYPE string OPTIONAL
+        iv_arg3  TYPE string OPTIONAL.
 
     METHODS start_loads_first_three FOR TESTING.
     METHODS expand_loads_collapse_clears FOR TESTING.
@@ -202,6 +218,15 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     METHODS other_error_in_panel FOR TESTING.
     METHODS logged_in_reloads FOR TESTING.
     METHODS panel_passes_hash FOR TESTING.
+    METHODS pick_unpick FOR TESTING.
+    METHODS pick_foreign_ignored FOR TESTING.
+    METHODS pick_survives_collapse FOR TESTING.
+    METHODS pick_restores_filtered FOR TESTING.
+    METHODS pick_all_none_per_file FOR TESTING.
+    METHODS pick_apply_loaded_ordered FOR TESTING.
+    METHODS pick_back_empty FOR TESTING.
+    METHODS pick_inline_view_route FOR TESTING.
+    METHODS pick_events_off_ignored FOR TESTING.
 ENDCLASS.
 
 
@@ -218,7 +243,9 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD app.
-    mo_app = zcl_ag2ui5_app_repo_diff=>create( iv_key = `1` iv_title = `repo` it_files = it_files ).
+    mo_app = zcl_ag2ui5_app_repo_diff=>create( iv_key = `1` iv_title = `repo` it_files = it_files
+                                                  iv_pick = iv_pick it_picked = it_picked ).
+    mo_service->mv_pick_fixture = iv_pick.
     mo_app->mi_service = mo_service.
     mo_client->mv_init = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
@@ -236,7 +263,7 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
 
   METHOD fire.
     mo_client->mv_event = iv_event.
-    mo_client->mt_args = VALUE #( ( iv_arg1 ) ( iv_arg2 ) ).
+    mo_client->mt_args = VALUE #( ( iv_arg1 ) ( iv_arg2 ) ( iv_arg3 ) ).
     mo_app->z2ui5_if_app~main( mo_client ).
   ENDMETHOD.
 
@@ -486,5 +513,122 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_true( mo_service->mv_got_known ).
     fire( iv_event = `OPEN` iv_arg1 = `1` ).
     cl_abap_unit_assert=>assert_true( CAST zcl_ag2ui5_app_diff( mo_client->mo_called )->get_remote( )-known ).
+  ENDMETHOD.
+  METHOD pick_unpick.
+    app( it_files = files( 1 ) iv_pick = abap_true ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L2` iv_arg3 = `X` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_file_picks[ index = 1 ]-picked exp = VALUE string_table( ( `L2` ) ) ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_files[ 1 ]-lines[ 2 ]-picked ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_files[ 1 ]-lines[ 3 ]-picked ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 1 ]-counts exp = `+2 -1, 1 of 2 lines` ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L2` iv_arg3 = `` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_file_picks[ index = 1 ]-picked ).
+    cl_abap_unit_assert=>assert_false( mo_app->mt_files[ 1 ]-lines[ 2 ]-picked ).
+  ENDMETHOD.
+
+  METHOD pick_foreign_ignored.
+    app( it_files = files( 4 ) iv_pick = abap_true ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `foreign` iv_arg3 = `X` ).
+    LOOP AT VALUE string_table( ( `0` ) ( `5` ) ( `-1` ) ( `x` ) ( `99999999` ) ( `4` ) ) INTO DATA(lv_index).
+      fire( iv_event = `PICK` iv_arg1 = lv_index iv_arg2 = `L2` iv_arg3 = `X` ).
+      fire( iv_event = `PICK_ALL` iv_arg1 = lv_index ).
+      fire( iv_event = `PICK_NONE` iv_arg1 = lv_index ).
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_file_picks[ index = 1 ]-picked ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_file_picks ) exp = 3 ).
+  ENDMETHOD.
+
+  METHOD pick_survives_collapse.
+    app( it_files = files( 1 ) iv_pick = abap_true ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L3` iv_arg3 = `X` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_loaded[ index = 1 ]-lines ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_file_picks[ index = 1 ]-picked exp = VALUE string_table( ( `L3` ) ) ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_true( mo_app->mt_files[ 1 ]-lines[ 4 ]-picked ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_service->mt_calls ) exp = 2 ).
+  ENDMETHOD.
+
+  METHOD pick_restores_filtered.
+    app( it_files = files( 4 ) iv_pick = abap_true
+         it_picked = VALUE #( ( path = `/src/` filename = `f1.abap` ids = VALUE #( ( `foreign` ) ( `L3` ) ( `L2` ) ( `L2` ) ) )
+                              ( path = `/src/` filename = `f4.abap` ids = VALUE #( ( `L3` ) ) ) ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_file_picks[ index = 1 ]-picked exp = VALUE string_table( ( `L2` ) ( `L3` ) ) ).
+    fire( iv_event = `PICK_NONE` iv_arg1 = `1` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_file_picks[ index = 1 ]-picked ).
+    fire( iv_event = `PANEL` iv_arg1 = `4` iv_arg2 = `X` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_file_picks[ index = 4 ]-picked exp = VALUE string_table( ( `L3` ) ) ).
+  ENDMETHOD.
+
+  METHOD pick_all_none_per_file.
+    app( it_files = files( 2 ) iv_pick = abap_true ).
+    fire( iv_event = `PICK_ALL` iv_arg1 = `1` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_file_picks[ index = 1 ]-picked exp = VALUE string_table( ( `L2` ) ( `L3` ) ) ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_file_picks[ index = 2 ]-picked ).
+    fire( iv_event = `PICK_ALL` iv_arg1 = `2` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    fire( iv_event = `PICK_NONE` iv_arg1 = `1` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_file_picks[ index = 1 ]-picked ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_files[ 1 ]-lines ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 1 ]-counts exp = `+2 -1, 0 of 2 lines` ).
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_file_picks[ index = 2 ]-picked ) exp = 2 ).
+  ENDMETHOD.
+
+  METHOD pick_apply_loaded_ordered.
+    DATA(lt_files) = files( 5 ).
+    lt_files[ 2 ]-path = `/bin/`.
+    lt_files[ 3 ]-path = `/fail/`.
+    app( it_files = lt_files iv_pick = abap_true ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L3` iv_arg3 = `X` ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L2` iv_arg3 = `X` ).
+    fire( iv_event = `PICK_ALL` iv_arg1 = `2` ).
+    fire( iv_event = `PANEL` iv_arg1 = `4` iv_arg2 = `X` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    mo_app->mt_files[ 1 ]-file = `/evil/changed`.
+    fire( `APPLY` ).
+    DATA(ls_result) = mo_app->get_picks( ).
+    cl_abap_unit_assert=>assert_true( ls_result-applied ).
+    cl_abap_unit_assert=>assert_equals( act = ls_result-picks exp = VALUE zcl_ag2ui5_app_repo_diff=>ty_picks(
+      ( path = `/src/` filename = `f1.abap` ids = VALUE #( ( `L2` ) ( `L3` ) ) total = 2 fingerprint = `fingerprint:f1.abap` )
+      ( path = `/src/` filename = `f4.abap` total = 2 fingerprint = `fingerprint:f4.abap` ) ) ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_left_to ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_files[ 2 ]-lines ).
+  ENDMETHOD.
+
+  METHOD pick_back_empty.
+    app( it_files = files( 1 ) iv_pick = abap_true ).
+    fire( iv_event = `PICK_ALL` iv_arg1 = `1` ).
+    fire( `BACK` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->get_picks( ) ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
+  ENDMETHOD.
+
+  METHOD pick_inline_view_route.
+    app( it_files = VALUE #( ( path = `/src/` filename = `remote.abap` rstate = `M` ) ) iv_pick = abap_true ).
+    cl_abap_unit_assert=>assert_false( mo_service->mv_got_remote_is_new ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->ms_head-title exp = `Pick lines - repo` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*SegmentedButton*` ).
+    FIND REGEX `<Button[^>]*text="Apply"[^>]*type="Emphasized"` IN mo_client->mv_view.
+    cl_abap_unit_assert=>assert_subrc( exp = 0 msg = mo_client->mv_view ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view exp = `*CheckBox*selected="{PICKED}"*` ).
+    mo_app->mv_key = `000000000010`.
+    mo_app->mv_layout = `SBS`.
+    fire( `LAYOUT` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_layout exp = `INLINE` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_route exp = `/repo/000000000010` ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*SegmentedButton*` ).
+  ENDMETHOD.
+
+  METHOD pick_events_off_ignored.
+    app( files( 1 ) ).
+    fire( iv_event = `PICK_ALL` iv_arg1 = `1` ).
+    fire( iv_event = `PICK` iv_arg1 = `1` iv_arg2 = `L2` iv_arg3 = `X` ).
+    fire( `APPLY` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->get_picks( ) ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_left ).
+    cl_abap_unit_assert=>assert_char_np( act = mo_client->mv_view exp = `*CheckBox*` ).
   ENDMETHOD.
 ENDCLASS.

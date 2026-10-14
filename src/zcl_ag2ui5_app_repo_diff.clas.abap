@@ -15,6 +15,9 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
         "! The line for sap.m.FormattedText: escaped, monospace
         code_html  TYPE string,
         highlight  TYPE string,
+        panel_index TYPE i,
+        patch_id   TYPE string,
+        picked     TYPE abap_bool,
       END OF ty_line,
       ty_lines TYPE STANDARD TABLE OF ty_line WITH EMPTY KEY.
     TYPES:
@@ -113,6 +116,18 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
       END OF ty_loaded,
       ty_loaded_tab TYPE SORTED TABLE OF ty_loaded WITH UNIQUE KEY index.
 
+    TYPES:
+      BEGIN OF ty_file_pick,
+        index       TYPE i,
+        ids         TYPE string_table,
+        picked      TYPE string_table,
+        fingerprint TYPE string,
+        binary      TYPE abap_bool,
+      END OF ty_file_pick,
+      ty_file_picks TYPE SORTED TABLE OF ty_file_pick WITH UNIQUE KEY index.
+
+    "! Picks survive collapse; browser rows never supply these IDs
+    DATA mt_file_picks TYPE ty_file_picks.
     DATA client TYPE REF TO z2ui5_if_client.
     DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
     DATA mv_key TYPE string.
@@ -155,6 +170,13 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
     METHODS rows_build
       IMPORTING
         iv_index TYPE i.
+    METHODS pick
+      IMPORTING
+        iv_index TYPE i
+        iv_id TYPE string OPTIONAL
+        iv_state TYPE abap_bool
+        iv_all TYPE abap_bool DEFAULT abap_false.
+    METHODS apply.
     METHODS summary_build.
     METHODS view_display.
     "! The line table of a panel, for the current layout
@@ -187,7 +209,8 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     ro_app->mt_source = it_files.
     ro_app->mv_pick   = iv_pick.
     ro_app->mt_picked_in = it_picked.
-    ro_app->ms_head-title = |Diff - { iv_title }|.
+    ro_app->ms_head-title = COND #( WHEN iv_pick = abap_true THEN |Pick lines - { iv_title }|
+                                  ELSE |Diff - { iv_title }| ).
     ro_app->ms_head-remote_label = COND #( WHEN iv_zip IS NOT INITIAL THEN `ZIP` ELSE `Git` ).
     LOOP AT it_files INTO DATA(ls_file).
       INSERT VALUE #( index       = sy-tabix
@@ -204,12 +227,19 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    IF mv_pick = abap_true.
+      mv_layout = `INLINE`.
+    ENDIF.
     IF client->get_event( ) = `ROUTE_CHANGED`.
       zcl_ag2ui5_app_repos=>route_dispatch( client ).
       RETURN.
     ENDIF.
     " ZIP content cannot be reconstructed from an identity route.
-    zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key iv_diff = xsdbool( mv_zip IS INITIAL ) ).
+    IF mv_pick = abap_true.
+      zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
+    ELSE.
+      zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key iv_diff = xsdbool( mv_zip IS INITIAL ) ).
+    ENDIF.
     IF client->check_on_init( ).
       DO nmin( val1 = c_initial val2 = lines( mt_files ) ) TIMES.
         expand( sy-index ).
@@ -249,6 +279,7 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
 
     CASE client->get_event( ).
       WHEN `BACK`.
+        CLEAR ms_pick_result.
         zcl_ag2ui5_app_repos=>write_route( io_client = client iv_key = mv_key ).
         IF client->check_app_prev_stack( ).
           client->nav_app_leave( ).
@@ -256,6 +287,19 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
           client->nav_app_leave( zcl_ag2ui5_app_status=>create( mv_key ) ).
         ENDIF.
         RETURN.
+      WHEN `APPLY`.
+        IF mv_pick = abap_true.
+          apply( ).
+        ENDIF.
+        RETURN.
+      WHEN `PICK` OR `PICK_ALL` OR `PICK_NONE`.
+        IF mv_pick = abap_true.
+          pick( iv_index = checked_index( client->get_event_arg( ) )
+                iv_id = client->get_event_arg( 2 )
+                iv_state = xsdbool( client->get_event( ) = `PICK_ALL`
+                                   OR ( client->get_event( ) = `PICK` AND client->get_event_arg( 3 ) = abap_true ) )
+                iv_all = xsdbool( client->get_event( ) <> `PICK` ) ).
+        ENDIF.
       WHEN `PANEL`.
         DATA(lv_index) = checked_index( client->get_event_arg( ) ).
         IF lv_index = 0.
@@ -274,7 +318,7 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
           collapse( ls_file-index ).
         ENDLOOP.
       WHEN `LAYOUT`.
-        IF mv_layout <> `SBS`.
+        IF mv_pick = abap_true OR mv_layout <> `SBS`.
           mv_layout = `INLINE`.
         ENDIF.
         LOOP AT mt_files INTO ls_file WHERE expanded = abap_true.
@@ -336,8 +380,9 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
             iv_filename      = ls_source-filename
             iv_remote_sha1   = ls_source-remote_sha1
             iv_remote_known  = abap_true
-            iv_remote_is_new = zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = ls_source-lstate
-                                                                      iv_rstate = ls_source-rstate )
+            iv_remote_is_new = COND #( WHEN mv_pick = abap_true THEN abap_false
+                                      ELSE zcl_ag2ui5_repo_service=>remote_is_new( iv_lstate = ls_source-lstate
+                                                                                  iv_rstate = ls_source-rstate ) )
             iv_zip           = mv_zip ).
         CATCH zcx_abapgit_exception INTO DATA(lx_error).
           IF zcl_ag2ui5_repo_service=>login_required( lx_error ) = abap_true.
@@ -351,6 +396,26 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
           <ls_file>-note = lx_error->get_text( ).
           RETURN.
       ENDTRY.
+      IF mv_pick = abap_true.
+        DATA(ls_pick) = VALUE ty_file_pick( index = iv_index fingerprint = ls_diff-fingerprint binary = ls_diff-binary ).
+        LOOP AT ls_diff-lines INTO DATA(ls_patch_line) WHERE patch_id IS NOT INITIAL.
+          IF NOT line_exists( ls_pick-ids[ table_line = ls_patch_line-patch_id ] ).
+            INSERT ls_patch_line-patch_id INTO TABLE ls_pick-ids.
+          ENDIF.
+        ENDLOOP.
+        READ TABLE mt_file_picks INTO DATA(ls_previous) WITH TABLE KEY index = iv_index.
+        IF sy-subrc <> 0.
+          DATA(ls_earlier) = VALUE #( mt_picked_in[ path = ls_source-path filename = ls_source-filename ] OPTIONAL ).
+          ls_previous-picked = ls_earlier-ids.
+        ENDIF.
+        LOOP AT ls_pick-ids INTO DATA(lv_id).
+          IF line_exists( ls_previous-picked[ table_line = lv_id ] ).
+            INSERT lv_id INTO TABLE ls_pick-picked.
+          ENDIF.
+        ENDLOOP.
+        DELETE mt_file_picks WHERE index = iv_index.
+        INSERT ls_pick INTO TABLE mt_file_picks.
+      ENDIF.
       IF ls_diff-binary = abap_true.
         <ls_file>-note = `Binary file - no line diff`.
         RETURN.
@@ -437,6 +502,11 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       RETURN.
     ENDIF.
     DATA(lt_lines) = ls_loaded-lines.
+    DATA(ls_pick) = VALUE #( mt_file_picks[ index = iv_index ] OPTIONAL ).
+    IF mv_pick = abap_true.
+      <ls_file>-counts = |+{ ls_loaded-new_count } -{ ls_loaded-old_count }, | &&
+                        |{ lines( ls_pick-picked ) } of { lines( ls_pick-ids ) } lines|.
+    ENDIF.
 
     IF mv_layout = `SBS`.
       LOOP AT zcl_ag2ui5_repo_service=>to_side_by_side( it_lines         = lt_lines
@@ -495,7 +565,10 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       DATA(lv_tint) = COND string( WHEN ls_line-kind = lv_new_kind THEN `ADDED`
                                    WHEN lv_changed = abap_true THEN `REMOVED`
                                    WHEN ls_line-kind = zif_ag2ui5_repo_service=>c_line_kind-gap THEN `GAP` ).
-      INSERT VALUE #( remote_num = ls_line-remote_num
+      INSERT VALUE #( panel_index = iv_index
+                      patch_id   = COND #( WHEN mv_pick = abap_true AND lv_changed = abap_true THEN ls_line-patch_id )
+                      picked     = xsdbool( line_exists( ls_pick-picked[ table_line = ls_line-patch_id ] ) )
+                      remote_num = ls_line-remote_num
                       local_num  = ls_line-local_num
                       code_html  = zcl_ag2ui5_repo_service=>tinted_html(
                                      iv_html = zcl_ag2ui5_repo_service=>code_html( ls_line-text )
@@ -508,6 +581,52 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
                                            ELSE `None` ) )
         INTO TABLE <ls_file>-lines.
     ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD pick.
+
+    READ TABLE mt_file_picks ASSIGNING FIELD-SYMBOL(<ls_pick>) WITH TABLE KEY index = iv_index.
+    IF sy-subrc <> 0 OR <ls_pick>-binary = abap_true.
+      RETURN.
+    ENDIF.
+    IF iv_all = abap_true.
+      <ls_pick>-picked = COND #( WHEN iv_state = abap_true THEN <ls_pick>-ids ).
+    ELSE.
+      IF NOT line_exists( <ls_pick>-ids[ table_line = iv_id ] ).
+        RETURN.
+      ENDIF.
+      DELETE <ls_pick>-picked WHERE table_line = iv_id.
+      IF iv_state = abap_true.
+        INSERT iv_id INTO TABLE <ls_pick>-picked.
+      ENDIF.
+    ENDIF.
+    " Counts also update while collapsed; rows_build keeps the rows empty
+    ASSIGN mt_files[ iv_index ] TO FIELD-SYMBOL(<ls_file>).
+    IF sy-subrc = 0.
+      DATA(ls_loaded) = VALUE #( mt_loaded[ index = iv_index ] OPTIONAL ).
+      <ls_file>-counts = |+{ ls_loaded-new_count } -{ ls_loaded-old_count }, | &&
+                        |{ lines( <ls_pick>-picked ) } of { lines( <ls_pick>-ids ) } lines|.
+    ENDIF.
+    rows_build( iv_index ).
+
+  ENDMETHOD.
+
+  METHOD apply.
+
+    ms_pick_result = VALUE #( applied = abap_true ).
+    LOOP AT mt_file_picks INTO DATA(ls_pick) WHERE binary = abap_false.
+      DATA(ls_source) = mt_source[ ls_pick-index ].
+      DATA(ls_result) = VALUE ty_pick( path = ls_source-path filename = ls_source-filename
+                                      total = lines( ls_pick-ids ) fingerprint = ls_pick-fingerprint ).
+      LOOP AT ls_pick-ids INTO DATA(lv_id).
+        IF line_exists( ls_pick-picked[ table_line = lv_id ] ).
+          INSERT lv_id INTO TABLE ls_result-ids.
+        ENDIF.
+      ENDLOOP.
+      INSERT ls_result INTO TABLE ms_pick_result-picks.
+    ENDLOOP.
+    client->nav_app_leave( ).
 
   ENDMETHOD.
 
@@ -560,16 +679,23 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     header->tag( `ToolbarSpacer` ).
     header->tag( `Text`
         )->a( n = `text` v = client->_bind( ms_head-summary ) ).
-    header->ele( `SegmentedButton`
-        )->a( n = `selectedKey`     v = client->_bind( mv_layout )
-        )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
-        )->ele( `items`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `INLINE`
-                )->a( n = `text` v = `Inline`
-            )->tag( `SegmentedButtonItem`
-                )->a( n = `key`  v = `SBS`
-                )->a( n = `text` v = `Side by side` ).
+    IF mv_pick = abap_true.
+      header->tag( `Button`
+          )->a( n = `text` v = `Apply`
+          )->a( n = `type` v = `Emphasized`
+          )->a( n = `press` v = client->_event( `APPLY` ) ).
+    ELSE.
+      header->ele( `SegmentedButton`
+          )->a( n = `selectedKey`     v = client->_bind( mv_layout )
+          )->a( n = `selectionChange` v = client->_event( `LAYOUT` )
+          )->ele( `items`
+              )->tag( `SegmentedButtonItem`
+                  )->a( n = `key`  v = `INLINE`
+                  )->a( n = `text` v = `Inline`
+              )->tag( `SegmentedButtonItem`
+                  )->a( n = `key`  v = `SBS`
+                  )->a( n = `text` v = `Side by side` ).
+    ENDIF.
     header->tag( `Button`
         )->a( n = `text`  v = `Expand all`
         )->a( n = `icon`  v = `sap-icon://expand-group`
@@ -608,6 +734,16 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     panel_header->tag( `ToolbarSpacer` ).
     panel_header->tag( `Text`
         )->a( n = `text` v = `{COUNTS}` ).
+    IF mv_pick = abap_true.
+      panel_header->tag( `Button`
+          )->a( n = `text` v = `All lines`
+          )->a( n = `enabled` v = `{= !!${COUNTS} && !${NOTE} }`
+          )->a( n = `press` v = client->_event( val = `PICK_ALL` arg = `${INDEX}` ) ).
+      panel_header->tag( `Button`
+          )->a( n = `text` v = `No lines`
+          )->a( n = `enabled` v = `{= !!${COUNTS} && !${NOTE} }`
+          )->a( n = `press` v = client->_event( val = `PICK_NONE` arg = `${INDEX}` ) ).
+    ENDIF.
     panel_header->tag( `Button`
         )->a( n = `text`    v = `Open`
         )->a( n = `type`    v = `Transparent`
@@ -686,6 +822,9 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         )->a( n = `growing`          v = `true`
         )->a( n = `growingThreshold` v = `500` ).
     DATA(columns) = inline->ele( `columns` ).
+    IF mv_pick = abap_true.
+      columns->ele( `Column` )->a( n = `width` v = `3rem` ).
+    ENDIF.
     columns->ele( `Column`
         )->a( n = `width` v = `5rem`
         )->tag( `Text`
@@ -703,6 +842,13 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         )->ele( `ColumnListItem`
             )->a( n = `highlight` v = `{HIGHLIGHT}`
             )->ele( `cells` ).
+    IF mv_pick = abap_true.
+      cells->tag( `CheckBox`
+          )->a( n = `selected` v = `{PICKED}`
+          )->a( n = `visible` v = `{= !!${PATCH_ID} }`
+          )->a( n = `select` v = client->_event( val = `PICK`
+                 t_arg = VALUE #( ( `${PANEL_INDEX}` ) ( `${PATCH_ID}` ) ( `${$parameters>/selected}` ) ) ) ).
+    ENDIF.
     cells->tag( `Text`
         )->a( n = `text` v = `{REMOTE_NUM}` ).
     cells->tag( `Text`
