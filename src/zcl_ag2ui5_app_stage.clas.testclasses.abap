@@ -437,7 +437,10 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS pick_all_uses_server_files FOR TESTING.
     METHODS pick_all_passes_earlier FOR TESTING.
     METHODS pick_all_needs_files FOR TESTING.
-    METHODS pick_all_button FOR TESTING.
+    METHODS pick_all_keeps_service_order FOR TESTING.
+    METHODS pick_all_passes_shown_files FOR TESTING.
+    METHODS pick_all_nothing_shown FOR TESTING.
+    METHODS pick_all_button_follows_reload FOR TESTING.
     METHODS take_picks_per_file FOR TESTING.
     METHODS take_picks_without_apply FOR TESTING.
     METHODS pick_all_back_keeps_state FOR TESTING.
@@ -576,7 +579,6 @@ CLASS ltcl_patch IMPLEMENTATION.
         object_link = `adt://A4H/example` lstate = `M` rstate = `A` remote_sha1 = `server-hash` changed_by = `ALICE` )
       ( path = `/other/` filename = `zcl_b.clas.abap` lstate = `D` changed_by = `BOB` ) ).
     mo_app->load_stage( ).
-    mo_app->mv_user_filter = `ALICE`.
     " posted rows cannot change the files, metadata or hashes handed to Diff
     mo_app->mt_rows = VALUE #( ( path = `/forged/` filename = `forged.abap` obj_name = `FORGED` ) ).
     mo_client->mv_event = `PATCH_ALL`.
@@ -614,17 +616,72 @@ CLASS ltcl_patch IMPLEMENTATION.
     mo_client->mv_event = `PATCH_ALL`.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `No files to pick lines in` ).
   ENDMETHOD.
 
-  METHOD pick_all_button.
-    mo_app->view_display( ).
-    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
-      exp = `*<Button*text="Pick lines in all files"*icon="sap-icon://multi-select"*enabled="false"*` ).
-    mo_service->ms_stage-items = CORRESPONDING #( mo_app->mt_rows ).
+  METHOD pick_all_keeps_service_order.
+    " the service's order, not the path or name order of a key
+    mo_service->ms_stage-items = VALUE #(
+      ( path = `/src/` filename = `zcl_c.clas.abap` lstate = `M` )
+      ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` )
+      ( path = `/doc/` filename = `readme.md` lstate = `M` )
+      ( path = `/src/` filename = `zcl_b.clas.abap` lstate = `M` ) ).
     mo_app->load_stage( ).
-    mo_app->view_display( ).
-    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_view
-      exp = `*<Button*text="Pick lines in all files"*icon="sap-icon://multi-select"*enabled="true"*` ).
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals(
+      act = VALUE string_table( FOR f IN lo_diff->mt_files ( f-file ) )
+      exp = VALUE string_table( ( `/src/zcl_c.clas.abap` ) ( `/src/zcl_a.clas.abap` )
+                                ( `/doc/readme.md` ) ( `/src/zcl_b.clas.abap` ) ) ).
+  ENDMETHOD.
+
+  METHOD pick_all_passes_shown_files.
+    mo_service->ms_stage-items = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` changed_by = `BOB` )
+      ( path = `/src/` filename = `zcl_b.clas.abap` lstate = `M` changed_by = `ALICE` )
+      ( path = `/src/` filename = `zcl_c.clas.abap` lstate = `M` changed_by = `ALICE` ) ).
+    mo_app->load_stage( ).
+    mo_app->take_picks( VALUE #( applied = abap_true picks = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` ids = VALUE #( ( `BOBID` ) ) total = 3 fingerprint = `fp-a` )
+      ( path = `/src/` filename = `zcl_b.clas.abap` ids = VALUE #( ( `ALICEID` ) ) total = 3 fingerprint = `fp-b` ) ) ) ).
+    mo_app->mv_user_filter = `ALICE`.
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    DATA(lo_diff) = CAST zcl_ag2ui5_app_repo_diff( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals(
+      act = VALUE string_table( FOR f IN lo_diff->mt_files ( f-file ) )
+      exp = VALUE string_table( ( `/src/zcl_b.clas.abap` ) ( `/src/zcl_c.clas.abap` ) ) ).
+    " the hidden file and its picks are not handed over, the shown file's picks are
+    DATA lv_xml TYPE string.
+    CALL TRANSFORMATION id SOURCE app = lo_diff RESULT XML lv_xml.
+    cl_abap_unit_assert=>assert_char_cp( act = lv_xml exp = `*<MT_PICKED_IN>*zcl_b.clas.abap*ALICEID*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_xml exp = `*zcl_a.clas.abap*` ).
+    cl_abap_unit_assert=>assert_char_np( act = lv_xml exp = `*BOBID*` ).
+    " the hidden file keeps its own pick in Stage
+    cl_abap_unit_assert=>assert_equals( act = lines( mo_app->mt_patches ) exp = 2 ).
+  ENDMETHOD.
+
+  METHOD pick_all_nothing_shown.
+    mo_service->ms_stage-items = VALUE #(
+      ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` changed_by = `BOB` ) ).
+    mo_app->load_stage( ).
+    mo_app->mv_user_filter = `ALICE`.
+    mo_client->mv_event = `PATCH_ALL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_called ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_message exp = `No files to pick lines in` ).
+  ENDMETHOD.
+
+  METHOD pick_all_button_follows_reload.
+    " the button state is a bound flag: every reload sets it, not only the first view
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_pick ).
+    mo_service->ms_stage-items = VALUE #( ( path = `/src/` filename = `zcl_a.clas.abap` lstate = `M` ) ).
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_can_pick ).
+    CLEAR mo_service->ms_stage-items.
+    mo_app->load_stage( ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_can_pick ).
   ENDMETHOD.
 
   METHOD take_picks_per_file.

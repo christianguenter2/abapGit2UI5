@@ -55,6 +55,9 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
     DATA mt_users TYPE ty_users.
     "! Only rows of this Changed by name are shown; empty for all
     DATA mv_user_filter TYPE string.
+    "! The Pick lines in all files button works while the stage has files;
+    "! bound, so a reload after ignore rules or a push updates it
+    DATA mv_can_pick TYPE abap_bool.
 
     CLASS-METHODS create
       IMPORTING
@@ -66,18 +69,21 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
   PROTECTED SECTION.
     TYPES:
       BEGIN OF ty_remote,
-        path     TYPE string,
-        filename TYPE string,
-        sha1     TYPE string,
-        obj_type TYPE string,
-        obj_name TYPE string,
+        path        TYPE string,
+        filename    TYPE string,
+        sha1        TYPE string,
+        obj_type    TYPE string,
+        obj_name    TYPE string,
         object_link TYPE string,
-        lstate   TYPE string,
-        rstate   TYPE string,
+        lstate      TYPE string,
+        rstate      TYPE string,
+        changed_by  TYPE string,
       END OF ty_remote,
-      ty_remotes TYPE HASHED TABLE OF ty_remote WITH UNIQUE KEY path filename.
-    "! Each stage file from the service - mt_rows comes back from the browser,
-    "! so diff hashes and the all-file list come only from this server copy
+      ty_remotes TYPE STANDARD TABLE OF ty_remote WITH EMPTY KEY
+        WITH UNIQUE HASHED KEY by_file COMPONENTS path filename.
+    "! Each stage file from the service, in its order - mt_rows comes back
+    "! from the browser, so diff hashes and the all-file list come only from
+    "! this server copy
     DATA mt_remote TYPE ty_remotes.
 
     DATA client TYPE REF TO z2ui5_if_client.
@@ -146,7 +152,7 @@ CLASS zcl_ag2ui5_app_stage DEFINITION
         iv_selected TYPE abap_bool.
     METHODS is_shown
       IMPORTING
-        is_row          TYPE ty_row
+        iv_changed_by   TYPE string
       RETURNING
         VALUE(rv_shown) TYPE abap_bool.
     "! The filter's choices: all users, the names sorted, UNKNOWN last
@@ -318,11 +324,10 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     header_content->tag( `Button`
         )->a( n = `text`  v = `Select none`
         )->a( n = `press` v = client->_event( `NONE` ) ).
-
     header_content->tag( `Button`
         )->a( n = `text`    v = `Pick lines in all files`
         )->a( n = `icon`    v = `sap-icon://multi-select`
-        )->a( n = `enabled` b = xsdbool( mt_remote IS NOT INITIAL )
+        )->a( n = `enabled` v = client->_bind( mv_can_pick )
         )->a( n = `press`   v = client->_event( `PATCH_ALL` ) ).
     header_content->tag( `Button`
         )->a( n = `text` v = `Ignore rules`
@@ -580,6 +585,8 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     DATA ls_row TYPE ty_row.
     DATA ls_remote TYPE ty_remote.
     DATA lv_known TYPE abap_bool.
+    DATA lt_files TYPE zif_ag2ui5_repo_service=>ty_status_rows.
+    DATA lt_picked TYPE zcl_ag2ui5_app_repo_diff=>ty_picks.
 
     CASE client->get_event( ).
       WHEN `BACK`.
@@ -598,7 +605,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         IF sy-subrc = 0.
           CLEAR ls_remote.
           READ TABLE mt_remote INTO ls_remote
-            WITH TABLE KEY path = ls_row-path filename = ls_row-filename.
+            WITH TABLE KEY by_file COMPONENTS path = ls_row-path filename = ls_row-filename.
           lv_known = xsdbool( sy-subrc = 0 ).
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
                                                              iv_path     = ls_row-path
@@ -615,7 +622,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         IF sy-subrc = 0.
           CLEAR ls_remote.
           READ TABLE mt_remote INTO ls_remote
-            WITH TABLE KEY path = ls_row-path filename = ls_row-filename.
+            WITH TABLE KEY by_file COMPONENTS path = ls_row-path filename = ls_row-filename.
           lv_known = xsdbool( sy-subrc = 0 ).
           client->nav_app_call( zcl_ag2ui5_app_diff=>create(
             iv_key      = mv_key
@@ -630,9 +637,21 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
             it_picked   = VALUE #( mt_patches[ path = ls_row-path filename = ls_row-filename ]-ids OPTIONAL ) ) ).
         ENDIF.
       WHEN `PATCH_ALL`.
-        IF mt_remote IS NOT INITIAL.
-          DATA(lt_files) = CORRESPONDING zif_ag2ui5_repo_service=>ty_status_rows( mt_remote MAPPING remote_sha1 = sha1 ).
-          DATA(lt_picked) = CORRESPONDING zcl_ag2ui5_app_repo_diff=>ty_picks( mt_patches ).
+        " only the files the filter shows: push leaves the others out, so
+        " their picks would never be committed. The list is the server copy
+        LOOP AT mt_remote INTO ls_remote.
+          IF is_shown( ls_remote-changed_by ) = abap_false.
+            CONTINUE.
+          ENDIF.
+          INSERT CORRESPONDING #( ls_remote MAPPING remote_sha1 = sha1 ) INTO TABLE lt_files.
+          READ TABLE mt_patches INTO DATA(ls_earlier) WITH KEY path = ls_remote-path filename = ls_remote-filename.
+          IF sy-subrc = 0.
+            INSERT CORRESPONDING #( ls_earlier ) INTO TABLE lt_picked.
+          ENDIF.
+        ENDLOOP.
+        IF lt_files IS INITIAL.
+          client->message_toast_display( `No files to pick lines in` ).
+        ELSE.
           client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
             iv_key = mv_key iv_title = mv_title it_files = lt_files iv_pick = abap_true it_picked = lt_picked ) ).
         ENDIF.
@@ -693,6 +712,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       ls_row-change = change_text( ls_row ).
       INSERT ls_row INTO TABLE mt_rows.
     ENDLOOP.
+    mv_can_pick = xsdbool( mt_remote IS NOT INITIAL ).
     load_users( ).
     IF ms_commit-name IS INITIAL.
       ms_commit-name = ls_stage-name.
@@ -736,7 +756,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
     DATA lv_selected TYPE abap_bool.
     LOOP AT mt_rows INTO DATA(ls_shown) WHERE selected = abap_true.
-      IF is_shown( ls_shown ) = abap_true.
+      IF is_shown( ls_shown-changed_by ) = abap_true.
         lv_selected = abap_true.
         EXIT.
       ENDIF.
@@ -757,7 +777,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
     LOOP AT mt_rows INTO DATA(ls_row).
       DATA(ls_item) = CORRESPONDING zif_ag2ui5_repo_service=>ty_stage_item( ls_row ).
       " a file the filter hides is never committed
-      IF is_shown( ls_row ) = abap_false.
+      IF is_shown( ls_row-changed_by ) = abap_false.
         ls_item-selected = abap_false.
       ENDIF.
       READ TABLE mt_patches INTO DATA(ls_patch)
@@ -805,7 +825,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
   METHOD select_all.
 
     LOOP AT mt_rows ASSIGNING FIELD-SYMBOL(<ls_row>).
-      IF is_shown( <ls_row> ) = abap_true.
+      IF is_shown( <ls_row>-changed_by ) = abap_true.
         <ls_row>-selected = iv_selected.
       ENDIF.
     ENDLOOP.
@@ -814,7 +834,7 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
 
   METHOD is_shown.
 
-    rv_shown = xsdbool( mv_user_filter IS INITIAL OR is_row-changed_by = mv_user_filter ).
+    rv_shown = xsdbool( mv_user_filter IS INITIAL OR iv_changed_by = mv_user_filter ).
 
   ENDMETHOD.
 
