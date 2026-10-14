@@ -3634,11 +3634,16 @@ CLASS ltd_blob_source DEFINITION FINAL FOR TESTING.
     DATA mt_objects TYPE zif_abapgit_definitions=>ty_objects_tt.
     DATA mv_error TYPE string.
     DATA mv_calls TYPE i.
+    DATA mv_runtime_error TYPE abap_bool.
 ENDCLASS.
 
 CLASS ltd_blob_source IMPLEMENTATION.
   METHOD zif_ag2ui5_blob_source~fetch.
     mv_calls = mv_calls + 1.
+    IF mv_runtime_error = abap_true.
+      DATA(lx_runtime) = NEW cx_sy_range_out_of_bounds( ).
+      RAISE EXCEPTION lx_runtime.
+    ENDIF.
     IF mv_error IS NOT INITIAL.
       zcx_abapgit_exception=>raise( mv_error ).
     ENDIF.
@@ -3664,6 +3669,7 @@ CLASS ltcl_remote_file DEFINITION FINAL FOR TESTING RISK LEVEL HARMLESS DURATION
     METHODS second_read_cached FOR TESTING RAISING zcx_abapgit_exception.
     METHODS wrong_content_falls_back FOR TESTING RAISING zcx_abapgit_exception.
     METHODS refused_falls_back FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS runtime_error_falls_back FOR TESTING RAISING zcx_abapgit_exception.
     METHODS login_error_no_fallback FOR TESTING RAISING zcx_abapgit_exception.
     METHODS known_empty_not_in_git FOR TESTING RAISING zcx_abapgit_exception.
     METHODS unknown_uses_full_fetch FOR TESTING RAISING zcx_abapgit_exception.
@@ -3721,6 +3727,15 @@ CLASS ltcl_remote_file IMPLEMENTATION.
     mo_source->mt_objects[ 1 ]-data = zcl_abapgit_convert=>string_to_xstring_utf8( |other\n| ).
     read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ).
     cl_abap_unit_assert=>assert_equals( act = lv_data exp = mo_repo->mt_remote[ 1 ]-data ).
+    cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 1 ).
+  ENDMETHOD.
+
+  METHOD runtime_error_falls_back.
+    mo_source->mv_runtime_error = abap_true.
+    read( EXPORTING iv_sha1 = mv_sha1 IMPORTING ev_data = DATA(lv_data) ev_found = DATA(lv_found) ).
+    cl_abap_unit_assert=>assert_equals( act = lv_data exp = mo_repo->mt_remote[ 1 ]-data ).
+    cl_abap_unit_assert=>assert_true( lv_found ).
+    cl_abap_unit_assert=>assert_equals( act = mo_source->mv_calls exp = 1 ).
     cl_abap_unit_assert=>assert_equals( act = mo_repo->mv_full_fetches exp = 1 ).
   ENDMETHOD.
 

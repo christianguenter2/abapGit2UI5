@@ -1443,6 +1443,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
               RAISE EXCEPTION lx_error.
             ENDIF.
             " a server that refuses single objects: the whole repository
+          CATCH cx_root.
+            " malformed protocol or pack data can also raise runtime exceptions
         ENDTRY.
       ENDIF.
     ENDIF.
@@ -2423,7 +2425,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                                  it_owners      = transport_owners( lt_remote_objects )
                        CHANGING  ct_items       = rs_stage-items ).
     " stage logic fetched and cached the full list; its remote list omits local files
-    DATA(lt_remote) = li_repo->zif_abapgit_repo~get_files_remote( ).
+    DATA(lt_remote) = li_repo->zif_abapgit_repo~get_files_remote( iv_ignore_files = abap_true ).
     DATA lt_links TYPE ty_object_links.
     LOOP AT rs_stage-items ASSIGNING FIELD-SYMBOL(<ls_row>).
       <ls_row>-remote_sha1 = remote_sha1( it_remote = lt_remote iv_path = <ls_row>-path
@@ -2877,7 +2879,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     " calculate( ) fetched the remote files already: no second request
     DATA lt_remote TYPE zif_abapgit_git_definitions=>ty_files_tt.
     IF rs_status-offline = abap_false.
-      lt_remote = li_repo->get_files_remote( ).
+      lt_remote = li_repo->get_files_remote( iv_ignore_files = abap_true ).
     ENDIF.
 
     LOOP AT rs_status-rows ASSIGNING FIELD-SYMBOL(<ls_row>).
