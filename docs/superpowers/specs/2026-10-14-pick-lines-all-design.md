@@ -30,8 +30,9 @@ at once), the server-side file list and the login handling.
   stage items, never from `mt_rows` (posted by the browser). Today's
   PROTECTED `mt_remote` (path, filename, sha1) grows into that copy: it also
   keeps `obj_type`, `obj_name`, `object_link`, `lstate`, `rstate`.
-- Rows hidden by the "Changed by" filter are still passed: the page shows
-  all Stage files. (Simple and predictable; the filter is a view filter.)
+- Only rows shown under the current "Changed by" filter are passed (Chris,
+  2026-10-14): push leaves hidden rows out, so picks on hidden files would
+  silently not be committed. No shown file: a toast, no navigation.
 - Earlier picks from `mt_patches` are passed in, so the page opens with them.
 
 ### Contract between Stage and the Diff page
