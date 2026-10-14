@@ -1,4 +1,4 @@
-"! Fetches one object with abapGit's upload-pack request ("want <hash>").
+"! Fetches one object with abapGit's upload-pack request (want and the hash).
 "! Smart HTTP servers (GitHub, GitLab, Bitbucket, Forgejo, plain Git) answer
 "! it for any object they hold; others refuse and the caller falls back
 CLASS zcl_ag2ui5_blob_source DEFINITION
