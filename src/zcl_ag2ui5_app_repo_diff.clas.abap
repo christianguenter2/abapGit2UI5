@@ -55,6 +55,24 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
         remote_label TYPE string,
       END OF ty_head.
 
+    TYPES:
+      "! One file's picked lines, as the single-file Pick lines hands them back
+      BEGIN OF ty_pick,
+        path        TYPE string,
+        filename    TYPE string,
+        ids         TYPE string_table,
+        "! Distinct patch IDs of the file
+        total       TYPE i,
+        fingerprint TYPE string,
+      END OF ty_pick,
+      ty_picks TYPE STANDARD TABLE OF ty_pick WITH EMPTY KEY,
+      BEGIN OF ty_pick_result,
+        "! Set by Apply; Back leaves it initial
+        applied TYPE abap_bool,
+        "! Only files whose panel was loaded; the others keep their Stage state
+        picks   TYPE ty_picks,
+      END OF ty_pick_result.
+
     "! Files loaded on start
     CONSTANTS c_initial TYPE i VALUE 3.
     "! Expand all stops at this many open panels
@@ -71,8 +89,17 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
         iv_title      TYPE string
         iv_zip        TYPE xstring OPTIONAL
         it_files      TYPE zif_ag2ui5_repo_service=>ty_status_rows
+        "! Pick mode: line checkboxes, Apply; the system is always the new side
+        iv_pick       TYPE abap_bool DEFAULT abap_false
+        "! Earlier picks per file; only IDs still in the diff are kept
+        it_picked     TYPE ty_picks OPTIONAL
       RETURNING
         VALUE(ro_app) TYPE REF TO zcl_ag2ui5_app_repo_diff.
+
+    "! What Apply handed back; applied is initial after Back
+    METHODS get_picks
+      RETURNING
+        VALUE(rs_result) TYPE ty_pick_result.
 
   PROTECTED SECTION.
     TYPES:
@@ -97,6 +124,12 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
     DATA mt_loaded TYPE ty_loaded_tab.
     "! abapGit asked for credentials: the login page is open, nothing more loads
     DATA mv_login_open TYPE abap_bool.
+    "! Pick mode (see create)
+    DATA mv_pick TYPE abap_bool.
+    "! Earlier picks handed in by Stage
+    DATA mt_picked_in TYPE ty_picks.
+    "! Set by Apply
+    DATA ms_pick_result TYPE ty_pick_result.
 
     METHODS service
       RETURNING
@@ -142,12 +175,18 @@ ENDCLASS.
 
 CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
 
+  METHOD get_picks.
+    rs_result = ms_pick_result.
+  ENDMETHOD.
+
   METHOD create.
 
     ro_app = NEW #( ).
     ro_app->mv_key    = iv_key.
     ro_app->mv_zip    = iv_zip.
     ro_app->mt_source = it_files.
+    ro_app->mv_pick   = iv_pick.
+    ro_app->mt_picked_in = it_picked.
     ro_app->ms_head-title = |Diff - { iv_title }|.
     ro_app->ms_head-remote_label = COND #( WHEN iv_zip IS NOT INITIAL THEN `ZIP` ELSE `Git` ).
     LOOP AT it_files INTO DATA(ls_file).
