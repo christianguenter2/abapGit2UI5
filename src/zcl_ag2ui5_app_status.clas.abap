@@ -1781,8 +1781,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD run_timer.
+    " X: no busy overlay for the tick; the last one fetches the remote (~1 s)
     client->follow_up_action( val = client->cs_event-start_timer
-      t_arg = VALUE #( ( |RUN_POLL:{ mv_run_id }| ) ( `1000` ) ) ).
+      t_arg = VALUE #( ( |RUN_POLL:{ mv_run_id }| ) ( `1000` ) ( `X` ) ) ).
   ENDMETHOD.
 
   METHOD start_text.

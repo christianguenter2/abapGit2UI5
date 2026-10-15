@@ -1743,7 +1743,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( mo_service->mv_status_calls ).
     cl_abap_unit_assert=>assert_equals( exp = `Serializing...` act = mo_app->mv_no_data ).
     cl_abap_unit_assert=>assert_equals( exp = z2ui5_if_client=>cs_event-start_timer act = mo_client->mv_follow ).
-    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ) act = mo_client->mt_args ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ( `X` ) ) act = mo_client->mt_args ).
     cl_abap_unit_assert=>assert_char_cp( exp = `*busy="{/MV_BUSY}"*` act = mo_client->mv_view ).
     FIND REGEX `<Button[^>]*enabled="\{/MV_CAN_PULL\}"[^>]*type="Emphasized"` IN mo_client->mv_view.
     cl_abap_unit_assert=>assert_subrc( ).
@@ -1807,7 +1807,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( mo_service->mv_state_calls ).
     " the ignored tick still cancelled the timer of run R2
     cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
-    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R2` ) ( `1000` ) ) act = mo_client->mt_args ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R2` ) ( `1000` ) ( `X` ) ) act = mo_client->mt_args ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_status_calls ).
     cl_abap_unit_assert=>assert_true( mo_app->mv_busy ).
   ENDMETHOD.
@@ -1892,7 +1892,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_popup ).
     cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
-    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ) act = mo_client->mt_args ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ( `X` ) ) act = mo_client->mt_args ).
     CLEAR: mo_client->mv_timer_calls, mo_client->mt_args.
     mo_client->mv_event = `LABELS_CANCEL`.
     mo_app->z2ui5_if_app~main( mo_client ).
@@ -1924,7 +1924,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     mo_client->mv_navigated = abap_true.
     mo_app->z2ui5_if_app~main( mo_client ).
     cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
-    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ) act = mo_client->mt_args ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ( `X` ) ) act = mo_client->mt_args ).
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
   ENDMETHOD.
 
