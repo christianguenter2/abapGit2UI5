@@ -3163,11 +3163,18 @@ ENDCLASS.
 CLASS ltd_repo_srv DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES zif_abapgit_repo_srv PARTIALLY IMPLEMENTED.
+    DATA mi_status_repo TYPE REF TO zif_abapgit_repo.
     DATA mv_inits TYPE i.
     DATA mv_url_error TYPE string.
 ENDCLASS.
 
 CLASS ltd_repo_srv IMPLEMENTATION.
+  METHOD zif_abapgit_repo_srv~get.
+    IF mi_status_repo IS NOT BOUND.
+      zcx_abapgit_exception=>raise( `No fixture repository` ).
+    ENDIF.
+    ri_repo = mi_status_repo.
+  ENDMETHOD.
   METHOD zif_abapgit_repo_srv~init.
     mv_inits = mv_inits + 1.
   ENDMETHOD.
@@ -3812,6 +3819,111 @@ CLASS ltcl_remote_file IMPLEMENTATION.
         zcl_ag2ui5_repo_service=>checked_blob( it_objects = mo_source->mt_objects iv_sha1 = mv_sha1 ).
         cl_abap_unit_assert=>fail( `a commit object must be refused` ).
       CATCH zcx_abapgit_exception ##NO_HANDLER.
+    ENDTRY.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltd_status_starter DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    INTERFACES zif_ag2ui5_run_starter.
+ENDCLASS.
+CLASS ltd_status_starter IMPLEMENTATION.
+  METHOD zif_ag2ui5_run_starter~start.
+    rv_started = abap_true.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltd_status_repo DEFINITION FINAL FOR TESTING.
+  PUBLIC SECTION.
+    METHODS constructor.
+    INTERFACES zif_abapgit_repo PARTIALLY IMPLEMENTED.
+ENDCLASS.
+CLASS ltd_status_repo IMPLEMENTATION.
+  METHOD constructor.
+    zif_abapgit_repo~ms_data-local_settings-labels = `background`.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo~get_name.
+    rv_name = `Background fixture`.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo~get_package.
+    rv_package = '$AG2UI5_TEST'.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo~is_offline.
+    rv_offline = abap_true.
+  ENDMETHOD.
+  METHOD zif_abapgit_repo~set_files_remote.
+    " Offline get_repo restores its ZIP; no remote fetch is needed for a head.
+  ENDMETHOD.
+ENDCLASS.
+
+CLASS ltcl_status_runs DEFINITION FINAL FOR TESTING
+  DURATION SHORT RISK LEVEL HARMLESS.
+  PRIVATE SECTION.
+    CLASS-DATA gi_environment TYPE REF TO if_osql_test_environment.
+    DATA mi_service TYPE REF TO zif_ag2ui5_repo_service.
+    CLASS-METHODS class_setup.
+    CLASS-METHODS class_teardown.
+    METHODS setup.
+    METHODS teardown.
+    METHODS start_status_returns_head FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS run_state_delegates FOR TESTING.
+    METHODS unfinished_run_raises FOR TESTING.
+ENDCLASS.
+CLASS ltcl_status_runs IMPLEMENTATION.
+  METHOD class_setup.
+    gi_environment = cl_osql_test_environment=>create( VALUE #( ( 'ZAG2UI5_RUN' ) ) ).
+  ENDMETHOD.
+  METHOD class_teardown.
+    gi_environment->destroy( ).
+  ENDMETHOD.
+  METHOD setup.
+    gi_environment->clear_doubles( ).
+    zcl_ag2ui5_status_run=>inject( NEW ltd_status_starter( ) ).
+    DATA(lo_srv) = NEW ltd_repo_srv( ).
+    DATA(lo_repo) = NEW ltd_status_repo( ).
+    lo_srv->mi_status_repo = lo_repo.
+    zcl_abapgit_repo_srv=>inject_instance( lo_srv ).
+    mi_service = NEW zcl_ag2ui5_repo_service( ).
+  ENDMETHOD.
+  METHOD teardown.
+    zcl_ag2ui5_status_run=>inject( NEW zcl_ag2ui5_run_starter( ) ).
+    zcl_abapgit_repo_srv=>inject_instance( VALUE #( ) ).
+    gi_environment->clear_doubles( ).
+  ENDMETHOD.
+  METHOD start_status_returns_head.
+    DATA(ls_start) = mi_service->start_status( `000000000025` ).
+    cl_abap_unit_assert=>assert_not_initial( ls_start-run_id ).
+    cl_abap_unit_assert=>assert_equals( act = ls_start-head-key exp = `000000000025` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_start-head-name exp = `Background fixture` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_start-head-package exp = `$AG2UI5_TEST` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_start-head-offline exp = abap_true ).
+    cl_abap_unit_assert=>assert_equals( act = ls_start-head-labels[ 1 ]-text exp = `background` ).
+    cl_abap_unit_assert=>assert_initial( ls_start-head-rows ).
+    cl_abap_unit_assert=>assert_initial( ls_start-head-remote_commit ).
+  ENDMETHOD.
+  METHOD run_state_delegates.
+    DATA lv_now TYPE timestampl.
+    GET TIME STAMP FIELD lv_now.
+    DATA lt_rows TYPE STANDARD TABLE OF zag2ui5_run WITH DEFAULT KEY.
+    lt_rows = VALUE #( ( run_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' uname = sy-uname
+                        repo_key = '000000000025' state = 'R' changed = lv_now
+                        done_count = 17 total_count = 42 ) ).
+    gi_environment->insert_test_data( lt_rows ).
+    DATA(ls_state) = mi_service->run_state( iv_run_id = `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` iv_key = `000000000025` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_state-state exp = `R` ).
+    cl_abap_unit_assert=>assert_equals( act = ls_state-done exp = 17 ).
+    cl_abap_unit_assert=>assert_equals( act = ls_state-total exp = 42 ).
+  ENDMETHOD.
+  METHOD unfinished_run_raises.
+    DATA lt_rows TYPE STANDARD TABLE OF zag2ui5_run WITH DEFAULT KEY.
+    lt_rows = VALUE #( ( run_id = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' uname = sy-uname
+                        repo_key = '000000000025' state = 'R' ) ).
+    gi_environment->insert_test_data( lt_rows ).
+    TRY.
+        mi_service->get_status( iv_key = `000000000025` iv_run_id = `AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA` ).
+        cl_abap_unit_assert=>fail( `Unfinished runs must not fetch or calculate status` ).
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        cl_abap_unit_assert=>assert_equals( act = lx_error->get_text( ) exp = `Background run is not finished` ).
     ENDTRY.
   ENDMETHOD.
 ENDCLASS.
