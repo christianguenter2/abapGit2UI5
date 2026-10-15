@@ -8,6 +8,13 @@ once it is merged, and its open points move here.
 
 ## Known limits
 
+- **Background Status runs:** a run started by Refresh or by leaving and
+  reopening Status keeps serializing until it ends; its row is removed only
+  by the same user's next start after one hour. The task runs in a dialog
+  work process, so `rdisp/max_wprun_time` limits it; a run that dies leaves
+  the page waiting until its 15-minute idle limit. Notification is by
+  polling; a websocket (abap2UI5's `Websocket` control with APC/AMC) is the
+  next step (`zcl_ag2ui5_status_run`, `zcl_ag2ui5_app_status`).
 - **URLs:** only the list, Status (`#/repo/<key>`) and the repository diff
   (`…/diff`) have URLs. App navigation adds no browser history entries;
   in-app Back/Forward is postponed, and fast overlapping manual URL edits are

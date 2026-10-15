@@ -79,7 +79,8 @@ in a container), maintain the browser's host, port and protocol for
 - **New repository:** online or offline, with an optional new local or
   transportable package.
 - **Status:** every file or every object, with local and remote change states,
-  filters and sorting.
+  filters and sorting. It opens at once and serializes the local objects in
+  the background.
 - **Diff:** inline or side by side, in context or the whole file; one page with
   all changed files; a structural summary of changed methods.
 - **Pull:** one dialog with every change grouped by risk and abapGit's defaults
