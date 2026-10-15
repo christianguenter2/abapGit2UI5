@@ -6,11 +6,7 @@ FUNCTION z_ag2ui5_serialize_local.
 *"     VALUE(IV_KEY) TYPE  STRING
 *"----------------------------------------------------------------------
 
-  " spike: replaced by zcl_ag2ui5_status_run=>serialize( )
-  WAIT UP TO 20 SECONDS.
-  DATA lv_now TYPE timestampl.
-  GET TIME STAMP FIELD lv_now.
-  UPDATE zag2ui5_run SET state = 'D' changed = lv_now WHERE run_id = iv_run_id.
-  COMMIT WORK.
+  zcl_ag2ui5_status_run=>serialize( iv_run_id = iv_run_id
+                                    iv_key    = iv_key ).
 
 ENDFUNCTION.

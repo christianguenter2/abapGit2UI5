@@ -406,6 +406,11 @@ CLASS ltd_offline_service IMPLEMENTATION.
     mv_status_zip = iv_zip.
     rs_status = ms_status.
   ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~start_status.
+    " no run ID: Status loads synchronously through get_status
+    rs_start-head = ms_status.
+    CLEAR rs_start-head-rows.
+  ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~preview_pull.
     mv_preview_zip = iv_zip.
     rs_preview = ms_preview.
@@ -1276,6 +1281,10 @@ CLASS ltd_branch_service IMPLEMENTATION.
   ENDMETHOD.
   METHOD zif_ag2ui5_repo_service~get_status.
     rs_status-branch = mv_tag.
+  ENDMETHOD.
+  METHOD zif_ag2ui5_repo_service~start_status.
+    " no run ID: Status loads synchronously through get_status
+    rs_start-head-branch = mv_tag.
   ENDMETHOD.
 ENDCLASS.
 

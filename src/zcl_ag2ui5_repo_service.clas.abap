@@ -635,6 +635,16 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
 
     METHODS silence_progress.
 
+    "! The status without remote commit and rows: registration data only
+    METHODS status_head
+      IMPORTING
+        iv_key           TYPE string
+        ii_repo          TYPE REF TO zif_abapgit_repo
+      RETURNING
+        VALUE(rs_status) TYPE zif_ag2ui5_repo_service=>ty_status
+      RAISING
+        zcx_abapgit_exception.
+
     "! abapGit's own startup authorization (its user exit can restrict it).
     "! Also the expiry of login( ): credentials unused for 30 minutes go
     METHODS assert_authorized
@@ -2844,34 +2854,64 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD zif_ag2ui5_repo_service~start_status.
+
+    assert_authorized( ).
+    silence_progress( ).
+
+    DATA(li_repo) = get_repo( iv_key ).
+    rs_start-head = status_head( iv_key = iv_key ii_repo = li_repo ).
+    rs_start-run_id = zcl_ag2ui5_status_run=>create( iv_key ).
+
+  ENDMETHOD.
+
+  METHOD zif_ag2ui5_repo_service~run_state.
+    rs_state = zcl_ag2ui5_status_run=>state( iv_run_id = iv_run_id
+                                             iv_key    = iv_key ).
+  ENDMETHOD.
+
+  METHOD status_head.
+
+    rs_status-key     = iv_key.
+    rs_status-name    = ii_repo->get_name( ).
+    rs_status-package = ii_repo->get_package( ).
+    rs_status-offline = ii_repo->is_offline( ).
+    DATA(ls_settings) = zcl_abapgit_persist_factory=>get_settings( )->read( )->get_user_settings( ).
+    rs_status-labels = repo_labels( iv_labels = ii_repo->ms_data-local_settings-labels
+                                   iv_colors = ls_settings-label_colors ).
+    IF rs_status-offline = abap_false.
+      DATA(li_online) = CAST zif_abapgit_repo_online( ii_repo ).
+      rs_status-url            = li_online->get_url( ).
+      rs_status-branch         = li_online->get_selected_branch( ).
+      rs_status-branch_display = branch_display( rs_status-branch ).
+      rs_status-branch_link    = branch_link( iv_url = rs_status-url iv_branch = rs_status-branch ).
+    ENDIF.
+    DATA lt_links TYPE ty_object_links.
+    rs_status-package_link = object_link( EXPORTING iv_obj_type = `DEVC`
+                                                    iv_obj_name = rs_status-package
+                                          CHANGING ct_links = lt_links ).
+
+  ENDMETHOD.
+
   METHOD zif_ag2ui5_repo_service~get_status.
 
     assert_authorized( ).
     silence_progress( ).
 
+    IF iv_run_id IS NOT INITIAL.
+      " contract stub: the backend task takes the run's files here
+      zcx_abapgit_exception=>raise( `Background run not found` ).
+    ENDIF.
+
     DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
     li_repo->refresh( iv_drop_cache = abap_true ).
 
-    rs_status-key           = iv_key.
-    rs_status-name          = li_repo->get_name( ).
-    rs_status-package       = li_repo->get_package( ).
-    rs_status-offline       = li_repo->is_offline( ).
-    DATA(ls_settings) = zcl_abapgit_persist_factory=>get_settings( )->read( )->get_user_settings( ).
-    rs_status-labels = repo_labels( iv_labels = li_repo->ms_data-local_settings-labels
-                                   iv_colors = ls_settings-label_colors ).
+    rs_status = status_head( iv_key = iv_key ii_repo = li_repo ).
     IF rs_status-offline = abap_false.
-      DATA(li_online) = CAST zif_abapgit_repo_online( li_repo ).
-      rs_status-url           = li_online->get_url( ).
-      rs_status-branch        = li_online->get_selected_branch( ).
-      rs_status-branch_display = branch_display( rs_status-branch ).
-      rs_status-branch_link = branch_link( iv_url = rs_status-url iv_branch = rs_status-branch ).
-      rs_status-remote_commit = li_online->get_current_remote( ).
+      rs_status-remote_commit = CAST zif_abapgit_repo_online( li_repo )->get_current_remote( ).
     ENDIF.
     rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
     DATA lt_links TYPE ty_object_links.
-    rs_status-package_link = object_link( EXPORTING iv_obj_type = `DEVC`
-                                                    iv_obj_name = rs_status-package
-                                          CHANGING ct_links = lt_links ).
     " calculate( ) fetched the remote files already: no second request
     DATA lt_remote TYPE zif_abapgit_git_definitions=>ty_files_tt.
     IF rs_status-offline = abap_false.
