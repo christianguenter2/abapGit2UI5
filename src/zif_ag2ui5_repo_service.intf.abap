@@ -119,6 +119,34 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
       rows          TYPE ty_status_rows,
     END OF ty_status.
 
+  "! States of a background Status run (ZAG2UI5_RUN)
+  CONSTANTS:
+    BEGIN OF c_run_state,
+      running TYPE string VALUE `R`,
+      done    TYPE string VALUE `D`,
+      error   TYPE string VALUE `E`,
+      "! No such run of this user and repository
+      gone    TYPE string VALUE `G`,
+    END OF c_run_state.
+
+  TYPES:
+    BEGIN OF ty_status_start,
+      "! Empty: the task did not start; load synchronously
+      run_id TYPE string,
+      "! Status without rows and without remote commit
+      head   TYPE ty_status,
+    END OF ty_status_start.
+
+  TYPES:
+    BEGIN OF ty_run_state,
+      state        TYPE string,
+      done         TYPE i,
+      total        TYPE i,
+      message      TYPE string,
+      "! Seconds since the row last changed
+      idle_seconds TYPE i,
+    END OF ty_run_state.
+
   TYPES:
     BEGIN OF ty_message,
       type     TYPE string,
@@ -496,12 +524,32 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
+  "! Starts serializing the local files in the background (aRFC); the
+  "! status head comes from the registration, without a remote fetch
+  METHODS start_status
+    IMPORTING
+      iv_key          TYPE string
+    RETURNING
+      VALUE(rs_start) TYPE ty_status_start
+    RAISING
+      zcx_abapgit_exception.
+
+  "! State of a background run of this user and repository; else gone
+  METHODS run_state
+    IMPORTING
+      iv_run_id       TYPE string
+      iv_key          TYPE string
+    RETURNING
+      VALUE(rs_state) TYPE ty_run_state.
+
   "! Fetches the remote again and compares it with the system
   METHODS get_status
     IMPORTING
       iv_key           TYPE string
       "! Original uploaded ZIP; offline only, restored on every request
       iv_zip           TYPE xstring OPTIONAL
+      "! Finished background run: its local files are used and deleted
+      iv_run_id        TYPE string OPTIONAL
     RETURNING
       VALUE(rs_status) TYPE ty_status
     RAISING

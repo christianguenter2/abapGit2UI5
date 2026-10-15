@@ -134,6 +134,19 @@ present. It is Git-ignored.
   `checked_blob` and caches it per request. Refusals fall back to the full
   fetch; login errors do not. Commit/push and the object overview keep the
   full fetch.
+- **Background Status runs:** Status calls `start_status`, which writes a
+  row in `ZAG2UI5_RUN` and starts `Z_AG2UI5_SERIALIZE_LOCAL` as aRFC
+  (`ZCL_AG2UI5_RUN_STARTER`, no callback). The task only serializes local
+  files (`ZCL_AG2UI5_STATUS_RUN=>serialize`): never Git, never credentials,
+  since the login lives in the HTTP session. Status polls with
+  `start_timer` (`RUN_POLL:<run id>`, the run ID stays PROTECTED) and re-arms
+  the timer at the end of every round trip that stays on the page, because
+  abap2UI5 cancels the timer on every round trip. When the run is done,
+  `get_status( iv_run_id )` takes the files (rows are read, updated and
+  deleted only for `sy-uname` and the repository key), fetches the remote
+  and calculates through `ZCL_AG2UI5_REPO_LOCAL_FILES`. No task start: Status
+  loads synchronously. Status only displays; pull, push, previews and Stage
+  load fresh and synchronously.
 - **User settings** (the apps' toggles, table `ZAG2UI5_SETTING`) go through
   `ZCL_AG2UI5_SETTINGS`, not the service: they have nothing to do with
   abapGit. It always uses `sy-uname`, and its `set( )` commits itself. Apps
@@ -176,7 +189,9 @@ row of abapGit's four check tables needs a decision, or abapGit's
 - ABAP Unit runs only on a system (`ZCL_AG2UI5_REPO_SERVICE`,
   `ZCL_AG2UI5_SETTINGS`, `ZCL_AG2UI5_APP_STAGE`, `ZCL_AG2UI5_APP_DIFF`,
   `ZCL_AG2UI5_APP_STATUS`, `ZCL_AG2UI5_APP_REPOS`, `ZCL_AG2UI5_APP_NEW_REPO`,
-  `ZCL_AG2UI5_APP_REPO_DIFF`, `ZCL_AG2UI5_APP_LOGIN`, `ZCL_AG2UI5_HTTP`).
+  `ZCL_AG2UI5_APP_REPO_DIFF`, `ZCL_AG2UI5_APP_LOGIN`, `ZCL_AG2UI5_HTTP`,
+  `ZCL_AG2UI5_STATUS_RUN`, `ZCL_AG2UI5_PROGRESS_RUN`,
+  `ZCL_AG2UI5_REPO_LOCAL_FILES`).
   A client double that is
   `PARTIALLY IMPLEMENTED` raises on the kernel for every method it leaves
   out: building a view needs `_bind` and `_event`.
