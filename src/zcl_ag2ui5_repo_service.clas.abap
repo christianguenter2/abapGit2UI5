@@ -2856,8 +2856,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
   METHOD zif_ag2ui5_repo_service~start_status.
 
-    assert_authorized( ).
     silence_progress( ).
+    assert_authorized( ).
 
     DATA(li_repo) = get_repo( iv_key ).
     rs_start-head = status_head( iv_key = iv_key ii_repo = li_repo ).
@@ -2898,9 +2898,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     assert_authorized( ).
     silence_progress( ).
 
+    DATA lt_files TYPE zif_abapgit_definitions=>ty_files_item_tt.
     IF iv_run_id IS NOT INITIAL.
-      " contract stub: the backend task takes the run's files here
-      zcx_abapgit_exception=>raise( `Background run not found` ).
+      lt_files = zcl_ag2ui5_status_run=>take_files( iv_run_id = iv_run_id iv_key = iv_key ).
     ENDIF.
 
     DATA(li_repo) = get_repo( iv_key = iv_key iv_zip = iv_zip ).
@@ -2910,7 +2910,12 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     IF rs_status-offline = abap_false.
       rs_status-remote_commit = CAST zif_abapgit_repo_online( li_repo )->get_current_remote( ).
     ENDIF.
-    rs_status-rows          = status_rows( zcl_abapgit_repo_status=>calculate( li_repo ) ).
+    DATA li_status_repo TYPE REF TO zif_abapgit_repo.
+    li_status_repo = li_repo.
+    IF iv_run_id IS NOT INITIAL.
+      li_status_repo = NEW zcl_ag2ui5_repo_local_files( ii_repo = li_repo it_files = lt_files ).
+    ENDIF.
+    rs_status-rows = status_rows( zcl_abapgit_repo_status=>calculate( li_status_repo ) ).
     DATA lt_links TYPE ty_object_links.
     " calculate( ) fetched the remote files already: no second request
     DATA lt_remote TYPE zif_abapgit_git_definitions=>ty_files_tt.
