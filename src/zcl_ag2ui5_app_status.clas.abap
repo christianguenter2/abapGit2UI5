@@ -85,6 +85,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_view         TYPE string VALUE `ALL`.
     "! What the empty table says - "match" only once a status was loaded
     DATA mv_no_data      TYPE string.
+    DATA mv_busy         TYPE abap_bool.
+    DATA mv_can_pull     TYPE abap_bool.
     DATA ms_decisions    TYPE ty_decisions.
     "! Stage is offered online, including rule management with no local changes
     DATA mv_can_stage    TYPE abap_bool.
@@ -182,6 +184,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mt_status TYPE zif_ag2ui5_repo_service=>ty_status_rows.
     "! Set once a status was loaded, for the empty table's text
     DATA mv_loaded TYPE abap_bool.
+    DATA mv_run_id TYPE string.
     "! Which requests the open dialog asks for (request types, not bound)
     DATA:
       BEGIN OF ms_transport_types,
@@ -231,6 +234,10 @@ CLASS zcl_ag2ui5_app_status DEFINITION
 
     METHODS on_event.
     METHODS load_status.
+    METHODS head_apply IMPORTING is_head TYPE zif_ag2ui5_repo_service=>ty_status.
+    METHODS status_apply IMPORTING is_status TYPE zif_ag2ui5_repo_service=>ty_status.
+    METHODS run_poll.
+    METHODS run_timer.
     METHODS rows_build.
     METHODS preview_pull.
     METHODS pull_selected.
@@ -320,7 +327,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         popup_labels_display( ).
       ENDIF.
     ELSEIF client->check_on_event( ).
-      on_event( ).
+      IF client->get_event( ) CP `RUN_POLL:*`.
+        run_poll( ).
+      ELSE.
+        on_event( ).
+      ENDIF.
     ENDIF.
 
   ENDMETHOD.
@@ -387,6 +398,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     header_content->ele( `Button`
         )->a( n = `text`  v = client->_bind( mv_pull_text )
         )->a( n = `icon`  v = `sap-icon://download`
+        )->a( n = `enabled` v = client->_bind( mv_can_pull )
         )->a( n = `type`  v = `Emphasized`
         )->a( n = `press` v = client->_event( `PULL` )
         )->ele( `layoutData`
@@ -461,6 +473,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(table) = content->ele( `Table`
         )->a( n = `items`               v = client->_bind( mt_rows )
+        )->a( n = `busy`                v = client->_bind( mv_busy )
         )->a( n = `noDataText`          v = client->_bind( mv_no_data )
         )->a( n = `growing`             v = `true`
         )->a( n = `growingThreshold`    v = `200`
@@ -1673,6 +1686,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         ENDIF.
         CLEAR: mv_delete_branch, mv_delete_sha1.
       WHEN `PULL`.
+        IF mv_run_id IS NOT INITIAL.
+          RETURN.
+        ENDIF.
         IF mv_offline = abap_true.
           popup_upload_display( ).
         ELSE.
@@ -1727,8 +1743,18 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD load_status.
 
     CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
+    CLEAR: mv_run_id, mv_busy, mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage, mv_can_pull.
     TRY.
-        DATA(ls_status) = service( )->get_status( iv_key = mv_key iv_zip = mv_zip ).
+        DATA(ls_start) = service( )->start_status( mv_key ).
+        IF ls_start-run_id IS INITIAL.
+          status_apply( service( )->get_status( iv_key = mv_key iv_zip = mv_zip ) ).
+        ELSE.
+          head_apply( ls_start-head ).
+          mv_run_id = ls_start-run_id.
+          mv_busy = abap_true.
+          mv_no_data = `Serializing...`.
+          run_timer( ).
+        ENDIF.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff.
         mv_no_data = `Status could not be loaded`.
@@ -1736,20 +1762,82 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
-    mv_loaded = abap_true.
-    mv_offline = ls_status-offline.
+  ENDMETHOD.
+
+  METHOD run_timer.
+    client->follow_up_action( val = client->cs_event-start_timer
+      t_arg = VALUE #( ( |RUN_POLL:{ mv_run_id }| ) ( `1000` ) ) ).
+  ENDMETHOD.
+
+  METHOD run_poll.
+    IF mv_run_id IS INITIAL OR client->get_event( ) <> |RUN_POLL:{ mv_run_id }|.
+      RETURN.
+    ENDIF.
+    DATA(ls_state) = service( )->run_state( iv_run_id = mv_run_id iv_key = mv_key ).
+    IF ls_state-state = zif_ag2ui5_repo_service=>c_run_state-running AND ls_state-idle_seconds <= 900.
+      mv_no_data = `Serializing...`.
+      IF ls_state-total > 0.
+        " Stable grouping regardless of the logged-on user's number format
+        DATA(lv_done) = |{ ls_state-done NUMBER = RAW }|.
+        DATA(lv_total) = |{ ls_state-total NUMBER = RAW }|.
+        DATA(lv_offset) = strlen( lv_done ) - 3.
+        WHILE lv_offset > 0.
+          lv_done = substring( val = lv_done len = lv_offset ) && `,` && substring( val = lv_done off = lv_offset ).
+          lv_offset = lv_offset - 3.
+        ENDWHILE.
+        lv_offset = strlen( lv_total ) - 3.
+        WHILE lv_offset > 0.
+          lv_total = substring( val = lv_total len = lv_offset ) && `,` && substring( val = lv_total off = lv_offset ).
+          lv_offset = lv_offset - 3.
+        ENDWHILE.
+        mv_no_data = |Serializing { lv_done } / { lv_total }|.
+      ENDIF.
+      run_timer( ).
+      RETURN.
+    ENDIF.
+
+    DATA(lv_run_id) = mv_run_id.
+    CLEAR: mv_run_id, mv_busy.
+    TRY.
+        IF ls_state-state = zif_ag2ui5_repo_service=>c_run_state-done.
+          status_apply( service( )->get_status( iv_key = mv_key iv_zip = mv_zip iv_run_id = lv_run_id ) ).
+        ELSE.
+          DATA(lv_message) = COND string(
+            WHEN ls_state-message IS NOT INITIAL THEN ls_state-message
+            WHEN ls_state-state = zif_ag2ui5_repo_service=>c_run_state-running
+              THEN `Background serialization has not made progress for 15 minutes. Refresh to try again.`
+            ELSE `Background run is no longer available. Refresh to try again.` ).
+          zcx_abapgit_exception=>raise( lv_message ).
+        ENDIF.
+      CATCH zcx_abapgit_exception INTO DATA(lx_error).
+        CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage, mv_can_pull.
+        mv_no_data = `Status could not be loaded`.
+        view_display( ).
+        show_error( lx_error ).
+        RETURN.
+    ENDTRY.
+    view_display( ).
+  ENDMETHOD.
+
+  METHOD head_apply.
+    mv_offline = is_head-offline.
     mv_remote_label = COND #( WHEN mv_offline = abap_true THEN `ZIP` ELSE `Remote` ).
     mv_pull_text = COND #( WHEN mv_offline = abap_true THEN `Import ZIP` ELSE `Pull` ).
     mv_row_type = COND #( WHEN mv_offline = abap_true AND mv_zip IS INITIAL THEN `Inactive` ELSE `Navigation` ).
     " Rule removal must stay reachable after all ignored files were committed
-    mv_is_tag = xsdbool( ls_status-branch CP `refs/tags/*` ).
-    mv_can_stage = xsdbool( mv_offline = abap_false AND mv_is_tag = abap_false ).
-    ms_head = CORRESPONDING #( ls_status ).
-    ms_head-remote_commit = COND #( WHEN strlen( ls_status-remote_commit ) > 7
-                                    THEN substring( val = ls_status-remote_commit len = 7 )
-                                    ELSE ls_status-remote_commit ).
+    mv_is_tag = xsdbool( is_head-branch CP `refs/tags/*` ).
+    mv_can_stage = xsdbool( mv_loaded = abap_true AND mv_offline = abap_false AND mv_is_tag = abap_false ).
+    ms_head = CORRESPONDING #( is_head ).
+    ms_head-remote_commit = COND #( WHEN strlen( is_head-remote_commit ) > 7
+                                     THEN substring( val = is_head-remote_commit len = 7 )
+                                     ELSE is_head-remote_commit ).
+  ENDMETHOD.
 
-    mt_status = ls_status-rows.
+  METHOD status_apply.
+    mv_loaded = abap_true.
+    mv_can_pull = abap_true.
+    head_apply( is_status ).
+    mt_status = is_status-rows.
     mv_can_diff = can_repo_diff( ).
     rows_build( ).
   ENDMETHOD.
