@@ -31,6 +31,34 @@ Texts marked with `>` are ready to post (Chris files them).
 > broke on it. A flag in `ty_diff` (or on the diff object) would keep the line
 > texts clean. Low priority.
 
+### H. Status from local files serialized beforehand
+
+> **Title:** `zif_abapgit_repo~set_files_local`, the counterpart of `set_files_remote`
+>
+> Serializing local objects is the slow part of a status: on a repository
+> with ~650 objects, `get_files_local( )` takes 6.5 s with parallel
+> processing on, the remote fetch 1.3 s and `zcl_abapgit_repo_status=>calculate`
+> 16 ms. A caller that serializes in a background task (abapGit2UI5 does it
+> in an aRFC task, so its web page opens at once) cannot hand the result
+> back to abapGit: `mt_local` is only filled by `get_files_local( )` itself.
+> abapGit2UI5 therefore wraps the repository in a class that implements all
+> of `zif_abapgit_repo` only to replace `get_files_local`, which breaks with
+> every new interface method.
+>
+> Proposal, mirroring `set_files_remote`:
+>
+> ```abap
+> METHOD zif_abapgit_repo~set_files_local.
+>   mt_local = it_files.
+>   mv_request_local_refresh = abap_false.
+> ENDMETHOD.
+> ```
+>
+> `calculate( )` then uses the given files through the existing cache
+> check in `get_files_local`. The files are expected as `get_files_local( )`
+> returns them (locally excluded files already removed). Related to #7941
+> (pull and push without the UI layer).
+
 ### Proposal: replaceable popups
 
 `ZCL_ABAPGIT_UI_INJECTOR` is `FOR TESTING`, so a headless caller (ADT
