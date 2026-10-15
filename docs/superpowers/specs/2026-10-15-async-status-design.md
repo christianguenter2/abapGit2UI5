@@ -121,8 +121,9 @@ today.
   instead of the repository itself. Without `iv_run_id` nothing changes.
 - The wrapper (new local class or `ZCL_AG2UI5_REPO_LOCAL_FILES`) implements
   `zif_abapgit_repo` by delegating every method to the real repository,
-  except `get_files_local` and `get_files_local_filtered`, which return the
-  stored files (filtered with the given object filter as abapGit does). It
+  except `get_files_local`, which returns the stored files
+  (`get_status` uses no object filter, so `get_files_local_filtered`
+  delegates too). It
   copies `ms_data` from the repository. `calculate` uses only the interface
   and `ms_data` (checked on 2026-10-15).
 - Pull, push, previews, Stage and the `.../diff` route keep their
