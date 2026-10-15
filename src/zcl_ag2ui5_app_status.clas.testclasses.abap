@@ -1683,6 +1683,13 @@ CLASS ltcl_runs DEFINITION FINAL FOR TESTING
     METHODS start_error_clears_run FOR TESTING.
     METHODS done_fetch_error_stops_poll FOR TESTING.
     METHODS poll_without_run_is_ignored FOR TESTING.
+    METHODS start_run IMPORTING iv_event TYPE string OPTIONAL.
+    METHODS other_event_keeps_polling FOR TESTING.
+    METHODS refused_event_keeps_polling FOR TESTING.
+    METHODS return_keeps_polling FOR TESTING.
+    METHODS leaving_does_not_poll FOR TESTING.
+    METHODS no_run_no_timer FOR TESTING.
+    METHODS start_text_needs_commit FOR TESTING.
 ENDCLASS.
 
 CLASS ltcl_runs IMPLEMENTATION.
@@ -1712,7 +1719,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( mo_app->mv_loaded ).
     cl_abap_unit_assert=>assert_false( mo_app->mv_can_stage ).
     cl_abap_unit_assert=>assert_false( mo_app->mv_can_diff ).
-    cl_abap_unit_assert=>assert_false( mo_app->mv_can_pull ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_can_pull ).
     cl_abap_unit_assert=>assert_initial( mo_app->mt_rows ).
     cl_abap_unit_assert=>assert_equals( exp = `Status could not be loaded` act = mo_app->mv_no_data ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
@@ -1798,7 +1805,9 @@ CLASS ltcl_runs IMPLEMENTATION.
     poll( zif_ag2ui5_repo_service=>c_run_state-done ).
     cl_abap_unit_assert=>assert_equals( exp = `R2` act = mo_app->mv_run_id ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_state_calls ).
-    cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
+    " the ignored tick still cancelled the timer of run R2
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R2` ) ( `1000` ) ) act = mo_client->mt_args ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_status_calls ).
     cl_abap_unit_assert=>assert_true( mo_app->mv_busy ).
   ENDMETHOD.
@@ -1849,6 +1858,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( mo_app->mv_busy ).
     cl_abap_unit_assert=>assert_false( mo_app->mv_can_stage ).
     cl_abap_unit_assert=>assert_equals( exp = `Start failed` act = mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_can_pull ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
   ENDMETHOD.
 
@@ -1865,5 +1875,97 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_initial( mo_service->mv_state_calls ).
     cl_abap_unit_assert=>assert_initial( mo_service->mv_status_calls ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
+  ENDMETHOD.
+
+  METHOD start_run.
+    " opens the page with a run active; the next round trip is iv_event
+    mo_client->mv_init = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    mo_client->mv_init = abap_false.
+    mo_client->mv_event = iv_event.
+    CLEAR: mo_client->mv_timer_calls, mo_client->mv_follow, mo_client->mt_args.
+  ENDMETHOD.
+
+  METHOD other_event_keeps_polling.
+    mo_service->mt_repos = VALUE #( ( key = `1` ) ).
+    start_run( `LABELS_EDIT` ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ) act = mo_client->mt_args ).
+    CLEAR: mo_client->mv_timer_calls, mo_client->mt_args.
+    mo_client->mv_event = `LABELS_CANCEL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    CLEAR mo_client->mv_timer_calls.
+    mo_client->mv_event = `NO_ACTION`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_busy ).
+    cl_abap_unit_assert=>assert_equals( exp = `R1` act = mo_app->mv_run_id ).
+  ENDMETHOD.
+
+  METHOD refused_event_keeps_polling.
+    " Stage is not offered while the status loads: the refusal leaves nothing behind
+    start_run( `STAGE` ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mo_called ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    CLEAR mo_client->mv_timer_calls.
+    mo_client->mv_event = `PULL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+  ENDMETHOD.
+
+  METHOD return_keeps_polling.
+    " back from the login app without a login: the run is still going
+    start_run( ).
+    mo_client->mv_navigated = abap_true.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    cl_abap_unit_assert=>assert_equals( exp = VALUE string_table( ( `RUN_POLL:R1` ) ( `1000` ) ) act = mo_client->mt_args ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD leaving_does_not_poll.
+    start_run( `BACK` ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_true( mo_client->mv_left ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
+    " the flag is per round trip: the next one on this page polls again
+    mo_client->mv_event = `NO_ACTION`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+    " a label filter leaves the page too
+    CLEAR mo_client->mv_timer_calls.
+    mo_app->ms_head-labels = VALUE #( ( text = `core` ) ).
+    mo_client->mt_args = VALUE #( ( `core` ) ).
+    mo_client->mv_event = `HEADER_LABEL`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `LABEL_FILTER:core` act = mo_client->mv_leave_data ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
+  ENDMETHOD.
+
+  METHOD no_run_no_timer.
+    CLEAR mo_service->mv_run_id.
+    start_run( `NO_ACTION` ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
+  ENDMETHOD.
+
+  METHOD start_text_needs_commit.
+    " while the run is active the head has no remote commit
+    mo_service->ms_status-remote_commit = ``.
+    start_run( `BRANCH_BACK` ).
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `Starts from: main` act = mo_app->mv_start_text ).
+    mo_service->ms_status-remote_commit = `1234567890`.
+    mo_app->load_status( ).
+    mo_app->mv_run_id = `R1`.
+    poll( zif_ag2ui5_repo_service=>c_run_state-done ).
+    mo_client->mv_event = `BRANCH_BACK`.
+    mo_app->z2ui5_if_app~main( mo_client ).
+    cl_abap_unit_assert=>assert_equals( exp = `Starts from: main at 1234567` act = mo_app->mv_start_text ).
   ENDMETHOD.
 ENDCLASS.

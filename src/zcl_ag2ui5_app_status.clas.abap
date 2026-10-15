@@ -185,6 +185,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! Set once a status was loaded, for the empty table's text
     DATA mv_loaded TYPE abap_bool.
     DATA mv_run_id TYPE string.
+    "! The round trip leaves the page (nav_app_call/nav_app_leave): no poll is armed
+    DATA mv_leaving TYPE abap_bool.
     "! Which requests the open dialog asks for (request types, not bound)
     DATA:
       BEGIN OF ms_transport_types,
@@ -237,6 +239,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     METHODS head_apply IMPORTING is_head TYPE zif_ag2ui5_repo_service=>ty_status.
     METHODS status_apply IMPORTING is_status TYPE zif_ag2ui5_repo_service=>ty_status.
     METHODS run_poll.
+    METHODS start_text RETURNING VALUE(rv_text) TYPE string.
     METHODS run_timer.
     METHODS rows_build.
     METHODS preview_pull.
@@ -286,6 +289,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD z2ui5_if_app~main.
 
     me->client = client.
+    CLEAR mv_leaving.
     IF client->get_event( ) = `ROUTE_CHANGED`.
       zcl_ag2ui5_app_repos=>route_dispatch( client ).
       RETURN.
@@ -332,6 +336,12 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       ELSE.
         on_event( ).
       ENDIF.
+    ENDIF.
+
+    " every round trip cancels abap2UI5's one timer: whichever event arrived, a
+    " running load keeps polling unless this page was left
+    IF mv_run_id IS NOT INITIAL AND mv_leaving = abap_false.
+      run_timer( ).
     ENDIF.
 
   ENDMETHOD.
@@ -1276,7 +1286,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                       can_delete = xsdbool( ls_branch-current = abap_false AND ls_branch-default = abap_false ) )
         INTO TABLE mt_branches.
     ENDLOOP.
-    mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
+    mv_start_text = start_text( ).
     CLEAR: mv_new_name, mv_new_mode, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
     CLEAR: mt_tags, mv_delete_tag, mv_delete_tag_sha1.
     mv_ref_tab = COND #( WHEN mv_is_tag = abap_true THEN `TAGS` ELSE `BRANCHES` ).
@@ -1559,6 +1569,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           RETURN.
         ENDIF.
         client->popup_destroy( ).
+        mv_leaving = abap_true.
         client->nav_app_call( zcl_ag2ui5_app_diff=>create(
           iv_key = mv_key iv_zip = mv_zip iv_path = ls_semantic-path iv_filename = ls_semantic-filename
           iv_obj_type = ls_semantic_file-obj_type iv_obj_name = ls_semantic_file-obj_name
@@ -1575,6 +1586,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         IF mv_can_stage = abap_false.
           RETURN.
         ENDIF.
+        mv_leaving = abap_true.
         client->nav_app_call( zcl_ag2ui5_app_stage=>create( iv_key = mv_key iv_title = ms_head-name ) ).
       WHEN `DIFF`.
         IF mv_offline = abap_true AND mv_zip IS INITIAL.
@@ -1590,6 +1602,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           READ TABLE mt_status INTO DATA(ls_server)
             WITH KEY path = ls_row-path filename = ls_row-filename.
           DATA(lv_known) = xsdbool( sy-subrc = 0 ).
+          mv_leaving = abap_true.
           client->nav_app_call( zcl_ag2ui5_app_diff=>create( iv_key      = mv_key
                                                              iv_zip      = mv_zip
                                                              iv_path     = ls_row-path
@@ -1656,7 +1669,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         CLEAR: mv_delete_tag, mv_delete_tag_sha1.
       WHEN `BRANCH_BACK`.
         CLEAR: mv_new_mode, mv_tag_new_mode, ms_new_tag, ms_tag_expected.
-        mv_start_text = |Starts from: { ms_head-branch_display } at { ms_head-remote_commit }|.
+        mv_start_text = start_text( ).
       WHEN `BRANCH_CREATE`.
         IF mv_new_mode = abap_true AND mv_offline = abap_false.
           IF mv_tag_new_mode = abap_true AND mv_ref_tab = `TAGS` AND ms_tag_expected-sha1 IS NOT INITIAL.
@@ -1717,6 +1730,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD leave_list.
     zcl_ag2ui5_app_repos=>write_route( client ).
+    mv_leaving = abap_true.
     IF client->check_app_prev_stack( ).
       client->nav_app_leave( r_data = iv_message ).
     ELSE.
@@ -1731,6 +1745,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     " every changed file in file order, independent of filter and sort
     DATA(lt_changed) = mt_status.
     DELETE lt_changed WHERE changed = abap_false.
+    mv_leaving = abap_true.
     client->nav_app_call( zcl_ag2ui5_app_repo_diff=>create(
       iv_key   = mv_key
       iv_title = ms_head-name
@@ -1743,7 +1758,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD load_status.
 
     CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
-    CLEAR: mv_run_id, mv_busy, mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage, mv_can_pull.
+    CLEAR: mv_run_id, mv_busy, mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage.
     TRY.
         DATA(ls_start) = service( )->start_status( mv_key ).
         IF ls_start-run_id IS INITIAL.
@@ -1752,11 +1767,12 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           head_apply( ls_start-head ).
           mv_run_id = ls_start-run_id.
           mv_busy = abap_true.
+          mv_can_pull = abap_false.
           mv_no_data = `Serializing...`.
-          run_timer( ).
         ENDIF.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff.
+        mv_can_pull = abap_true.
         mv_no_data = `Status could not be loaded`.
         show_error( lx_error ).
         RETURN.
@@ -1767,6 +1783,13 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD run_timer.
     client->follow_up_action( val = client->cs_event-start_timer
       t_arg = VALUE #( ( |RUN_POLL:{ mv_run_id }| ) ( `1000` ) ) ).
+  ENDMETHOD.
+
+  METHOD start_text.
+    rv_text = |Starts from: { ms_head-branch_display }|.
+    IF ms_head-remote_commit IS NOT INITIAL.
+      rv_text = |{ rv_text } at { ms_head-remote_commit }|.
+    ENDIF.
   ENDMETHOD.
 
   METHOD run_poll.
@@ -1792,7 +1815,6 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         ENDWHILE.
         mv_no_data = |Serializing { lv_done } / { lv_total }|.
       ENDIF.
-      run_timer( ).
       RETURN.
     ENDIF.
 
@@ -1810,7 +1832,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
           zcx_abapgit_exception=>raise( lv_message ).
         ENDIF.
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
-        CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage, mv_can_pull.
+        CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage.
+        mv_can_pull = abap_true.
         mv_no_data = `Status could not be loaded`.
         view_display( ).
         show_error( lx_error ).
@@ -2063,6 +2086,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     IF zcl_ag2ui5_repo_service=>login_required( ix_error ) = abap_true.
       " abapGit's user exit has no credentials for this remote
       client->popup_destroy( ).
+      mv_leaving = abap_true.
       client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
       RETURN.
     ENDIF.
