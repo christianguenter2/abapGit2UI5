@@ -7,9 +7,9 @@
     <LANGU>E</LANGU>
     <DESCRIPT>abapGit2UI5 - Progress into a run row</DESCRIPT>
     <STATE>1</STATE>
-    <WITH_UNIT_TESTS>X</WITH_UNIT_TESTS>
     <FIXPT>X</FIXPT>
     <UNICODE>X</UNICODE>
+    <WITH_UNIT_TESTS>X</WITH_UNIT_TESTS>
    </VSEOCLASS>
   </asx:values>
  </asx:abap>
