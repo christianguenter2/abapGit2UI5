@@ -121,6 +121,45 @@ Use the conventional abapGit UI for what is missing here, for updating
 abapGit, abap2UI5 or this frontend itself (that code is running in the browser
 session), and for interpreting a conventional `.gitignore`.
 
+## Architecture
+
+Every page is an abap2UI5 app. Only `ZCL_AG2UI5_REPO_SERVICE` talks to
+abapGit, and it hands the apps plain data.
+
+```mermaid
+flowchart TB
+    browser["Browser<br/>UI5, rendered by abap2UI5"]
+
+    subgraph sap["SAP system"]
+        http["ICF node /sap/bc/zabapgit2ui5<br/>ZCL_AG2UI5_HTTP"]
+        z2ui5["abap2UI5<br/>z2ui5_cl_http_handler"]
+        apps["Apps<br/>ZCL_AG2UI5_APP_*"]
+        settings["ZCL_AG2UI5_SETTINGS<br/>table ZAG2UI5_SETTING"]
+        service["ZCL_AG2UI5_REPO_SERVICE<br/>plain data in and out,<br/>checks everything again"]
+        helpers["Helpers<br/>PROGRESS_SILENT, OBJECT_FILTER,<br/>BLOB_SOURCE"]
+        run["Background runs<br/>RUN_STARTER, STATUS_RUN,<br/>table ZAG2UI5_RUN"]
+        abapgit["abapGit<br/>repositories, serializer, Git client"]
+        objects[("SAP objects<br/>TADIR, sources, DDIC")]
+    end
+
+    remote[("Git remote<br/>GitHub, GitLab, ...")]
+
+    browser <-->|"JSON over HTTPS"| http
+    http --> z2ui5
+    z2ui5 <--> apps
+    apps --> settings
+    apps --> service
+    service --> helpers
+    service --> run
+    service --> abapgit
+    run --> abapgit
+    abapgit <--> objects
+    abapgit <-->|"Git smart HTTP"| remote
+```
+
+More in [docs/architecture.md](docs/architecture.md): one round trip, the
+background Status run and the navigation between pages.
+
 ## How a pull decides
 
 Every object appears once, in its most dangerous group:
