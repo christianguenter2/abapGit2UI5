@@ -1,3 +1,9 @@
+> [!WARNING]
+> **EXPERIMENTAL.** This is a playground, not a product. Expect breaking
+> changes, rough edges and bugs, and do not use it on production systems.
+> Tested end to end on one SAP NetWeaver 7.5x system (A4H) only; other
+> releases are untested.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/logos/abapgit2ui5-dark.svg">
@@ -11,9 +17,6 @@ A browser frontend for [abapGit](https://github.com/abapGit/abapGit), built with
 [abap2UI5](https://github.com/abap2UI5/abap2UI5). It uses the same abapGit
 repositories and serialization, but runs in any browser instead of the SAP GUI
 HTML control.
-
-**Status: experimental.** Tested end to end on one SAP NetWeaver 7.5x system
-(A4H). Other releases are untested.
 
 ![Structural method review and side-by-side ABAP diff in test_codeberg](docs/screenshots/demo-diff.jpg)
 
