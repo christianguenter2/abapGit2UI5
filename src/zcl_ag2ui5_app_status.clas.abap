@@ -185,6 +185,9 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! Set once a status was loaded, for the empty table's text
     DATA mv_loaded TYPE abap_bool.
     DATA mv_run_id TYPE string.
+    "! An uploaded ZIP waits for the run: its last poll redraws the view,
+    "! which would close a pull dialog opened before
+    DATA mv_pull_pending TYPE abap_bool.
     "! The round trip leaves the page (nav_app_call/nav_app_leave): no poll is armed
     DATA mv_leaving TYPE abap_bool.
     "! Which requests the open dialog asks for (request types, not bound)
@@ -1758,7 +1761,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
   METHOD load_status.
 
     CLEAR: mv_files_open, mt_object_files, mv_files_title, mt_object_summary, mt_semantic, mv_object_summary_note.
-    CLEAR: mv_run_id, mv_busy, mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage.
+    CLEAR: mv_run_id, mv_busy, mv_pull_pending, mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage.
     TRY.
         DATA(ls_start) = service( )->start_status( mv_key ).
         IF ls_start-run_id IS INITIAL.
@@ -1820,7 +1823,8 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDIF.
 
     DATA(lv_run_id) = mv_run_id.
-    CLEAR: mv_run_id, mv_busy.
+    DATA(lv_pull) = mv_pull_pending.
+    CLEAR: mv_run_id, mv_busy, mv_pull_pending.
     TRY.
         IF ls_state-state = zif_ag2ui5_repo_service=>c_run_state-done.
           status_apply( service( )->get_status( iv_key = mv_key iv_zip = mv_zip iv_run_id = lv_run_id ) ).
@@ -1841,6 +1845,9 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         RETURN.
     ENDTRY.
     view_display( ).
+    IF lv_pull = abap_true.
+      preview_pull( ).
+    ENDIF.
   ENDMETHOD.
 
   METHOD head_apply.
@@ -2062,7 +2069,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     client->popup_destroy( ).
     load_status( ).
     view_display( ).
-    preview_pull( ).
+    IF mv_run_id IS INITIAL.
+      preview_pull( ).
+    ELSE.
+      mv_pull_pending = abap_true.
+    ENDIF.
 
   ENDMETHOD.
 

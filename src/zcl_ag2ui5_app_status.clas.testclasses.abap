@@ -481,6 +481,9 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS online_controls FOR TESTING.
     METHODS clean_online_can_manage_rules FOR TESTING.
     METHODS upload_preview FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS upload_waits_for_run FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS upload_run_error_no_preview FOR TESTING RAISING zcx_abapgit_exception.
+    METHODS refresh_drops_pending_upload FOR TESTING RAISING zcx_abapgit_exception.
     METHODS invalid_keeps_previous FOR TESTING.
     METHODS cancel_keeps_previous FOR TESTING.
     METHODS decisions_cancel_keeps_zip FOR TESTING.
@@ -681,6 +684,57 @@ CLASS ltcl_offline IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `Import ZIP` act = mo_app->mv_pull_text ).
     cl_abap_unit_assert=>assert_false( mo_app->mv_can_stage ).
     cl_abap_unit_assert=>assert_equals( exp = `Navigation` act = mo_app->mv_row_type ).
+  ENDMETHOD.
+
+  METHOD upload_waits_for_run.
+    " the last poll redraws the view, which closes an open dialog: the
+    " preview opens only after it
+    mo_service->mv_run_id = `R1`.
+    DATA(lv_zip) = archive( ).
+    mo_app->mv_upload = `data:application/zip;base64,` && cl_http_utility=>encode_x_base64( lv_zip ).
+    fire( `ZIP_UPLOAD` ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_zip act = mo_app->mv_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_preview_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_equals( exp = 1 act = mo_client->mv_timer_calls ).
+
+    mo_service->ms_state-state = zif_ag2ui5_repo_service=>c_run_state-running.
+    fire( `RUN_POLL:R1` ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+
+    CLEAR mo_client->mv_view.
+    mo_service->ms_state-state = zif_ag2ui5_repo_service=>c_run_state-done.
+    fire( `RUN_POLL:R1` ).
+    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_zip act = mo_service->mv_status_zip ).
+    cl_abap_unit_assert=>assert_equals( exp = lv_zip act = mo_service->mv_preview_zip ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Pull selected` ) ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_pull_pending ).
+  ENDMETHOD.
+
+  METHOD upload_run_error_no_preview.
+    mo_service->mv_run_id = `R1`.
+    mo_app->mv_upload = `data:application/zip;base64,` && cl_http_utility=>encode_x_base64( archive( ) ).
+    fire( `ZIP_UPLOAD` ).
+    mo_service->ms_state-state = zif_ag2ui5_repo_service=>c_run_state-error.
+    mo_service->ms_state-message = `Serialization failed`.
+    fire( `RUN_POLL:R1` ).
+    cl_abap_unit_assert=>assert_equals( exp = `Serialization failed` act = mo_client->mv_error ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_preview_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_pull_pending ).
+  ENDMETHOD.
+
+  METHOD refresh_drops_pending_upload.
+    mo_service->mv_run_id = `R1`.
+    mo_app->mv_upload = `data:application/zip;base64,` && cl_http_utility=>encode_x_base64( archive( ) ).
+    fire( `ZIP_UPLOAD` ).
+    fire( `REFRESH` ).
+    cl_abap_unit_assert=>assert_false( mo_app->mv_pull_pending ).
+    mo_service->ms_state-state = zif_ag2ui5_repo_service=>c_run_state-done.
+    fire( `RUN_POLL:R1` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mv_preview_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
   ENDMETHOD.
 
   METHOD invalid_keeps_previous.
