@@ -687,8 +687,7 @@ CLASS ltcl_offline IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD upload_waits_for_run.
-    " the last poll redraws the view, which closes an open dialog: the
-    " preview opens only after it
+    " the preview opens once the run has loaded the rows
     mo_service->mv_run_id = `R1`.
     DATA(lv_zip) = archive( ).
     mo_app->mv_upload = `data:application/zip;base64,` && cl_http_utility=>encode_x_base64( lv_zip ).
@@ -702,10 +701,8 @@ CLASS ltcl_offline IMPLEMENTATION.
     fire( `RUN_POLL:R1` ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
 
-    CLEAR mo_client->mv_view.
     mo_service->ms_state-state = zif_ag2ui5_repo_service=>c_run_state-done.
     fire( `RUN_POLL:R1` ).
-    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
     cl_abap_unit_assert=>assert_equals( exp = lv_zip act = mo_service->mv_status_zip ).
     cl_abap_unit_assert=>assert_equals( exp = lv_zip act = mo_service->mv_preview_zip ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Pull selected` ) ).
@@ -1727,6 +1724,7 @@ CLASS ltcl_runs DEFINITION FINAL FOR TESTING
     METHODS run_shows_head_and_busy FOR TESTING.
     METHODS poll_running_updates_progress FOR TESTING.
     METHODS poll_done_loads_rows FOR TESTING.
+    METHODS poll_done_keeps_dialog FOR TESTING.
     METHODS poll_error_shows_message FOR TESTING.
     METHODS poll_gone_shows_error FOR TESTING.
     METHODS idle_run_times_out FOR TESTING.
@@ -1778,7 +1776,7 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `Status could not be loaded` act = mo_app->mv_no_data ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
     cl_abap_unit_assert=>assert_not_initial( mo_client->mv_error ).
-    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_view ).
   ENDMETHOD.
 
   METHOD run_shows_head_and_busy.
@@ -1827,7 +1825,20 @@ CLASS ltcl_runs IMPLEMENTATION.
     cl_abap_unit_assert=>assert_false( mo_app->mv_busy ).
     cl_abap_unit_assert=>assert_initial( mo_app->mv_run_id ).
     cl_abap_unit_assert=>assert_initial( mo_client->mv_timer_calls ).
-    cl_abap_unit_assert=>assert_not_initial( mo_client->mv_view ).
+    " the model update shows the rows; a new view would close open dialogs
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_view ).
+  ENDMETHOD.
+
+  METHOD poll_done_keeps_dialog.
+    mo_app->load_status( ).
+    mo_app->mv_labels_open = abap_true.
+    CLEAR mo_client->mv_destroyed.
+    poll( zif_ag2ui5_repo_service=>c_run_state-done ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_loaded ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_view ).
+    cl_abap_unit_assert=>assert_false( mo_client->mv_destroyed ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_popup ).
+    cl_abap_unit_assert=>assert_true( mo_app->mv_labels_open ).
   ENDMETHOD.
 
   METHOD poll_error_shows_message.

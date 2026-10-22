@@ -185,8 +185,7 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     "! Set once a status was loaded, for the empty table's text
     DATA mv_loaded TYPE abap_bool.
     DATA mv_run_id TYPE string.
-    "! An uploaded ZIP waits for the run: its last poll redraws the view,
-    "! which would close a pull dialog opened before
+    "! An uploaded ZIP waits for the run: the preview needs its rows
     DATA mv_pull_pending TYPE abap_bool.
     "! The round trip leaves the page (nav_app_call/nav_app_leave): no poll is armed
     DATA mv_leaving TYPE abap_bool.
@@ -1840,11 +1839,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         CLEAR: mt_rows, mt_status, mv_loaded, mv_can_diff, mv_can_stage.
         mv_can_pull = abap_true.
         mv_no_data = `Status could not be loaded`.
-        view_display( ).
         show_error( lx_error ).
         RETURN.
     ENDTRY.
-    view_display( ).
+    " no view_display: everything a run changes is bound, and a new view
+    " would close a dialog opened during the run (Edit labels, Branches)
     IF lv_pull = abap_true.
       preview_pull( ).
     ENDIF.
