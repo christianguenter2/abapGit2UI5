@@ -46,11 +46,9 @@ once it is merged, and its open points move here.
 - **Pull dialog:** with selectable objects all unticked, changed repository
   files are not pulled either ("Nothing selected"); abapGit refuses this too
   (`pull_is_noop`).
-- **Tags:** every distinct tag target is verified with a depth-one fetch,
-  which makes long tag lists slow (`read_tag_commit`). Chris measured about
-  30 seconds on abap2UI5, with reload as the only way to abandon the pending
-  request. Performance work is deferred (2026-10-09); consider verifying
-  targets on demand while retaining fresh commit checks before writes.
+- **Tags:** the list shows each tag's target as the remote lists it, without
+  checking that it is a commit. A tag on a tree or blob looks switchable and
+  is refused only by Switch (`list_tags`, `switch_tag`).
 - **Session login:** `:` is accepted in the Git user; the 30-minute expiry
   counts service calls, not page use; abapGit keeps one token per host
   (`login`, `assert_authorized`).

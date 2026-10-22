@@ -37,7 +37,7 @@ present. It is Git-ignored.
     switched in; do not validate the fork and then select on the original
   - Tags: `assert_tag_context` refuses fixed commits and switched origins;
     `assert_tag` checks fresh refs and `read_tag_commit` verifies a commit
-    target. Creation checks the opening target against fresh refs; deletion
+    target when switching (the list shows the listed targets unverified). Creation checks the opening target against fresh refs; deletion
     uses `assert_deletable_tag` and the fresh unpeeled hash as expected old
     value, so a changed annotation cannot pass a stale confirmation
   - `save_labels`: validate labels and compare the opening labels with fresh

@@ -1982,22 +1982,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~list_tags.
+    " The targets as the remote lists them: one fetch per tag made long lists
+    " slow (31 tags: 19 s). switch_tag and tag_target verify the commit before
+    " anything is written; a tag on a tree or blob is refused only there.
     rt_tags = list_tag_refs( iv_key ).
-    DATA(lv_url) = get_online_repo( iv_key )->get_url( ).
-    " Fetch each distinct target once per list, retaining only its verified SHA.
-    DATA lt_checked TYPE zif_ag2ui5_repo_service=>ty_tags.
-    LOOP AT rt_tags ASSIGNING FIELD-SYMBOL(<ls_tag>).
-      IF <ls_tag>-sha1 IS INITIAL.
-        CONTINUE.
-      ENDIF.
-      READ TABLE lt_checked INTO DATA(ls_checked) WITH KEY ref_sha1 = <ls_tag>-sha1.
-      IF sy-subrc <> 0.
-        ls_checked = VALUE #( ref_sha1 = <ls_tag>-sha1
-          sha1 = read_tag_commit( iv_url = lv_url iv_sha1 = <ls_tag>-sha1 ) ).
-        APPEND ls_checked TO lt_checked.
-      ENDIF.
-      <ls_tag>-sha1 = ls_checked-sha1.
-    ENDLOOP.
   ENDMETHOD.
 
   METHOD zif_ag2ui5_repo_service~switch_tag.
