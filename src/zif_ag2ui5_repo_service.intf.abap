@@ -596,7 +596,9 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     RAISING
       zcx_abapgit_exception.
 
-  "! The current user's modifiable requests of that type (trfunction)
+  "! The current user's modifiable requests of that type (trfunction). The
+  "! first one is the proposal: the user's standard request, else the last
+  "! one used (SE09, E070USE), else the newest
   METHODS list_transports
     IMPORTING
       iv_type              TYPE string

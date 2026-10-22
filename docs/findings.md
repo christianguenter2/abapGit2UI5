@@ -28,8 +28,7 @@ once it is merged, and its open points move here.
   `main`, so only a hand-made request could save the user's own token in that
   user's own draft (`zcl_ag2ui5_app_login`).
 - **Transports:** no request creation (the pull dialog points to SE09).
-  Request texts appear only in the logon language, and the first listed
-  request is preselected, not the user's default (`list_transports`).
+  Request texts appear only in the logon language (`list_transports`).
 - **Push targets:** the followed branch or a new one, not another existing
   branch (`commit_push`).
 - **Branch names:** `@{`, `a/.b`, `a.lock/b` and folder collisions (`test`

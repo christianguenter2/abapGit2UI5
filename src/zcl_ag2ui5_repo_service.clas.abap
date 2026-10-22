@@ -144,6 +144,21 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RAISING
         zcx_abapgit_exception.
 
+    TYPES ty_request_use TYPE STANDARD TABLE OF e070use WITH EMPTY KEY.
+
+    "! The request SAP would propose, if it is in the list: the valid standard
+    "! request (fixtype S) of the category, else the last used one (U) of the
+    "! type; empty otherwise
+    CLASS-METHODS preferred_transport
+      IMPORTING
+        it_transports    TYPE zif_ag2ui5_repo_service=>ty_transports
+        it_use           TYPE ty_request_use
+        iv_type          TYPE string
+        iv_client        TYPE mandt
+        iv_today         TYPE d
+      RETURNING
+        VALUE(rv_trkorr) TYPE string.
+
     "! The request to record on: abapGit's own if it determined one, otherwise
     "! the user's choice, which must be one of their modifiable requests
     CLASS-METHODS effective_transport
@@ -998,6 +1013,50 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     ENDLOOP.
     SORT rt_transports BY trkorr DESCENDING.
 
+    DATA lt_use TYPE ty_request_use.
+    SELECT username, trfunction, category, client, fixtype, ordernum, validity FROM e070use
+      WHERE username = @sy-uname
+      ORDER BY PRIMARY KEY
+      INTO CORRESPONDING FIELDS OF TABLE @lt_use.
+    IF sy-subrc <> 0.
+      CLEAR lt_use.
+    ENDIF.
+    DATA(lv_preferred) = preferred_transport( it_transports = rt_transports
+                                              it_use        = lt_use
+                                              iv_type       = iv_type
+                                              iv_client     = sy-mandt
+                                              iv_today      = sy-datum ).
+    IF lv_preferred IS NOT INITIAL.
+      READ TABLE rt_transports INTO DATA(ls_preferred) WITH KEY trkorr = lv_preferred.
+      IF sy-subrc = 0.
+        DELETE rt_transports INDEX sy-tabix.
+        INSERT ls_preferred INTO rt_transports INDEX 1.
+      ENDIF.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD preferred_transport.
+    " as TR_TASK_GET: a standard request has no type, only its category;
+    " customizing ones are per client
+    DATA(lv_category) = SWITCH trcateg( iv_type WHEN `K` THEN `SYST` WHEN `W` THEN `CUST` ).
+    DATA(lv_client) = COND mandt( WHEN lv_category = `CUST` THEN iv_client ).
+    IF lv_category IS NOT INITIAL.
+      LOOP AT it_use INTO DATA(ls_use) WHERE fixtype = 'S' AND trfunction = space
+          AND category = lv_category AND client = lv_client AND validity >= iv_today.
+        IF line_exists( it_transports[ trkorr = ls_use-ordernum ] ).
+          rv_trkorr = ls_use-ordernum.
+          RETURN.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+    LOOP AT it_use INTO ls_use WHERE fixtype = 'U' AND trfunction = iv_type
+        AND ( client = iv_client OR client = space ).
+      IF line_exists( it_transports[ trkorr = ls_use-ordernum ] ).
+        rv_trkorr = ls_use-ordernum.
+        RETURN.
+      ENDIF.
+    ENDLOOP.
   ENDMETHOD.
 
   METHOD merge_decisions.

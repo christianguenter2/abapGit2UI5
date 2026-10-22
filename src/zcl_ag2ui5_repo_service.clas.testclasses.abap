@@ -775,6 +775,15 @@ CLASS ltcl_transport DEFINITION FINAL FOR TESTING
     METHODS missing_request_refused FOR TESTING.
     METHODS preset_wins FOR TESTING RAISING cx_static_check.
     METHODS chosen_used_without_preset FOR TESTING RAISING cx_static_check.
+    METHODS standard_request_first FOR TESTING.
+    METHODS last_used_without_standard FOR TESTING.
+    METHODS unlisted_or_expired_ignored FOR TESTING.
+    METHODS preferred
+      IMPORTING
+        it_use           TYPE zcl_ag2ui5_repo_service=>ty_request_use
+        iv_type          TYPE string DEFAULT `K`
+      RETURNING
+        VALUE(rv_trkorr) TYPE string.
 
 ENDCLASS.
 
@@ -783,6 +792,48 @@ CLASS ltcl_transport IMPLEMENTATION.
 
   METHOD setup.
     mt_transports = VALUE #( ( trkorr = `A4HK900148` text = `Test` ) ).
+  ENDMETHOD.
+
+  METHOD preferred.
+    rv_trkorr = zcl_ag2ui5_repo_service=>preferred_transport(
+      it_transports = VALUE #( ( trkorr = `A4HK900150` ) ( trkorr = `A4HK900149` ) ( trkorr = `A4HK900148` ) )
+      it_use        = it_use
+      iv_type       = iv_type
+      iv_client     = '001'
+      iv_today      = '20261022' ).
+  ENDMETHOD.
+
+  METHOD standard_request_first.
+    DATA(lt_use) = VALUE zcl_ag2ui5_repo_service=>ty_request_use(
+      ( username = sy-uname trfunction = 'K' category = 'SYST' fixtype = 'U' ordernum = 'A4HK900150' )
+      ( username = sy-uname category = 'SYST' fixtype = 'S' ordernum = 'A4HK900149' validity = '20261022' ) ).
+    cl_abap_unit_assert=>assert_equals( act = preferred( lt_use ) exp = `A4HK900149` ).
+    " customizing: the standard request of this client only
+    lt_use = VALUE #(
+      ( username = sy-uname category = 'CUST' client = '002' fixtype = 'S' ordernum = 'A4HK900150' validity = '99991231' )
+      ( username = sy-uname category = 'CUST' client = '001' fixtype = 'S' ordernum = 'A4HK900148' validity = '99991231' ) ).
+    cl_abap_unit_assert=>assert_equals( act = preferred( it_use = lt_use iv_type = `W` ) exp = `A4HK900148` ).
+  ENDMETHOD.
+
+  METHOD last_used_without_standard.
+    DATA(lt_use) = VALUE zcl_ag2ui5_repo_service=>ty_request_use(
+      ( username = sy-uname trfunction = 'W' category = 'CUST' client = '001' fixtype = 'U' ordernum = 'A4HK900150' )
+      ( username = sy-uname trfunction = 'K' category = 'SYST' fixtype = 'U' ordernum = 'A4HK900148' ) ).
+    cl_abap_unit_assert=>assert_equals( act = preferred( lt_use ) exp = `A4HK900148` ).
+    cl_abap_unit_assert=>assert_equals( act = preferred( it_use = lt_use iv_type = `W` ) exp = `A4HK900150` ).
+  ENDMETHOD.
+
+  METHOD unlisted_or_expired_ignored.
+    " a released default is not in the list; an expired standard request
+    " does not count, so the last used one wins
+    DATA(lt_use) = VALUE zcl_ag2ui5_repo_service=>ty_request_use(
+      ( username = sy-uname category = 'SYST' fixtype = 'S' ordernum = 'A4HK900149' validity = '20261021' )
+      ( username = sy-uname trfunction = 'K' category = 'SYST' fixtype = 'U' ordernum = 'A4HK900053' ) ).
+    cl_abap_unit_assert=>assert_initial( preferred( lt_use ) ).
+    INSERT VALUE #( username = sy-uname trfunction = 'K' category = 'SYST' fixtype = 'U' ordernum = 'A4HK900150' )
+      INTO TABLE lt_use.
+    cl_abap_unit_assert=>assert_equals( act = preferred( lt_use ) exp = `A4HK900150` ).
+    cl_abap_unit_assert=>assert_initial( preferred( it_use = VALUE #( ) ) ).
   ENDMETHOD.
 
   METHOD own_request_accepted.
