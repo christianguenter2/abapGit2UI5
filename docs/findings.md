@@ -13,8 +13,17 @@ once it is merged, and its open points move here.
   by the same user's next start after one hour. The task runs in a dialog
   work process, so `rdisp/max_wprun_time` limits it; a run that dies leaves
   the page waiting until its 15-minute idle limit. Notification is by
-  polling; a websocket (abap2UI5's `Websocket` control with APC/AMC) is the
-  next step (`zcl_ag2ui5_status_run`, `zcl_ag2ui5_app_status`).
+  polling (`zcl_ag2ui5_status_run`, `zcl_ag2ui5_app_status`).
+- **Websocket instead of polling:** postponed (Chris, 2026-10-22); the
+  saving is small and polling would stay as the fallback. A spike on A4H25
+  showed it works: abap2UI5's `z2ui5.cc.Websocket` (in 1.146) connects from
+  `/sap/bc/zabapgit2ui5` with the user's session, an aRFC task can publish on
+  an AMC channel (scope user, run ID as channel extension, so a page hears
+  only its own run), and the APC class receives with
+  `bind_amc_message_consumer`. It needs an APC class, SAPC, SAMC and the ICF
+  node as a separate SICF object (SAPC creates no node over HTTP). abapGit
+  installs these over HTTP because it writes CLAS before SAPC; it cannot
+  delete SAPC or SAMC over HTTP (popup or error), so removal needs SAP GUI.
 - **URLs:** only the list, Status (`#/repo/<key>`) and the repository diff
   (`…/diff`) have URLs. App navigation adds no browser history entries;
   in-app Back/Forward is postponed, and fast overlapping manual URL edits are
