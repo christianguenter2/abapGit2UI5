@@ -30,7 +30,7 @@ once it is merged, and its open points move here.
 - **Transports:** no request creation (the pull dialog points to SE09).
   Request texts appear only in the logon language (`list_transports`).
 - **Push targets:** the followed branch or a new one, not another existing
-  branch (`commit_push`).
+  branch (`commit_push`). Not planned (Chris, 2026-10-22).
 - **Branch names:** `@{`, `a/.b`, `a.lock/b` and folder collisions (`test`
   vs `test/x`) are not refused locally; the remote refuses them.
   `REFS/HEADS/x` counts as a full name because `CP` ignores case. Non-ASCII
@@ -74,24 +74,12 @@ once it is merged, and its open points move here.
 
 ## Deferred minors
 
-- **Patch:** Select none keeps patches; a `changed` outcome reloads and drops
-  picks without saying so; the Pick lines column has no header;
-  `check_on_navigated` uses CAST/CATCH (`zcl_ag2ui5_app_stage`).
-- **Branches:** the name field has no `labelFor` or submit, and "Starts
-  from" comes from the last status load; the delete toast cuts the commit
-  without a length guard, and a refused delete does not reload the list;
-  "not on the remote" shows the full `refs/heads/` name.
-- **Push to a new branch:** the wrapped push error drops `ix_previous` and is
-  cut at 200 characters; whitespace-only input still fetches the branch list
-  (`commit_push`).
-- **New repository:** a package name over 30 characters is truncated, not
-  refused; the checkboxes are not normalized; the branch error shows the full
-  ref; a stale comment says condense takes inner blanks; the URL is checked
-  over the network even without create authorization (`normalize_new_repo`,
-  `create_repo`).
-- **Repository diff:** no retry after a failed load, the "1 files" toast,
-  the saved diff layout is ignored, `expand( sy-index )`, and panels are not
-  refreshed after Open (`zcl_ag2ui5_app_repo_diff`).
+- **Patch:** Select none keeps picked lines; they apply again when the file
+  is selected (`zcl_ag2ui5_app_stage`).
+- **Branches:** "Starts from" comes from the last status load, not from the
+  fresh branch list.
+- **Repository diff:** panels are not reloaded after returning from Open
+  (`zcl_ag2ui5_app_repo_diff`).
 
 ## Facts for testing
 

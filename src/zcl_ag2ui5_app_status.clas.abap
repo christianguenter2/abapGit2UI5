@@ -1227,10 +1227,14 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
         )->a( n = `class` v = `sapUiSmallMarginBottom` ).
     new_box->tag( `Label`
         )->a( n = `text`     v = `Name`
-        )->a( n = `required` v = `true` ).
+        )->a( n = `required` v = `true`
+        )->a( n = `labelFor` v = `branchNewName` ).
+    " Enter creates the branch, as the Create button does
     new_box->tag( `Input`
+        )->a( n = `id`          v = `branchNewName`
         )->a( n = `value`       v = client->_bind( mv_new_name )
         )->a( n = `placeholder` v = `feature/my-change`
+        )->a( n = `submit`      v = client->_event( `BRANCH_CREATE` )
         )->a( n = `visible` v = |\{= !$\{{ client->_bind( val = mv_tag_new_mode path = abap_true ) }\} \}| ).
     DATA(tag_form) = new_box->ele( `VBox`
         )->a( n = `visible` v = client->_bind( mv_tag_new_mode ) ).
@@ -1449,11 +1453,15 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                                                    iv_sha1   = mv_delete_sha1 ).
       CATCH zcx_abapgit_exception INTO DATA(lx_error).
         show_error( lx_error ).
+        " a refused delete (the branch moved or is gone): show the current list
+        IF zcl_ag2ui5_repo_service=>login_required( lx_error ) = abap_false.
+          load_branches( ).
+        ENDIF.
         RETURN.
     ENDTRY.
 
-    client->message_toast_display(
-      |Deleted { substring( val = mv_delete_branch off = 11 ) } (was at { substring( val = lv_sha1 len = 7 ) })| ).
+    client->message_toast_display( |Deleted { zcl_ag2ui5_repo_service=>branch_display( mv_delete_branch ) } | &&
+      |(was at { substring( val = lv_sha1 len = nmin( val1 = 7 val2 = strlen( lv_sha1 ) ) ) })| ).
     " the list without the deleted branch, the current one picked again
     load_branches( ).
 

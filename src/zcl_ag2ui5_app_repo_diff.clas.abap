@@ -80,6 +80,8 @@ CLASS zcl_ag2ui5_app_repo_diff DEFINITION
     CONSTANTS c_initial TYPE i VALUE 3.
     "! Expand all stops at this many open panels
     CONSTANTS c_max_expanded TYPE i VALUE 25.
+    "! Stays when the panel is collapsed; any other note is a failed load
+    CONSTANTS c_binary_note TYPE string VALUE `Binary file - no line diff`.
 
     DATA ms_head TYPE ty_head.
     DATA mt_files TYPE ty_files.
@@ -212,6 +214,11 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     ro_app->ms_head-title = COND #( WHEN iv_pick = abap_true THEN |Pick lines - { iv_title }|
                                   ELSE |Diff - { iv_title }| ).
     ro_app->ms_head-remote_label = COND #( WHEN iv_zip IS NOT INITIAL THEN `ZIP` ELSE `Git` ).
+    " the single-file diff's layout; lines are picked inline
+    IF iv_pick = abap_false.
+      ro_app->mv_layout = zcl_ag2ui5_settings=>get_instance( )->get( iv_key     = zif_ag2ui5_settings=>c_key-diff_layout
+                                                                    iv_default = `INLINE` ).
+    ENDIF.
     LOOP AT it_files INTO DATA(ls_file).
       INSERT VALUE #( index       = sy-tabix
                       file        = ls_file-path && ls_file-filename
@@ -242,7 +249,8 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     ENDIF.
     IF client->check_on_init( ).
       DO nmin( val1 = c_initial val2 = lines( mt_files ) ) TIMES.
-        expand( sy-index ).
+        DATA(lv_initial) = sy-index.
+        expand( lv_initial ).
       ENDDO.
       summary_build( ).
       view_display( ).
@@ -320,6 +328,10 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       WHEN `LAYOUT`.
         IF mv_pick = abap_true OR mv_layout <> `SBS`.
           mv_layout = `INLINE`.
+        ENDIF.
+        IF mv_pick = abap_false.
+          zcl_ag2ui5_settings=>get_instance( )->set( iv_key   = zif_ag2ui5_settings=>c_key-diff_layout
+                                                     iv_value = mv_layout ).
         ENDIF.
         LOOP AT mt_files INTO ls_file WHERE expanded = abap_true.
           rows_build( ls_file-index ).
@@ -417,7 +429,7 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
         INSERT ls_pick INTO TABLE mt_file_picks.
       ENDIF.
       IF ls_diff-binary = abap_true.
-        <ls_file>-note = `Binary file - no line diff`.
+        <ls_file>-note = c_binary_note.
         RETURN.
       ENDIF.
       ls_loaded = VALUE ty_loaded(
@@ -442,6 +454,10 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
     ENDIF.
     <ls_file>-expanded = abap_false.
     CLEAR: <ls_file>-lines, <ls_file>-sbs.
+    " a failed load is tried again when the panel opens
+    IF <ls_file>-note <> c_binary_note.
+      CLEAR <ls_file>-note.
+    ENDIF.
     " the counts stay for the summary; opening again reloads the lines
     READ TABLE mt_loaded ASSIGNING FIELD-SYMBOL(<ls_loaded>) WITH TABLE KEY index = iv_index.
     IF sy-subrc = 0.
@@ -463,7 +479,9 @@ CLASS zcl_ag2ui5_app_repo_diff IMPLEMENTATION.
       lv_open = lv_open + 1.
     ENDLOOP.
     IF lv_skipped > 0.
-      client->message_toast_display( |{ lv_skipped } files stay collapsed: at most { c_max_expanded } are open at once| ).
+      client->message_toast_display( COND #(
+        WHEN lv_skipped = 1 THEN |1 file stays collapsed: at most { c_max_expanded } are open at once|
+        ELSE |{ lv_skipped } files stay collapsed: at most { c_max_expanded } are open at once| ) ).
     ENDIF.
 
   ENDMETHOD.

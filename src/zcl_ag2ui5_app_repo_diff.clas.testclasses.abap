@@ -148,15 +148,21 @@ ENDCLASS.
 CLASS ltd_settings DEFINITION FINAL FOR TESTING.
   PUBLIC SECTION.
     INTERFACES zif_ag2ui5_settings.
+    "! The saved diff layout; empty gives the default
+    DATA mv_layout TYPE string.
 ENDCLASS.
 
 
 CLASS ltd_settings IMPLEMENTATION.
   METHOD zif_ag2ui5_settings~get.
-    rv_value = iv_default.
+    rv_value = COND #( WHEN iv_key = zif_ag2ui5_settings=>c_key-diff_layout AND mv_layout IS NOT INITIAL
+                       THEN mv_layout ELSE iv_default ).
   ENDMETHOD.
 
   METHOD zif_ag2ui5_settings~set.
+    IF iv_key = zif_ag2ui5_settings=>c_key-diff_layout.
+      mv_layout = iv_value.
+    ENDIF.
     rv_saved = abap_true.
   ENDMETHOD.
 ENDCLASS.
@@ -170,6 +176,7 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
     DATA mo_app TYPE REF TO zcl_ag2ui5_app_repo_diff.
     DATA mo_client TYPE REF TO ltd_client.
     DATA mo_service TYPE REF TO ltd_service.
+    DATA mo_settings TYPE REF TO ltd_settings.
 
     METHODS setup.
     METHODS teardown.
@@ -192,6 +199,10 @@ CLASS ltcl_repo_diff DEFINITION FINAL FOR TESTING
         iv_arg3  TYPE string OPTIONAL.
 
     METHODS start_loads_first_three FOR TESTING.
+    METHODS failed_load_retried FOR TESTING.
+    METHODS one_skipped_singular FOR TESTING.
+    METHODS layout_remembered FOR TESTING.
+    METHODS pick_ignores_saved_layout FOR TESTING.
     METHODS expand_loads_collapse_clears FOR TESTING.
     METHODS expand_twice_loads_once FOR TESTING.
     METHODS expand_all_stops_at_limit FOR TESTING.
@@ -233,7 +244,8 @@ ENDCLASS.
 CLASS ltcl_repo_diff IMPLEMENTATION.
 
   METHOD setup.
-    zcl_ag2ui5_settings=>inject( NEW ltd_settings( ) ).
+    mo_settings = NEW #( ).
+    zcl_ag2ui5_settings=>inject( mo_settings ).
     mo_client = NEW #( ).
     mo_service = NEW #( ).
   ENDMETHOD.
@@ -324,6 +336,45 @@ CLASS ltcl_repo_diff IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 1 ]-note exp = `Cannot read file` ).
     cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 2 ]-note exp = `Binary file - no line diff` ).
     cl_abap_unit_assert=>assert_not_initial( mo_app->mt_files[ 3 ]-lines ).
+  ENDMETHOD.
+
+  METHOD failed_load_retried.
+    app( VALUE #( ( path = `/fail/` filename = `a.abap` lstate = `M` )
+                  ( path = `/bin/`  filename = `b.png`  lstate = `M` ) ) ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `` ).
+    fire( iv_event = `PANEL` iv_arg1 = `2` iv_arg2 = `` ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_files[ 1 ]-note ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 2 ]-note exp = `Binary file - no line diff` ).
+    fire( iv_event = `PANEL` iv_arg1 = `1` iv_arg2 = `X` ).
+    DATA(lv_calls) = 0.
+    LOOP AT mo_service->mt_calls TRANSPORTING NO FIELDS WHERE table_line = `/fail/a.abap`.
+      lv_calls = lv_calls + 1.
+    ENDLOOP.
+    cl_abap_unit_assert=>assert_equals( act = lv_calls exp = 2 ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mt_files[ 1 ]-note exp = `Cannot read file` ).
+  ENDMETHOD.
+
+  METHOD one_skipped_singular.
+    app( files( 26 ) ).
+    fire( `EXPAND_ALL` ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_toast exp = `1 file stays collapsed*` ).
+  ENDMETHOD.
+
+  METHOD layout_remembered.
+    mo_settings->mv_layout = `SBS`.
+    app( files( 1 ) ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_layout exp = `SBS` ).
+    mo_app->mv_layout = `INLINE`.
+    fire( `LAYOUT` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_settings->mv_layout exp = `INLINE` ).
+  ENDMETHOD.
+
+  METHOD pick_ignores_saved_layout.
+    mo_settings->mv_layout = `SBS`.
+    app( it_files = files( 1 ) iv_pick = abap_true ).
+    cl_abap_unit_assert=>assert_equals( act = mo_app->mv_layout exp = `INLINE` ).
+    fire( `LAYOUT` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_settings->mv_layout exp = `SBS` ).
   ENDMETHOD.
 
   METHOD layout_switch_rebuilds.

@@ -1741,7 +1741,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD assert_branch.
 
     IF iv_branch IS INITIAL OR NOT line_exists( it_branches[ name = iv_branch ] ).
-      zcx_abapgit_exception=>raise( |Branch { iv_branch } is not on the remote| ).
+      zcx_abapgit_exception=>raise( |Branch { branch_display( iv_branch ) } is not on the remote| ).
     ENDIF.
 
   ENDMETHOD.
@@ -1813,7 +1813,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     READ TABLE it_branches INTO DATA(ls_branch) WITH KEY name = iv_branch.
     IF sy-subrc <> 0.
-      zcx_abapgit_exception=>raise( |Branch { iv_branch } is not on the remote| ).
+      zcx_abapgit_exception=>raise( |Branch { branch_display( iv_branch ) } is not on the remote| ).
     ENDIF.
     IF ls_branch-default = abap_true.
       zcx_abapgit_exception=>raise( |{ ls_branch-display } is the default branch and cannot be deleted| ).
@@ -2545,8 +2545,10 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     " the name comes from the browser: checked against a fresh list
     " before anything is written
+    " blanks only are no name: no branch list is fetched for them
+    DATA(lv_requested) = condense( is_commit-new_branch ).
     DATA(lv_new_branch) = COND string(
-      WHEN is_commit-new_branch IS NOT INITIAL
+      WHEN lv_requested IS NOT INITIAL
       THEN push_branch( iv_new_branch = is_commit-new_branch
                         it_branches   = zif_ag2ui5_repo_service~list_branches( iv_key ) ) ).
 
@@ -2652,9 +2654,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         " the remote has the branch: keep abapGit's record of following it,
         " abap2UI5 would roll it back after main( )
         COMMIT WORK AND WAIT.
+        " the push error as previous: a message text holds at most 200 characters
         zcx_abapgit_exception=>raise(
-          |Branch { branch_display( lv_new_branch ) } was created and is now followed, | &&
-          |but nothing was pushed: { lx_push->get_text( ) }| ).
+          iv_text     = |Branch { branch_display( lv_new_branch ) } was created and is now followed, | &&
+                        |but nothing was pushed.|
+          ix_previous = lx_push ).
     ENDTRY.
     " push( ) commits without waiting; abap2UI5 rolls back after main( )
     COMMIT WORK AND WAIT.
@@ -3731,7 +3735,8 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
   METHOD normalize_new_repo.
 
     rs_repo = is_repo.
-    " single values: condense also takes inner blanks, which they never have
+    " single values: condense trims them and shortens inner blanks to one; a
+    " value with an inner blank stays invalid and is refused by its check
     rs_repo-kind         = to_upper( condense( is_repo-kind ) ).
     rs_repo-url          = condense( is_repo-url ).
     rs_repo-package      = to_upper( condense( is_repo-package ) ).
@@ -3744,6 +3749,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     rs_repo-labels       = shift_right( shift_left( is_repo-labels ) ).
     rs_repo-branch       = COND #( WHEN condense( is_repo-branch ) <> ``
                                    THEN branch_name( is_repo-branch ) ).
+    " checkboxes: anything but X is off
+    rs_repo-ign_subpackages = xsdbool( is_repo-ign_subpackages = abap_true ).
+    rs_repo-main_lang_only  = xsdbool( is_repo-main_lang_only = abap_true ).
 
     " the browser keeps what was typed for the other kind
     IF rs_repo-kind = zif_ag2ui5_repo_service=>c_repo_kind-online.
@@ -3771,6 +3779,9 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
 
     IF is_repo-package IS INITIAL.
       INSERT VALUE #( field = `package` text = `Enter a package` ) INTO TABLE rt_errors.
+    ELSEIF strlen( is_repo-package ) > 30.
+      " the SAP field would cut it to another package's name
+      INSERT VALUE #( field = `package` text = `A package name has at most 30 characters` ) INTO TABLE rt_errors.
     ENDIF.
 
     IF is_repo-folder_logic <> zif_abapgit_dot_abapgit=>c_folder_logic-prefix
@@ -3799,8 +3810,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
     " collected, and nothing is written while one fails
     DATA(ls_repo) = normalize_new_repo( is_repo ).
     rs_result-errors = new_repo_errors( ls_repo ).
+    " without authorization no remote is contacted
     IF zcl_abapgit_auth=>is_allowed( zif_abapgit_auth=>c_authorization-create_repo ) = abap_false.
       INSERT VALUE #( text = `You are not authorized to create repositories` ) INTO TABLE rs_result-errors.
+      rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-invalid.
+      RETURN.
     ENDIF.
     check_new_repo( EXPORTING is_repo   = ls_repo
                     CHANGING  ct_errors = rs_result-errors ).
@@ -3840,7 +3854,7 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
                 li_branches->find_by_name( is_repo-branch ).
               CATCH zcx_abapgit_exception.
                 INSERT VALUE #( field = `branch`
-                                text  = |Branch { is_repo-branch } is not on the remote| ) INTO TABLE ct_errors.
+                                text  = |Branch { branch_display( is_repo-branch ) } is not on the remote| ) INTO TABLE ct_errors.
             ENDTRY.
           ENDIF.
         CATCH zcx_abapgit_exception INTO lx_error.

@@ -258,14 +258,12 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       view_display( ).
     ELSEIF client->check_on_navigated( ).
       " back from the diff page: in patch mode it hands the picked lines back
-      TRY.
-          take_patch( CAST zcl_ag2ui5_app_diff( client->get_app_prev( ) )->get_patch( ) ).
-        CATCH cx_sy_move_cast_error.
-          TRY.
-              take_picks( CAST zcl_ag2ui5_app_repo_diff( client->get_app_prev( ) )->get_picks( ) ).
-            CATCH cx_sy_move_cast_error ##NO_HANDLER.
-          ENDTRY.
-      ENDTRY.
+      DATA(lo_prev) = client->get_app_prev( ).
+      IF lo_prev IS INSTANCE OF zcl_ag2ui5_app_diff.
+        take_patch( CAST zcl_ag2ui5_app_diff( lo_prev )->get_patch( ) ).
+      ELSEIF lo_prev IS INSTANCE OF zcl_ag2ui5_app_repo_diff.
+        take_picks( CAST zcl_ag2ui5_app_repo_diff( lo_prev )->get_picks( ) ).
+      ENDIF.
       " back from the login page: reading the list failed, or a push did
       DATA(lr_returned) = client->get( )-r_event_data.
       IF lr_returned IS BOUND.
@@ -382,7 +380,9 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
         )->tag( `Text`
             )->a( n = `text` v = `Change` ).
     columns->ele( `Column`
-        )->a( n = `width` v = `13rem` ).
+        )->a( n = `width` v = `13rem`
+        )->tag( `Text`
+            )->a( n = `text` v = `Actions` ).
 
     DATA(cells) = table->ele( `items`
         )->ele( `ColumnListItem`
@@ -747,7 +747,11 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
       client->nav_app_call( zcl_ag2ui5_app_login=>create( iv_key = mv_key ) ).
       RETURN.
     ENDIF.
-    client->message_box_display( text = ix_error->get_text( ) type = `error` ).
+    " a wrapped error keeps the original one as previous: shown as details
+    client->message_box_display( text    = ix_error->get_text( )
+                                 type    = `error`
+                                 details = COND #( WHEN ix_error->previous IS BOUND
+                                                   THEN ix_error->previous->get_text( ) ) ).
   ENDMETHOD.
 
   METHOD push.
@@ -815,8 +819,13 @@ CLASS zcl_ag2ui5_app_stage IMPLEMENTATION.
           client->message_toast_display( lv_pushed ).
         ENDIF.
       WHEN zif_ag2ui5_repo_service=>c_outcome-changed.
+        " the reload drops picked lines: their fingerprints are stale
+        DATA(lv_had_picks) = xsdbool( mt_patches IS NOT INITIAL ).
         load_stage( ).
-        client->message_box_display( text = `The staging files changed since the page was loaded - nothing was pushed. Check the selection and push again.`
+        client->message_box_display( text = COND #(
+          WHEN lv_had_picks = abap_true
+          THEN `The staging files changed since the page was loaded - nothing was pushed. Picked lines were reset: pick them again, check the selection and push again.`
+          ELSE `The staging files changed since the page was loaded - nothing was pushed. Check the selection and push again.` )
                                      type = `error` ).
     ENDCASE.
 

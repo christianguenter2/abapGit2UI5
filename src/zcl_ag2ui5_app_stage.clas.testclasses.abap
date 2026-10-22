@@ -32,6 +32,7 @@ CLASS ltd_client DEFINITION FINAL FOR TESTING.
     DATA mo_left_to TYPE REF TO z2ui5_if_app.
     DATA mv_event TYPE string.
     DATA mv_message TYPE string.
+    DATA mv_details TYPE string.
     DATA mv_called TYPE REF TO z2ui5_if_app.
     DATA mv_view TYPE string.
     DATA mv_popup TYPE string.
@@ -89,6 +90,7 @@ CLASS ltd_client IMPLEMENTATION.
 
   METHOD z2ui5_if_client~message_box_display.
     mv_message = text.
+    mv_details = details.
   ENDMETHOD.
 
   METHOD z2ui5_if_client~get_event_arg.
@@ -140,6 +142,10 @@ CLASS ltd_service DEFINITION FINAL FOR TESTING.
     "! commit_push raises this text instead of HTTP 401 when set
     DATA mv_fail_text TYPE string.
     DATA mv_stage_calls TYPE i.
+    "! commit_push answers "changed" when set
+    DATA mv_changed TYPE abap_bool.
+    "! commit_push raises with this previous error when set
+    DATA mv_fail_previous TYPE string.
 ENDCLASS.
 
 
@@ -150,6 +156,18 @@ CLASS ltd_service IMPLEMENTATION.
     ms_received_commit = is_commit.
     IF mv_fail = abap_true.
       zcx_abapgit_exception=>raise( COND #( WHEN mv_fail_text IS NOT INITIAL THEN mv_fail_text ELSE `HTTP 401 Unauthorized` ) ).
+    ENDIF.
+    IF mv_fail_previous IS NOT INITIAL.
+      TRY.
+          zcx_abapgit_exception=>raise( mv_fail_previous ).
+        CATCH zcx_abapgit_exception INTO DATA(lx_previous).
+          zcx_abapgit_exception=>raise( iv_text = `Branch x was created and is now followed, but nothing was pushed.`
+                                        ix_previous = lx_previous ).
+      ENDTRY.
+    ENDIF.
+    IF mv_changed = abap_true.
+      rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-changed.
+      RETURN.
     ENDIF.
     rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-pushed.
     rs_result-commit  = `abc1234`.
@@ -430,6 +448,8 @@ CLASS ltcl_patch DEFINITION FINAL FOR TESTING
     METHODS no_lines_restore_tick FOR TESTING.
     METHODS back_without_apply_keeps_row FOR TESTING.
     METHODS push_sends_patch FOR TESTING.
+    METHODS changed_push_says_picks_reset FOR TESTING.
+    METHODS wrapped_error_shows_details FOR TESTING.
     METHODS pick_opens_patch_mode FOR TESTING.
     METHODS remote_change_notice FOR TESTING.
     METHODS patch_uses_server_hash FOR TESTING.
@@ -540,6 +560,28 @@ CLASS ltcl_patch IMPLEMENTATION.
     DATA(ls_item) = mo_service->mt_received_items[ 1 ].
     cl_abap_unit_assert=>assert_equals( act = ls_item-patch_ids exp = VALUE string_table( ( `N2` ) ) ).
     cl_abap_unit_assert=>assert_equals( act = ls_item-fingerprint exp = `fp` ).
+  ENDMETHOD.
+
+  METHOD changed_push_says_picks_reset.
+    mo_app->take_patch( patch( VALUE #( ( `N2` ) ) ) ).
+    mo_service->mv_changed = abap_true.
+    mo_client->mv_event = `PUSH`.
+
+    mo_app->z2ui5_if_app~main( mo_client ).
+
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_patches ).
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message exp = `*Picked lines were reset*` ).
+  ENDMETHOD.
+
+  METHOD wrapped_error_shows_details.
+    mo_app->mt_rows[ 1 ]-selected = abap_true.
+    mo_service->mv_fail_previous = `Push rejected by the remote hook`.
+    mo_client->mv_event = `PUSH`.
+
+    mo_app->z2ui5_if_app~main( mo_client ).
+
+    cl_abap_unit_assert=>assert_char_cp( act = mo_client->mv_message exp = `*nothing was pushed.` ).
+    cl_abap_unit_assert=>assert_equals( act = mo_client->mv_details exp = `Push rejected by the remote hook` ).
   ENDMETHOD.
 
   METHOD pick_opens_patch_mode.

@@ -2324,6 +2324,8 @@ CLASS ltcl_new_repo DEFINITION FINAL FOR TESTING
     METHODS online_needs_url FOR TESTING.
     METHODS offline_needs_name FOR TESTING.
     METHODS package_required FOR TESTING.
+    METHODS package_too_long FOR TESTING.
+    METHODS normalize_checkboxes FOR TESTING.
     METHODS unknown_kind FOR TESTING.
     METHODS folder_logic_allowed FOR TESTING.
     METHODS language_version_allowed FOR TESTING.
@@ -2345,6 +2347,24 @@ CLASS ltcl_new_repo IMPLEMENTATION.
     LOOP AT it_errors INTO DATA(ls_error).
       rv_list = rv_list && |{ ls_error-field };|.
     ENDLOOP.
+  ENDMETHOD.
+
+  METHOD package_too_long.
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-package = `$AG2UI5_` && repeat( val = `X` occ = 23 ).
+    cl_abap_unit_assert=>assert_equals( act = fields( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) )
+                                        exp = `package;` ).
+    ls_repo-package = substring( val = ls_repo-package len = 30 ).
+    cl_abap_unit_assert=>assert_initial( zcl_ag2ui5_repo_service=>new_repo_errors( ls_repo ) ).
+  ENDMETHOD.
+
+  METHOD normalize_checkboxes.
+    DATA(ls_repo) = valid_online( ).
+    ls_repo-ign_subpackages = 'Y'.
+    ls_repo-main_lang_only  = abap_true.
+    DATA(ls_normalized) = zcl_ag2ui5_repo_service=>normalize_new_repo( ls_repo ).
+    cl_abap_unit_assert=>assert_false( ls_normalized-ign_subpackages ).
+    cl_abap_unit_assert=>assert_true( ls_normalized-main_lang_only ).
   ENDMETHOD.
 
   METHOD normalize_trims_upper.
