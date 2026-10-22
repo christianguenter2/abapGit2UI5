@@ -95,6 +95,8 @@ CLASS zcl_ag2ui5_app_status DEFINITION
     DATA mv_can_diff     TYPE abap_bool.
     DATA mv_ack_text     TYPE string.
     DATA mv_acknowledged TYPE abap_bool.
+    "! Changed files without an object: every pull updates them
+    DATA mt_pull_files   TYPE zif_ag2ui5_repo_service=>ty_preview_files.
     "! Filled when the package needs a request: the user's modifiable ones
     DATA mt_transports   TYPE zif_ag2ui5_repo_service=>ty_transports.
     DATA mv_transport    TYPE string.
@@ -790,14 +792,25 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     DATA(content) = dialog->ele( `content` ).
 
-    content->ele( `OverflowToolbar`
-        )->tag( `ToolbarSpacer`
-        )->tag( `Button`
-            )->a( n = `text` v = `Mark all`
-            )->a( n = `press` v = client->_event( `PULL_MARK_ALL` )
-        )->tag( `Button`
-            )->a( n = `text` v = `Unmark all`
-            )->a( n = `press` v = client->_event( `PULL_UNMARK_ALL` ) ).
+    DATA(lv_selectable) = xsdbool(
+         line_exists( ms_decisions-data_loss[ selectable = abap_true ] )
+      OR line_exists( ms_decisions-delete[ selectable = abap_true ] )
+      OR line_exists( ms_decisions-overwrite[ selectable = abap_true ] )
+      OR line_exists( ms_decisions-package[ selectable = abap_true ] )
+      OR line_exists( ms_decisions-import[ selectable = abap_true ] ) ).
+    " only unsupported object types differ and no file: nothing could change
+    DATA(lv_can_pull) = xsdbool( lv_selectable = abap_true OR mt_pull_files IS NOT INITIAL ).
+
+    IF lv_selectable = abap_true.
+      content->ele( `OverflowToolbar`
+          )->tag( `ToolbarSpacer`
+          )->tag( `Button`
+              )->a( n = `text` v = `Mark all`
+              )->a( n = `press` v = client->_event( `PULL_MARK_ALL` )
+          )->tag( `Button`
+              )->a( n = `text` v = `Unmark all`
+              )->a( n = `press` v = client->_event( `PULL_UNMARK_ALL` ) ).
+    ENDIF.
 
     IF ms_transport_types-transport IS NOT INITIAL.
       transport_display( io_content         = content
@@ -846,6 +859,31 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                    iv_items_bind = client->_bind( ms_decisions-skipped )
                    iv_title      = `Skipped - object type not supported` ).
 
+    IF mt_pull_files IS NOT INITIAL.
+      content->tag( `Title`
+          )->a( n = `text`  v = `Repository files`
+          )->a( n = `class` v = `sapUiSmallMarginBegin sapUiSmallMarginTop` ).
+      content->tag( `MessageStrip`
+          )->a( n = `text`     v = `These files belong to no object. A pull updates them.`
+          )->a( n = `type`     v = `Information`
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMarginBeginEnd sapUiTinyMarginTop` ).
+      content->ele( `List`
+          )->a( n = `items` v = client->_bind( mt_pull_files )
+          )->ele( `items`
+              )->tag( `StandardListItem`
+                  )->a( n = `title`       v = `{FILENAME}`
+                  )->a( n = `description` v = `{PATH}` ).
+    ENDIF.
+
+    IF lv_can_pull = abap_false.
+      content->tag( `MessageStrip`
+          )->a( n = `text`     v = `Nothing here can be imported: abapGit does not support these object types.`
+          )->a( n = `type`     v = `Information`
+          )->a( n = `showIcon` v = `true`
+          )->a( n = `class`    v = `sapUiSmallMargin` ).
+    ENDIF.
+
     IF mv_ack_text IS NOT INITIAL.
       content->tag( `MessageStrip`
           )->a( n = `text`     v = client->_bind( mv_ack_text )
@@ -860,9 +898,10 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
     dialog->ele( `beginButton`
         )->tag( `Button`
-            )->a( n = `text`  v = `Pull selected`
-            )->a( n = `type`  v = `Emphasized`
-            )->a( n = `press` v = client->_event( `PULL_SELECTED` ) ).
+            )->a( n = `text`    v = `Pull selected`
+            )->a( n = `type`    v = `Emphasized`
+            )->a( n = `enabled` v = COND #( WHEN lv_can_pull = abap_true THEN `true` ELSE `false` )
+            )->a( n = `press`   v = client->_event( `PULL_SELECTED` ) ).
     dialog->ele( `endButton`
         )->tag( `Button`
             )->a( n = `text`  v = `Cancel`
@@ -1717,7 +1756,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       WHEN `EXPORT_ZIP`.
         export_zip( ).
       WHEN `PULL_CANCEL`.
-        CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+        CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, mt_pull_files, ms_transport_types,
                mt_transports, mv_transport, mt_customizing, mv_customizing.
         client->popup_destroy( ).
       WHEN `PULL_SELECTED`.
@@ -1874,7 +1913,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
 
   METHOD preview_pull.
 
-    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, mt_pull_files, ms_transport_types,
            mt_transports, mv_transport, mt_customizing, mv_customizing.
 
     TRY.
@@ -1910,6 +1949,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
       ENDCASE.
     ENDLOOP.
     mv_ack_text = ls_preview-ack_text.
+    mt_pull_files = ls_preview-files.
     " a request abapGit determined itself is used without asking
     mv_transport   = ls_preview-transport_preset.
     mv_customizing = ls_preview-customizing_preset.
@@ -1964,8 +2004,11 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
                      ms_decisions-import    INTO TABLE lt_items,
                      ms_decisions-skipped   INTO TABLE lt_items.
 
-    " an empty list is a pull of files only; a list with nothing ticked is a no-op
-    IF lt_items IS NOT INITIAL AND NOT line_exists( lt_items[ selected = abap_true ] ).
+    " an empty list is a pull of files only, as is a list of unsupported objects
+    " with changed files; the service checks this again
+    IF lt_items IS NOT INITIAL
+        AND zcl_ag2ui5_repo_service=>pull_is_noop( it_items = lt_items
+                                                   iv_files = xsdbool( mt_pull_files IS NOT INITIAL ) ) = abap_true.
       client->message_toast_display( `Nothing selected` ).
       RETURN.
     ENDIF.
@@ -1994,7 +2037,7 @@ CLASS zcl_ag2ui5_app_status IMPLEMENTATION.
     ENDTRY.
 
     " the dialog's lists would otherwise travel on every round trip
-    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, ms_transport_types,
+    CLEAR: ms_decisions, mv_ack_text, mv_acknowledged, mt_pull_files, ms_transport_types,
            mt_transports, mv_transport, mt_customizing, mv_customizing.
 
     CASE ls_result-outcome.

@@ -115,6 +115,15 @@ CLASS zcl_ag2ui5_repo_service DEFINITION
       RETURNING
         VALUE(rs_preview) TYPE zif_ag2ui5_repo_service=>ty_preview.
 
+    "! Nothing to do: no object ticked. Without selectable objects (only
+    "! unsupported types), changed repository files still make it a pull
+    CLASS-METHODS pull_is_noop
+      IMPORTING
+        it_items       TYPE zif_ag2ui5_repo_service=>ty_decision_items
+        iv_files       TYPE abap_bool
+      RETURNING
+        VALUE(rv_noop) TYPE abap_bool.
+
     "! The fresh preview's items with the user's ticks. Raises when anything
     "! differs from what the user saw: a new object, an object in another
     "! group now, or a ticked object that is gone
@@ -863,8 +872,24 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
       rs_preview-ack_text = condense( |{ rs_preview-ack_text } APACK dependencies are not installed.| ).
     ENDIF.
 
+    LOOP AT is_checks-overwrite_files INTO DATA(ls_file).
+      INSERT VALUE #( path = ls_file-path filename = ls_file-filename ) INTO TABLE rs_preview-files.
+    ENDLOOP.
+    SORT rs_preview-files BY path filename.
+
     rs_preview-outcome = zif_ag2ui5_repo_service=>c_outcome-ready.
 
+  ENDMETHOD.
+
+  METHOD pull_is_noop.
+    IF line_exists( it_items[ selected = abap_true ] ).
+      rv_noop = abap_false.
+    ELSEIF line_exists( it_items[ selectable = abap_true ] ).
+      " objects left unticked: abapGit refuses this too
+      rv_noop = abap_true.
+    ELSE.
+      rv_noop = xsdbool( iv_files = abap_false ).
+    ENDIF.
   ENDMETHOD.
 
   METHOD add_item.
@@ -3040,9 +3065,11 @@ CLASS zcl_ag2ui5_repo_service IMPLEMENTATION.
         RETURN.
     ENDTRY.
 
-    " abapGit refuses a pull with nothing selected; deserialize( ) would still
-    " move the last-pull timestamp
-    IF ls_checks-overwrite IS NOT INITIAL AND NOT line_exists( lt_items[ selected = abap_true ] ).
+    " abapGit refuses a pull with nothing selected, but lets unsupported rows be
+    " ticked; here they cannot be, so files alone make it a pull
+    IF ls_checks-overwrite IS NOT INITIAL
+        AND pull_is_noop( it_items = lt_items
+                          iv_files = xsdbool( ls_checks-overwrite_files IS NOT INITIAL ) ) = abap_true.
       rs_result-outcome = zif_ag2ui5_repo_service=>c_outcome-nothing.
       RETURN.
     ENDIF.

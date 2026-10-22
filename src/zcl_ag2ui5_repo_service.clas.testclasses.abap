@@ -320,6 +320,9 @@ CLASS ltcl_preview DEFINITION FINAL FOR TESTING
   PRIVATE SECTION.
     METHODS nothing_to_pull FOR TESTING.
     METHODS files_only_is_ready FOR TESTING.
+    METHODS files_listed_sorted FOR TESTING.
+    METHODS noop_without_ticks FOR TESTING.
+    METHODS noop_unsupported_only FOR TESTING.
     METHODS import_preselected FOR TESTING.
     METHODS overwrite_not_selected FOR TESTING.
     METHODS delete_not_selected FOR TESTING.
@@ -405,6 +408,37 @@ CLASS ltcl_preview IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals(
       act = zcl_ag2ui5_repo_service=>preview( ls_checks )-outcome
       exp = zif_ag2ui5_repo_service=>c_outcome-ready ).
+  ENDMETHOD.
+
+  METHOD files_listed_sorted.
+    DATA ls_checks TYPE zif_abapgit_definitions=>ty_deserialize_checks.
+
+    ls_checks-overwrite_files = VALUE #( ( path = '/src/' filename = 'README.md' sha1 = 'AA' )
+                                         ( path = '/' filename = 'LICENSE' sha1 = 'BB' ) ).
+
+    cl_abap_unit_assert=>assert_equals(
+      act = zcl_ag2ui5_repo_service=>preview( ls_checks )-files
+      exp = VALUE zif_ag2ui5_repo_service=>ty_preview_files( ( path = `/` filename = `LICENSE` )
+                                                             ( path = `/src/` filename = `README.md` ) ) ).
+  ENDMETHOD.
+
+  METHOD noop_without_ticks.
+    DATA(lt_items) = VALUE zif_ag2ui5_repo_service=>ty_decision_items(
+      ( obj_type = `CLAS` obj_name = `ZCL_A` selectable = abap_true )
+      ( obj_type = `XYZ` obj_name = `ZX` group = zif_ag2ui5_repo_service=>c_group-skipped ) ).
+
+    " unticked objects stay a no-op, even with changed files
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>pull_is_noop( it_items = lt_items iv_files = abap_true ) ).
+    lt_items[ 1 ]-selected = abap_true.
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>pull_is_noop( it_items = lt_items iv_files = abap_false ) ).
+  ENDMETHOD.
+
+  METHOD noop_unsupported_only.
+    DATA(lt_items) = VALUE zif_ag2ui5_repo_service=>ty_decision_items(
+      ( obj_type = `XYZ` obj_name = `ZX` group = zif_ag2ui5_repo_service=>c_group-skipped ) ).
+
+    cl_abap_unit_assert=>assert_true( zcl_ag2ui5_repo_service=>pull_is_noop( it_items = lt_items iv_files = abap_false ) ).
+    cl_abap_unit_assert=>assert_false( zcl_ag2ui5_repo_service=>pull_is_noop( it_items = lt_items iv_files = abap_true ) ).
   ENDMETHOD.
 
   METHOD import_preselected.

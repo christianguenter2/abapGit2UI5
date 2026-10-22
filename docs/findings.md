@@ -43,9 +43,9 @@ once it is merged, and its open points move here.
   `compact`, `tinted_html`).
 - **Status highlight:** the yellow bar relies on UI5's `sapMLIBHighlight`
   class; a rename in UI5 makes it dark orange (`zcl_ag2ui5_app_status`).
-- **Pull dialog:** a dialog with only Skipped rows cannot be pulled
-  ("Nothing selected"); a pull that changes only repository files opens an
-  empty dialog (`pull_selected`, `preview_pull`).
+- **Pull dialog:** with selectable objects all unticked, changed repository
+  files are not pulled either ("Nothing selected"); abapGit refuses this too
+  (`pull_is_noop`).
 - **Tags:** every distinct tag target is verified with a depth-one fetch,
   which makes long tag lists slow (`read_tag_commit`). Chris measured about
   30 seconds on abap2UI5, with reload as the only way to abandon the pending

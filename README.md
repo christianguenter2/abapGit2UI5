@@ -173,6 +173,11 @@ Every object appears once, in its most dangerous group:
 | Import | Added or changed only remotely, or deleted locally | yes (with a new namespace, only the namespace, as in abapGit) |
 | Skipped | Object types abapGit does not support | cannot be selected |
 
+Changed files that belong to no object (a README, for example) are listed
+below the groups; every pull updates them. When only skipped objects differ
+and no such file changed, there is nothing to import and the dialog offers
+no pull.
+
 "Pull selected" checks again before importing: if the remote changed, it
 imports nothing and asks you to review again. Unmet requirements or APACK
 dependencies need "Pull anyway". Transportable packages need one of your

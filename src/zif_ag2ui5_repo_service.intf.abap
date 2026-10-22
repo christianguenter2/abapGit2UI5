@@ -205,9 +205,19 @@ INTERFACE zif_ag2ui5_repo_service PUBLIC.
     ty_decision_items TYPE STANDARD TABLE OF ty_decision_item WITH EMPTY KEY.
 
   TYPES:
+    "! A changed file that belongs to no object (abapGit's overwrite_files)
+    BEGIN OF ty_preview_file,
+      path     TYPE string,
+      filename TYPE string,
+    END OF ty_preview_file,
+    ty_preview_files TYPE STANDARD TABLE OF ty_preview_file WITH EMPTY KEY.
+
+  TYPES:
     BEGIN OF ty_preview,
       outcome  TYPE ty_outcome,
       items    TYPE ty_decision_items,
+      "! Updated by every pull; shown, not selectable
+      files    TYPE ty_preview_files,
       "! Set when requirements or APACK dependencies are not met - the pull
       "! then needs an explicit acknowledgement
       ack_text TYPE string,

@@ -489,6 +489,10 @@ CLASS ltcl_offline DEFINITION FINAL FOR TESTING
     METHODS decisions_cancel_keeps_zip FOR TESTING.
     METHODS pull_uses_zip_and_decisions FOR TESTING.
     METHODS nothing_selected_no_pull FOR TESTING.
+    METHODS files_only_shown_and_pulled FOR TESTING.
+    METHODS unsupported_only_disabled FOR TESTING.
+    METHODS unsupported_with_files_pulls FOR TESTING.
+    METHODS unticked_with_files_no_pull FOR TESTING.
     METHODS mark_all_selectable_groups FOR TESTING.
     METHODS unmark_all_groups FOR TESTING.
     METHODS mark_preserves_other_state FOR TESTING.
@@ -784,6 +788,59 @@ CLASS ltcl_offline IMPLEMENTATION.
     cl_abap_unit_assert=>assert_equals( exp = `Nothing selected` act = mo_client->mv_toast ).
   ENDMETHOD.
 
+  METHOD files_only_shown_and_pulled.
+    mo_app->client = mo_client.
+    mo_app->mv_zip = '0102'.
+    mo_service->ms_preview = VALUE #( outcome = zif_ag2ui5_repo_service=>c_outcome-ready
+      files = VALUE #( ( path = `/` filename = `README.md` ) ) ).
+    mo_app->preview_pull( ).
+    cl_abap_unit_assert=>assert_equals( exp = mo_service->ms_preview-files act = mo_app->mt_pull_files ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `text="Repository files"` ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup NS `Nothing here can be imported` ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup NS `enabled="false"` ) ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup NS `Mark all` ) ).
+    fire( `PULL_SELECTED` ).
+    cl_abap_unit_assert=>assert_equals( exp = CONV xstring( '0102' ) act = mo_service->mv_pull_zip ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_initial( mo_app->mt_pull_files ).
+  ENDMETHOD.
+
+  METHOD unsupported_only_disabled.
+    mo_app->client = mo_client.
+    mo_service->ms_preview = VALUE #( outcome = zif_ag2ui5_repo_service=>c_outcome-ready
+      items = VALUE #( ( obj_type = `XYZ` obj_name = `ZX` group = zif_ag2ui5_repo_service=>c_group-skipped ) ) ).
+    mo_app->preview_pull( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Nothing here can be imported` ) ).
+    FIND REGEX `<Button[^>]*text="Pull selected"[^>]*enabled="false"` IN mo_client->mv_popup.
+    cl_abap_unit_assert=>assert_subrc( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup NS `Repository files` ) ).
+    " a posted event despite the disabled button
+    fire( `PULL_SELECTED` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_equals( exp = `Nothing selected` act = mo_client->mv_toast ).
+  ENDMETHOD.
+
+  METHOD unsupported_with_files_pulls.
+    mo_app->client = mo_client.
+    mo_service->ms_preview = VALUE #( outcome = zif_ag2ui5_repo_service=>c_outcome-ready
+      items = VALUE #( ( obj_type = `XYZ` obj_name = `ZX` group = zif_ag2ui5_repo_service=>c_group-skipped ) )
+      files = VALUE #( ( path = `/` filename = `README.md` ) ) ).
+    mo_app->preview_pull( ).
+    cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup NS `Nothing here can be imported` ) ).
+    fire( `PULL_SELECTED` ).
+    cl_abap_unit_assert=>assert_equals( exp = mo_service->ms_preview-items act = mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_initial( mo_client->mv_toast ).
+  ENDMETHOD.
+
+  METHOD unticked_with_files_no_pull.
+    mo_app->ms_decisions-import = mo_service->ms_preview-items.
+    mo_app->ms_decisions-import[ 1 ]-selected = abap_false.
+    mo_app->mt_pull_files = VALUE #( ( path = `/` filename = `README.md` ) ).
+    fire( `PULL_SELECTED` ).
+    cl_abap_unit_assert=>assert_initial( mo_service->mt_items ).
+    cl_abap_unit_assert=>assert_equals( exp = `Nothing selected` act = mo_client->mv_toast ).
+  ENDMETHOD.
+
   METHOD mark_all_selectable_groups.
     DATA(lt_rows) = VALUE zif_ag2ui5_repo_service=>ty_decision_items(
       ( obj_name = `SELECTABLE` selectable = abap_true )
@@ -850,6 +907,7 @@ CLASS ltcl_offline IMPLEMENTATION.
 
   METHOD mark_controls_in_popup.
     mo_app->client = mo_client.
+    mo_app->ms_decisions-import = mo_service->ms_preview-items.
     mo_app->popup_decisions_display( ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Mark all` ) ).
     cl_abap_unit_assert=>assert_true( xsdbool( mo_client->mv_popup CS `Unmark all` ) ).
